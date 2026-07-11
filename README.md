@@ -52,7 +52,8 @@ preferred Codex experience; it is not the sole conformance authority.
 
 ## How work is organized
 
-All work is tracked in GitHub Issues and the repository's single GitHub Project.
+All work is tracked in [GitHub Issues](https://github.com/dragondad22/codex-starter-kit/issues)
+and the repository's single [Codex Starter Kit Project](https://github.com/users/dragondad22/projects/8).
 
 - Feature ideas enter as `type:feature` issues in `Status: Backlog`.
 - `Horizon: Now / Next / Later` expresses roadmap intent.

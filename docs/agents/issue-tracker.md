@@ -1,8 +1,9 @@
 # Issue Tracker — GitHub
 
 Issues, PRDs, findings, epics, features, and executable tasks live in
-`dragondad22/codex-starter-kit` GitHub Issues. The repository has one linked GitHub Project
-whose Status, Horizon, and Readiness fields are operational authority.
+[`dragondad22/codex-starter-kit` GitHub Issues](https://github.com/dragondad22/codex-starter-kit/issues).
+The linked [Codex Starter Kit Project](https://github.com/users/dragondad22/projects/8),
+with Status, Horizon, and Readiness fields, is operational authority.
 
 Use `gh` or the connected GitHub adapter. Pass multiline bodies through files or safe
 structured calls; do not interpolate issue content into shell commands.
