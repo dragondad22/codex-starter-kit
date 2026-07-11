@@ -1,0 +1,52 @@
+# Codex Starter Kit
+
+This repository builds a Codex-native development system. It is currently in foundation
+and design; the approved product contract lives in `docs/`.
+
+## Working rules
+
+- Read `docs/README.md` first, then only the breadcrumbed material relevant to the task.
+- `docs/discovery/CODEX_STARTER_KIT_REVIEW.md` is the decision history. Approved D-items
+  govern if a derived draft conflicts.
+- Do not start implementation without a GitHub issue whose Readiness is `Ready`.
+- Do not invent unresolved product, architecture, policy, regulatory, or risk decisions
+  while implementing. Return the issue to `Needs refinement`.
+- Use the lifecycle-engine interface as the highest test seam: `create`, `retrofit`,
+  `inspect`, `plan`, `apply`, `verify`, `status`, `upgrade`.
+- No evidence means no pass. Preserve explicit `fail`, `not-applicable`,
+  `not-configured`, `needs-review`, and accepted-risk states.
+- Keep human-owned records distinct from generated views and machine state.
+- Universal work must run natively on Linux, macOS, and Windows; do not introduce a
+  universal Bash, PowerShell, GNU, WSL, or shell-string dependency.
+- Recommend useful installs or upgrades with trust, authority, data, cost, compatibility,
+  and fallback implications. Do not silently install or broaden authority.
+- Normal Git flow: Ready issue → issue-named branch → PR → required gates → squash merge.
+- Every material change updates affected documentation and its change/evidence record.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues are mandatory; external PRs are also a triage request surface. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix` for
+triage state. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-domain repository. Canonical vocabulary lives in
+`docs/product/GLOSSARY.md`; decisions live in `docs/decisions/`. See
+`docs/agents/domain.md`.
+
+## Verification
+
+Run before proposing a documentation-only change:
+
+```text
+python3 scripts/validate_docs.py
+```
+
+Add area-specific commands here only after the implementation/toolchain exists.

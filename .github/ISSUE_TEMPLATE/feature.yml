@@ -1,0 +1,32 @@
+name: Feature idea
+description: Propose a capability for the Horizon roadmap.
+title: ""
+labels: ["type:feature", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Keep this lightweight. A full execution brief is created only when promoted.
+  - type: textarea
+    id: what
+    attributes:
+      label: What should become possible?
+      description: Describe the outcome in plain language.
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Who needs it?
+      description: Reference a persona if known, or describe the affected audience.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence or examples
