@@ -61,6 +61,10 @@ executed end to end.
 - Implement GitHub adapter and in-memory contract double.
 - Bootstrap/reconcile labels, fields, views, rulesets, auto-add, and close-to-Done flow.
 - Render/validate two-layer issues and readiness refresh.
+- Implement sparse `type:question` and bounded `type:research` forms, subtype readiness,
+  authorization, completion/promotion checks, and reciprocal source links.
+- Add durable research-record routing and validate provenance, uncertainty, limitations,
+  freshness, depth or effort, and stopping conditions.
 - Implement branch/PR/gate/squash completion memory.
 - Implement Horizon roadmap intake/promotion and Project drift reconciliation.
 - Test partial failure, rate limits, field-option migration snapshots, and offline queues.

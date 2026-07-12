@@ -76,8 +76,24 @@ stateDiagram-v2
     Done --> NeedsRefinement: reopened
 ```
 
-Implementation cannot begin from `Intake` or `NeedsRefinement`. A stale Ready issue is
-refined; the implementing AI does not invent unresolved decisions.
+Work cannot begin from `Intake` or `NeedsRefinement`. A stale Ready item is refined; the
+assigned human or AI does not invent unresolved decisions.
+
+Readiness and completion are subtype-specific:
+
+- implementation work has stable governing references, verifiable acceptance, required
+  tests/evidence, and a linked completing change;
+- question work names the consequential question, impact, blocking versus related work,
+  answer authority, evidence needs, resolution criteria, and promotion destination;
+- research work names an objective or bounded exploratory mapping goal, intended use,
+  scope and exclusions, source/provenance expectations, authorized depth or effort,
+  stopping conditions, durable output, freshness, and review needs.
+
+A question closes only after a material answer is promoted into its authoritative record
+or explicitly resolved as requiring no promotion. When promoted, the record references the
+issue and the issue's closing comment references the record. Research closes with a
+durable human-owned research record and any resulting question, decision, or delivery
+work; the record informs but does not silently establish authority.
 
 ## Control Evaluation Lifecycle
 

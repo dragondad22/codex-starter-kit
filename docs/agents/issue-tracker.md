@@ -20,6 +20,12 @@ GitHub shares numbering across issues and PRs. Resolve an ambiguous `#N` before 
 
 - Search for duplicates before creation.
 - Use the two-layer executable issue template for planned implementation.
+- Reserve question issues for consequential uncertainties that need durable resolution;
+  keep ordinary conversational clarification off the Project.
+- Require bounded objectives, authority, depth or effort, stopping conditions, provenance,
+  and durable outputs for research issues.
+- Promote material question and research results into the correct authoritative record.
+  Link that record back to the issue and identify it in the issue's closing comment.
 - Do not implement until readiness passes.
 - Keep issue and Project fields synchronized through the lifecycle.
 - Use `Closes #N` from the completing PR.
