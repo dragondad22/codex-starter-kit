@@ -49,7 +49,10 @@ This is a single-domain repository. Canonical vocabulary lives in
 Run before proposing a documentation-only change:
 
 ```text
+python3 -m unittest discover -s tests -p "test_*.py"
 python3 scripts/validate_docs.py
 ```
 
-Add area-specific commands here only after the implementation/toolchain exists.
+CI provisions Python 3.12 and uses the `python` command on all native runners. Local Unix
+environments may expose the same interpreter as `python3`. Add area-specific commands here
+only after the implementation/toolchain exists.

@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import re
 import sys
+import json
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = (
@@ -18,6 +20,18 @@ REQUIRED = (
     "docs/product/PRD.md",
     "docs/product/PERSONAS.md",
     "docs/product/GLOSSARY.md",
+    "docs/architecture/SUPPORT_MATRIX.md",
+    "docs/decisions/INDEX.md",
+    "docs/agents/domain.md",
+    "docs/agents/issue-tracker.md",
+    "docs/agents/triage-labels.md",
+    ".github/pull_request_template.md",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/feature.yml",
+    ".github/ISSUE_TEMPLATE/bug.yml",
+    ".github/ISSUE_TEMPLATE/task.yml",
+    ".github/labels.yml",
+    ".github/workflows/documentation.yml",
 )
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 DECISION_ROUTE = re.compile(
@@ -34,6 +48,142 @@ DECISION_MARKERS = (
     "## Consequences",
     "## Source",
 )
+HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
+PINNED_ACTION = re.compile(r"^\s*uses:\s*[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$", re.MULTILINE)
+
+
+def _load_json_document(path: Path, root: Path) -> tuple[Any | None, list[str]]:
+    if not path.is_file():
+        return None, [f"{path.relative_to(root)}: missing file"]
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), []
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        return None, [
+            f"{path.relative_to(root)}: not JSON-compatible YAML: {error}"
+        ]
+
+
+def validate_label_manifest(root: Path) -> list[str]:
+    """Validate the dependency-free JSON-compatible label manifest."""
+
+    path = root / ".github/labels.yml"
+    document, failures = _load_json_document(path, root)
+    if failures:
+        return failures
+    if not isinstance(document, dict) or not isinstance(document.get("labels"), list):
+        return [f"{path.relative_to(root)}: expected an object with a labels array"]
+
+    seen: set[str] = set()
+    for index, label in enumerate(document["labels"]):
+        location = f"{path.relative_to(root)}: labels[{index}]"
+        if not isinstance(label, dict):
+            failures.append(f"{location}: expected an object")
+            continue
+        name = label.get("name")
+        color = label.get("color")
+        description = label.get("description")
+        if not isinstance(name, str) or not name:
+            failures.append(f"{location}: missing non-empty name")
+        elif name in seen:
+            failures.append(f"{location}: duplicate label: {name}")
+        else:
+            seen.add(name)
+        if not isinstance(color, str) or not HEX_COLOR.fullmatch(color):
+            failures.append(f"{location}: invalid color: {color}")
+        if not isinstance(description, str) or not description:
+            failures.append(f"{location}: missing non-empty description")
+    return failures
+
+
+def validate_issue_templates(root: Path) -> list[str]:
+    """Validate GitHub issue forms encoded as JSON-compatible YAML."""
+
+    directory = root / ".github/ISSUE_TEMPLATE"
+    label_path = root / ".github/labels.yml"
+    label_document, _ = _load_json_document(label_path, root)
+    known_labels = {
+        label.get("name")
+        for label in label_document.get("labels", [])
+        if isinstance(label_document, dict)
+        and isinstance(label, dict)
+        and isinstance(label.get("name"), str)
+    } if isinstance(label_document, dict) else set()
+
+    failures: list[str] = []
+    forms = sorted(directory.glob("*.yml")) if directory.is_dir() else []
+    if not forms:
+        return [f"{directory.relative_to(root)}: no issue templates found"]
+
+    for path in forms:
+        document, parse_failures = _load_json_document(path, root)
+        failures.extend(parse_failures)
+        if parse_failures:
+            continue
+        relative = path.relative_to(root)
+        if path.name == "config.yml":
+            if not isinstance(document, dict) or not isinstance(
+                document.get("blank_issues_enabled"), bool
+            ):
+                failures.append(f"{relative}: missing boolean blank_issues_enabled")
+            continue
+        if not isinstance(document, dict):
+            failures.append(f"{relative}: expected an object")
+            continue
+        for key in ("name", "description"):
+            if not isinstance(document.get(key), str) or not document[key]:
+                failures.append(f"{relative}: missing non-empty {key}")
+        labels = document.get("labels")
+        if not isinstance(labels, list):
+            failures.append(f"{relative}: labels must be an array")
+        else:
+            for label in labels:
+                if label not in known_labels:
+                    failures.append(f"{relative}: unknown label: {label}")
+        body = document.get("body")
+        if not isinstance(body, list) or not body:
+            failures.append(f"{relative}: body must be a non-empty array")
+            continue
+        seen_ids: set[str] = set()
+        for index, field in enumerate(body):
+            if not isinstance(field, dict):
+                failures.append(f"{relative}: body[{index}] must be an object")
+                continue
+            field_id = field.get("id")
+            if field_id is None:
+                continue
+            if not isinstance(field_id, str) or not field_id:
+                failures.append(f"{relative}: body[{index}] has invalid id")
+            elif field_id in seen_ids:
+                failures.append(f"{relative}: duplicate body id: {field_id}")
+            else:
+                seen_ids.add(field_id)
+    return failures
+
+
+def validate_workflow(root: Path) -> list[str]:
+    """Validate the native three-OS, pinned-action foundation workflow contract."""
+
+    path = root / ".github/workflows/documentation.yml"
+    if not path.is_file():
+        return [f"{path.relative_to(root)}: missing workflow"]
+    text = path.read_text(encoding="utf-8")
+    failures: list[str] = []
+    for runner in ("ubuntu-latest", "macos-latest", "windows-latest"):
+        if runner not in text:
+            failures.append(f"{path.relative_to(root)}: missing native runner: {runner}")
+    uses_lines = [line for line in text.splitlines() if line.strip().startswith("uses:")]
+    for line in uses_lines:
+        if not PINNED_ACTION.match(line):
+            failures.append(f"{path.relative_to(root)}: action is not pinned: {line.strip()}")
+    if "shell:" in text or re.search(r"\brun:\s*(?:bash|sh|pwsh|powershell)\b", text):
+        failures.append(f"{path.relative_to(root)}: explicit shell dependency")
+    for command in (
+        "python scripts/validate_docs.py",
+        "python -m unittest discover -s tests",
+    ):
+        if command not in text:
+            failures.append(f"{path.relative_to(root)}: missing command: {command}")
+    return failures
 
 
 def validate_decision_routes(root: Path) -> list[str]:
@@ -136,6 +286,9 @@ def main() -> int:
                 failures.append(f"{document.relative_to(ROOT)}: missing link target: {raw_target}")
 
     failures.extend(validate_decision_routes(ROOT))
+    failures.extend(validate_label_manifest(ROOT))
+    failures.extend(validate_issue_templates(ROOT))
+    failures.extend(validate_workflow(ROOT))
 
     if failures:
         print("Documentation validation failed:", file=sys.stderr)

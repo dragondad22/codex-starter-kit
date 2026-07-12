@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
-from scripts.validate_docs import validate_decision_routes
+from scripts.validate_docs import (
+    validate_decision_routes,
+    validate_issue_templates,
+    validate_label_manifest,
+    validate_workflow,
+)
 
 
 class DecisionRouteValidationTests(unittest.TestCase):
@@ -160,6 +166,123 @@ class DecisionRouteValidationTests(unittest.TestCase):
         failures = validate_decision_routes(self.root)
 
         self.assertTrue(any("discovery source missing anchor: d1" in failure for failure in failures))
+
+
+class FoundationManifestValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        (self.root / ".github/ISSUE_TEMPLATE").mkdir(parents=True)
+        (self.root / ".github/workflows").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def write_labels(self, labels: list[dict[str, str]]) -> None:
+        (self.root / ".github/labels.yml").write_text(
+            json.dumps({"labels": labels}), encoding="utf-8"
+        )
+
+    def write_form(self, name: str, labels: list[str], ids: list[str]) -> None:
+        body = [
+            {
+                "type": "textarea",
+                "id": field_id,
+                "attributes": {"label": field_id.title()},
+                "validations": {"required": True},
+            }
+            for field_id in ids
+        ]
+        (self.root / ".github/ISSUE_TEMPLATE" / name).write_text(
+            json.dumps(
+                {
+                    "name": name,
+                    "description": "Description",
+                    "title": "",
+                    "labels": labels,
+                    "body": body,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_accepts_valid_labels_and_issue_forms(self) -> None:
+        self.write_labels(
+            [
+                {"name": "type:task", "color": "0075CA", "description": "Task"},
+                {"name": "needs-triage", "color": "D4C5F9", "description": "Triage"},
+            ]
+        )
+        self.write_form("task.yml", ["type:task", "needs-triage"], ["summary"])
+
+        self.assertEqual(validate_label_manifest(self.root), [])
+        self.assertEqual(validate_issue_templates(self.root), [])
+
+    def test_rejects_malformed_label_json(self) -> None:
+        (self.root / ".github/labels.yml").write_text("labels: [", encoding="utf-8")
+
+        failures = validate_label_manifest(self.root)
+
+        self.assertTrue(any("not JSON-compatible YAML" in failure for failure in failures))
+
+    def test_rejects_duplicate_labels_and_invalid_colors(self) -> None:
+        self.write_labels(
+            [
+                {"name": "type:task", "color": "not-hex", "description": "Task"},
+                {"name": "type:task", "color": "0075CA", "description": "Duplicate"},
+            ]
+        )
+
+        failures = validate_label_manifest(self.root)
+
+        self.assertTrue(any("duplicate label" in failure for failure in failures))
+        self.assertTrue(any("invalid color" in failure for failure in failures))
+
+    def test_rejects_issue_form_unknown_labels_and_duplicate_ids(self) -> None:
+        self.write_labels(
+            [{"name": "type:task", "color": "0075CA", "description": "Task"}]
+        )
+        self.write_form("task.yml", ["type:task", "missing"], ["summary", "summary"])
+
+        failures = validate_issue_templates(self.root)
+
+        self.assertTrue(any("unknown label: missing" in failure for failure in failures))
+        self.assertTrue(any("duplicate body id: summary" in failure for failure in failures))
+
+    def test_accepts_native_three_os_workflow_with_pinned_action(self) -> None:
+        (self.root / ".github/workflows/documentation.yml").write_text(
+            "\n".join(
+                (
+                    "matrix:",
+                    "  os: [ubuntu-latest, macos-latest, windows-latest]",
+                    "uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+                    "run: python scripts/validate_docs.py",
+                    "run: python -m unittest discover -s tests",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(validate_workflow(self.root), [])
+
+    def test_rejects_missing_os_mutable_action_and_shell_dependency(self) -> None:
+        (self.root / ".github/workflows/documentation.yml").write_text(
+            "\n".join(
+                (
+                    "os: [ubuntu-latest, macos-latest]",
+                    "uses: actions/checkout@v4",
+                    "shell: bash",
+                    "run: python scripts/validate_docs.py",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        failures = validate_workflow(self.root)
+
+        self.assertTrue(any("missing native runner: windows-latest" in failure for failure in failures))
+        self.assertTrue(any("action is not pinned" in failure for failure in failures))
+        self.assertTrue(any("explicit shell dependency" in failure for failure in failures))
 
 
 if __name__ == "__main__":
