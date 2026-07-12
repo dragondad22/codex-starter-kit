@@ -18,3 +18,4 @@
 | D11 | [DEC-0011](DEC-0011-governed-breadcrumbs.md) | Stable governed references and layered context loading |
 | D12 | [DEC-0012](DEC-0012-managed-repository-conformance.md) | Evidence-backed managed-repository conformance contract |
 | D13 | [DEC-0013](DEC-0013-question-and-research-work.md) | Governed question and research work with durable promotion |
+| D14 | [DEC-0014](DEC-0014-finite-release-targets.md) | Finite release targets beside the rolling Horizon roadmap |

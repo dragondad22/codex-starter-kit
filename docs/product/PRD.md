@@ -92,6 +92,8 @@ The product ships as three layers from its first usable release:
 41. As a project owner, I want consequential unresolved questions tracked without routine clarification flooding the board so that dependencies and answer authority stay visible.
 42. As a decision maker, I want bounded research authorized by objective, depth, cost, and stopping conditions so that expensive evidence gathering is deliberate and reusable.
 43. As a future maintainer, I want resolved questions and authoritative records to reference each other so that I can trace a conclusion without treating issue discussion as authority.
+44. As a product owner, I want rolling Horizon intent separated from finite release membership so that current direction can evolve without making a named release endless.
+45. As a release approver, I want one aggregate release issue with measurable scope, gates, evidence, trigger, and approval so that milestone completion cannot falsely imply readiness.
 
 ## Implementation Decisions
 
@@ -114,6 +116,8 @@ The product ships as three layers from its first usable release:
   contracts; ordinary clarification remains outside the Project.
 - Material question answers are promoted with reciprocal issue/authority references, and
   research produces durable human-owned records without silently establishing decisions.
+- Native GitHub Milestones are finite release manifests; Horizon remains rolling feature
+  intent, and aggregate release issues own S.M.A.R.T. readiness and publication.
 - The default delivery flow is Ready issue, issue branch, PR, gates, squash merge.
 - Version and release adapters are selected from project outputs and policy.
 - Linux, macOS, and Windows are native first-release targets.

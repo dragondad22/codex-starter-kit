@@ -29,7 +29,7 @@ unpinned package installation.
 
 - Required public, agent, decision, template, manifest, workflow, and support files exist.
 - Local Markdown links remain inside the repository and resolve.
-- D1–D13 have unique stable decision identities, targets, and substantive source anchors.
+- D1–D14 have unique stable decision identities, targets, and substantive source anchors.
 - Issue forms parse and reference known labels with unique body IDs.
 - The label manifest has unique names, valid colors, and descriptions.
 - Workflow actions are pinned, all three native runners are present, and no explicit

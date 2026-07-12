@@ -91,7 +91,7 @@ coverage, and required action. Keep implementation machinery behind progressive 
 
 **Permissions mapping:** Repository owner/maintainer; may hold multiple operational roles.
 
-**Evidence and owner:** Discovery decisions D1–D13; maintained by the project owner.
+**Evidence and owner:** Discovery decisions D1–D14; maintained by the project owner.
 
 **Anti-assumptions:** Solo does not mean hobby, low risk, unregulated, technically novice,
 or authorized to self-approve every control.
@@ -243,7 +243,7 @@ coverage, drift, revocation, audit export, recovery, and actionable exceptions.
 **Permissions mapping:** GitHub/workspace/org administrator and policy publisher roles,
 separated where required.
 
-**Evidence and owner:** D3, D7, roadmap Milestone 8; refined during fleet design.
+**Evidence and owner:** D3, D7, roadmap Phase 8; refined during fleet design.
 
 **Anti-assumptions:** Central administration does not imply continuous network access,
 unlimited authority, or permission to inspect every sensitive evidence artifact.

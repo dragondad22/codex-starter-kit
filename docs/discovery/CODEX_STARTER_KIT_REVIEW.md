@@ -1404,11 +1404,11 @@ documents:
   and risk state machines.
 - `docs/architecture/POLICY_PACKS.md` — initial universal/domain pack boundaries and
   regulatory-pack construction rules.
-- `docs/roadmap/IMPLEMENTATION_ROADMAP.md` — tracer-bullet milestones and prerequisite
+- `docs/roadmap/IMPLEMENTATION_ROADMAP.md` — tracer-bullet phases and prerequisite
   investigation issues.
 
 These are derived artifacts while this discovery record remains the discussion and source
-history. Approved D1–D13 are promoted into `docs/decisions/INDEX.md` and its linked
+history. Approved D1–D14 are promoted into `docs/decisions/INDEX.md` and its linked
 records, which are the normal authority surface. If a record and its source D-item
 conflict, stop and reconcile them through an explicit superseding decision.
 
@@ -1432,6 +1432,26 @@ comment references that record. Research preserves provenance, uncertainty, limi
 and freshness and informs decisions without silently becoming one. The discovery document
 remains coherent source history rather than being replaced by fragmented issue threads.
 
+<a id="d14"></a>
+## D14 decision — finite release targets and readiness
+
+**Status:** **Agreed (Chris, 2026-07-12)**
+
+Horizon remains rolling feature intent rather than release membership. `Now` is committed
+current product direction, `Next` is an intentional candidate not yet committed to a
+release, `Later` has no release commitment, and blank is unclassified or outside the
+feature roadmap. Each named release uses one native GitHub Milestone as its finite
+manifest and one aggregate executable release issue for release-wide scope, gates,
+evidence, approvals, publication, rollback, communication, and completion.
+
+A S.M.A.R.T. Release is Scoped, Measurable, Approved, Releasable, and Triggered. The
+trigger may be outcome-, time-, event-, or hybrid-bound, but time cannot override a
+prohibited or unresolved gate. Release triggering and version selection are separate.
+Scope moves from proposed to committed to release candidate to released; additions,
+removals, and deferrals remain auditable and cannot conceal a failed required gate. The
+actual 1.0.0 outcome and membership require a separate human decision before creating its
+Milestone.
+
 ## Decisions to work through
 
 | ID | Question | Starting recommendation | Status |
@@ -1449,6 +1469,7 @@ remains coherent source history rather than being replaced by fragmented issue t
 | [D11](#d11) | Breadcrumb identity scope? | Stable IDs for governed policy, controls, decisions, and specifications; normal links elsewhere | **Agreed (2026-07-11)** |
 | [D12](#d12) | What does “managed by the kit” guarantee? | Versioned, evidence-backed conformance with explicit coverage, applicability, and risk states; no false-green results | **Agreed (2026-07-11)** |
 | [D13](#d13) | How are consequential questions and research governed? | Sparse question work; bounded executable research; reciprocal promotion links; issues coordinate but do not become authority | **Agreed (2026-07-12)** |
+| [D14](#d14) | How does rolling roadmap intent become a finite releasable scope? | Separate Horizon from release Milestones; aggregate release issue; S.M.A.R.T. scope, evidence, approval, and trigger contract | **Agreed (2026-07-12)** |
 
 ## Suggested first discussion
 

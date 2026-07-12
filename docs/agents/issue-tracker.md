@@ -26,6 +26,9 @@ GitHub shares numbering across issues and PRs. Resolve an ambiguous `#N` before 
   and durable outputs for research issues.
 - Promote material question and research results into the correct authoritative record.
   Link that record back to the issue and identify it in the issue's closing comment.
+- Keep Horizon as rolling feature intent. Use one native GitHub Milestone as the finite
+  manifest for each named release and one aggregate release issue for readiness and
+  publication; milestone percentage alone is not evidence that a release is ready.
 - Do not implement until readiness passes.
 - Keep issue and Project fields synchronized through the lifecycle.
 - Use `Closes #N` from the completing PR.
