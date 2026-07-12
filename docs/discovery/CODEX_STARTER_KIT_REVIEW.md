@@ -358,6 +358,7 @@ for the rest. User-owned documents should never be silently regenerated. The fir
 release format must include migration/version semantics and upgrade fixtures, even if
 only one version exists initially.
 
+<a id="d11"></a>
 ### F11 — Breadcrumbs should be a governed context-loading interface
 
 **Severity:** Foundational for context economy  
@@ -469,6 +470,7 @@ being duplicated into every repository. Each downstream repository still receive
 human-readable policy, decision, and evidence surfaces needed to prove what applies and
 why. Project-specific deviations and accepted risks must be recorded locally.
 
+<a id="d1"></a>
 ## First-release operating contract
 
 **Agreed audience and scope (Chris, 2026-07-11):**
@@ -490,6 +492,7 @@ This breadth makes project classification and policy compilation core functional
 The system must distinguish “not applicable” from “not checked” and retain the evidence
 behind either result.
 
+<a id="d12"></a>
 ### Managed-repository conformance contract
 
 **Agreed (Chris, 2026-07-11):** A repository managed by the kit guarantees:
@@ -525,6 +528,7 @@ pass or an undocumented permanent bypass. Solo projects may use the same person 
 and approver, but the record must make that lack of separation explicit; team and
 regulated contexts may require independent approval through triggered policy.
 
+<a id="d2"></a>
 ## D2 workshop — universal and context-triggered controls
 
 **Status:** **Agreed (Chris, 2026-07-11)**  
@@ -644,6 +648,7 @@ work and a retrospective obligation.
    represented as conformant for that control, no legal/contractual/safety/platform
    obligation forbids it, and the exception has compensating controls plus a deadline.
 
+<a id="d3"></a>
 ## D3 workshop — day-one distribution and lifecycle architecture
 
 **Status:** **Agreed (Chris, 2026-07-11)**  
@@ -784,6 +789,7 @@ Remaining implementation decisions—engine language/package format, signed dist
 minimum supported Codex clients, and marketplace/publication channels—belong in the
 architecture and delivery design after this distribution model is approved.
 
+<a id="d4"></a>
 ## D4 decision — authoritative project state and human documents
 
 **Status:** **Agreed (Chris, 2026-07-11)**
@@ -815,6 +821,7 @@ authoritative state. It must never rely on bidirectional free-form synchronizati
 Every projection records enough provenance to detect staleness. Conflicting edits stop
 the operation and produce a reviewable reconciliation plan; neither side silently wins.
 
+<a id="d5"></a>
 ## D5 decision — GitHub issues as executable memory
 
 **Status:** **Agreed (Chris, 2026-07-11)**
@@ -950,6 +957,7 @@ continue only within the applicable policy: mutations are queued with provenance
 repository reports degraded synchronization, and work cannot claim full conformance
 until required GitHub state is reconciled.
 
+<a id="d6"></a>
 ## D6 decision — unavailable security tooling and evidence
 
 **Status:** **Agreed (Chris, 2026-07-11)**
@@ -983,6 +991,7 @@ Exceptions follow D2. An accepted exception changes whether work may cross a spe
 gate; it does not change the underlying control result to `pass` or conceal missing
 coverage.
 
+<a id="d7"></a>
 ## D7 workshop — standards, templates, and predictable repository growth
 
 **Status:** **Agreed (Chris, 2026-07-11)**  
@@ -1184,6 +1193,7 @@ air-gapped environments. Use logical directory roles and rule-driven layout expa
 Keep project decisions and proof local; keep reusable standards/templates centrally
 versioned; resolve both through the stable breadcrumb registry.
 
+<a id="d8"></a>
 ## D8 workshop — Git and release workflow
 
 **Status:** **Agreed (Chris, 2026-07-11)**  
@@ -1312,6 +1322,7 @@ Select versioning, publication, deployment, signing, and merge-queue adapters fr
 project context and policy rather than making every repository pretend to be the same
 kind of product.
 
+<a id="d9"></a>
 ## D9 decision — supported operating systems
 
 **Status:** **Agreed (Chris, 2026-07-11)**
@@ -1334,6 +1345,7 @@ versions and architectures are an implementation/release decision backed by CI e
 not assumed in this discovery record. An unsupported environment reports that state and
 available upgrade/install/container alternatives under the standing capability rule.
 
+<a id="d10"></a>
 ## D10 decision — Claude starter kit compatibility
 
 **Status:** **Agreed (Chris, 2026-07-11)**
@@ -1395,26 +1407,27 @@ documents:
 - `docs/roadmap/IMPLEMENTATION_ROADMAP.md` — tracer-bullet milestones and prerequisite
   investigation issues.
 
-These are derived artifacts while this discovery record remains the decision history.
-If a derived document conflicts with an agreed D-item, the D-item governs until an
-explicit superseding decision is approved and recorded.
+These are derived artifacts while this discovery record remains the discussion and source
+history. Approved D1–D12 are promoted into `docs/decisions/INDEX.md` and its linked
+records, which are the normal authority surface. If a record and its source D-item
+conflict, stop and reconcile them through an explicit superseding decision.
 
 ## Decisions to work through
 
 | ID | Question | Starting recommendation | Status |
 |---|---|---|---|
-| D1 | Who and what must the first release serve? | All principal project areas; solo-first but team-scalable; GitHub initially; regulated projects fully supported | **Agreed (2026-07-11)** |
-| D2 | What is universal versus trigger-derived? | Agreed universal trust baseline, context-triggered policy families, and corrective/residual/prohibited exception model | **Agreed (2026-07-11)** |
-| D3 | Distribution shape? | Plugin adapter + standalone deterministic lifecycle engine + durable managed-repository contract, all from day one | **Agreed (2026-07-11)** |
-| D4 | Interview and project-state source of truth? | Structured authoritative state; generated Markdown views; separately governed human-owned records | **Agreed (2026-07-11)** |
-| D5 | Work tracking and roadmap contract? | GitHub Issues + one synchronized GitHub Project required; two-layer executable-memory issues; Horizon roadmap; readiness and reconciliation contracts | **Agreed (2026-07-11)** |
-| D6 | Security when tooling or evidence is absent? | No false pass; restore capability where possible; stage-specific blocking at the earliest risk boundary; D2 exceptions only | **Agreed (2026-07-11)** |
-| D7 | Where do standards live and how does structure grow? | Signed immutable policy packs, repository lockfile, verified offline cache/vendor option, logical directory roles, rule-driven expansion | **Agreed (2026-07-11)** |
-| D8 | How opinionated is Git/release workflow? | Universal protected, issue-linked PR contract; squash default; context-selected version/release/signing/deployment adapters | **Agreed (2026-07-11)** |
-| D9 | Supported platforms at v1? | Native Linux, macOS, and Windows; WSL optional; published/tested support matrix; no universal shell dependency | **Agreed (2026-07-11)** |
-| D10 | Compatibility with Claude kit? | Semantic import with preserved human/GitHub history and explicit mapping; no file-for-file runtime compatibility | **Agreed (2026-07-11)** |
-| D11 | Breadcrumb identity scope? | Stable IDs for governed policy, controls, decisions, and specifications; normal links elsewhere | **Agreed (2026-07-11)** |
-| D12 | What does “managed by the kit” guarantee? | Versioned, evidence-backed conformance with explicit coverage, applicability, and risk states; no false-green results | **Agreed (2026-07-11)** |
+| [D1](#d1) | Who and what must the first release serve? | All principal project areas; solo-first but team-scalable; GitHub initially; regulated projects fully supported | **Agreed (2026-07-11)** |
+| [D2](#d2) | What is universal versus trigger-derived? | Agreed universal trust baseline, context-triggered policy families, and corrective/residual/prohibited exception model | **Agreed (2026-07-11)** |
+| [D3](#d3) | Distribution shape? | Plugin adapter + standalone deterministic lifecycle engine + durable managed-repository contract, all from day one | **Agreed (2026-07-11)** |
+| [D4](#d4) | Interview and project-state source of truth? | Structured authoritative state; generated Markdown views; separately governed human-owned records | **Agreed (2026-07-11)** |
+| [D5](#d5) | Work tracking and roadmap contract? | GitHub Issues + one synchronized GitHub Project required; two-layer executable-memory issues; Horizon roadmap; readiness and reconciliation contracts | **Agreed (2026-07-11)** |
+| [D6](#d6) | Security when tooling or evidence is absent? | No false pass; restore capability where possible; stage-specific blocking at the earliest risk boundary; D2 exceptions only | **Agreed (2026-07-11)** |
+| [D7](#d7) | Where do standards live and how does structure grow? | Signed immutable policy packs, repository lockfile, verified offline cache/vendor option, logical directory roles, rule-driven expansion | **Agreed (2026-07-11)** |
+| [D8](#d8) | How opinionated is Git/release workflow? | Universal protected, issue-linked PR contract; squash default; context-selected version/release/signing/deployment adapters | **Agreed (2026-07-11)** |
+| [D9](#d9) | Supported platforms at v1? | Native Linux, macOS, and Windows; WSL optional; published/tested support matrix; no universal shell dependency | **Agreed (2026-07-11)** |
+| [D10](#d10) | Compatibility with Claude kit? | Semantic import with preserved human/GitHub history and explicit mapping; no file-for-file runtime compatibility | **Agreed (2026-07-11)** |
+| [D11](#d11) | Breadcrumb identity scope? | Stable IDs for governed policy, controls, decisions, and specifications; normal links elsewhere | **Agreed (2026-07-11)** |
+| [D12](#d12) | What does “managed by the kit” guarantee? | Versioned, evidence-backed conformance with explicit coverage, applicability, and risk states; no false-green results | **Agreed (2026-07-11)** |
 
 ## Suggested first discussion
 

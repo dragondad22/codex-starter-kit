@@ -6,8 +6,8 @@ and design; the approved product contract lives in `docs/`.
 ## Working rules
 
 - Read `docs/README.md` first, then only the breadcrumbed material relevant to the task.
-- `docs/discovery/CODEX_STARTER_KIT_REVIEW.md` is the decision history. Approved D-items
-  govern if a derived draft conflicts.
+- Read `docs/decisions/INDEX.md` for governing decisions. The discovery document preserves
+  source history; stop and reconcile any conflict instead of choosing silently.
 - Do not start implementation without a GitHub issue whose Readiness is `Ready`.
 - Do not invent unresolved product, architecture, policy, regulatory, or risk decisions
   while implementing. Return the issue to `Needs refinement`.
@@ -21,6 +21,9 @@ and design; the approved product contract lives in `docs/`.
 - Recommend useful installs or upgrades with trust, authority, data, cost, compatibility,
   and fallback implications. Do not silently install or broaden authority.
 - Normal Git flow: Ready issue → issue-named branch → PR → required gates → squash merge.
+- A draft PR means implementation, verification, or internal review is still in progress.
+  Once planned work and required checks/reviews are complete, mark it ready for review;
+  never leave a finished PR in draft and make reviewers guess.
 - Every material change updates affected documentation and its change/evidence record.
 
 ## Agent skills

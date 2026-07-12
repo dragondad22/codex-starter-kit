@@ -24,6 +24,8 @@ before implementation.
 - Update applicable product, architecture, persona, policy, and public documentation.
 - Include verification evidence and coverage limits.
 - Use a Conventional Commit-style PR title; squash merge is the default.
+- Use draft status only while more implementation, verification, or internal review is
+  expected. Mark a completed and internally reviewed PR ready for review.
 
 External pull requests enter the same triage workflow as issues. Maintainer or
 collaborator work already in progress is not treated as unsolicited intake.
