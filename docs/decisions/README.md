@@ -1,9 +1,22 @@
-# Decisions
+# Decision Records
 
-Approved architectural and product decisions live here with stable IDs and append-only
-history. The discovery record currently contains D1–D12; Milestone 0 will promote durable
-decisions into individual records without erasing their provenance.
+This directory is the normal reading surface for approved product and architecture
+decisions. Start with [INDEX.md](INDEX.md).
 
-A decision record states status, owner, date, context, decision, alternatives, consequences,
-supersession, and source evidence. Do not create a record for an easily reversible or
-unsurprising implementation detail.
+The discovery record preserves discussion and source history. A decision record distills
+one approved decision into durable context, consequences, and authority. If a record and
+its source D-item conflict, stop and reconcile them; do not silently choose one.
+
+## Required format
+
+Every record contains:
+
+- stable `DEC-NNNN` identity and title;
+- `Accepted`, `Superseded`, or `Retired` status;
+- owner and decision date;
+- exactly one source D-item for the initial D1–D12 promotion;
+- context, decision, consequences, and source sections;
+- replacement links when superseded.
+
+IDs are never reused. Amendments preserve history. Create a decision only for a choice
+that is costly to reverse, surprising without context, and the result of a real tradeoff.
