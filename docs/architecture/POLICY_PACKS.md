@@ -148,7 +148,7 @@ not a marketing checklist. Build regulatory packs through a controlled process:
 6. sign and publish immutably;
 7. monitor source changes and publish semantic updates.
 
-Initial regulatory coverage should be selected as a product milestone with named expert
+Initial regulatory coverage should be selected as a release target with named expert
 review; “supports regulation” cannot mean an unverified generic questionnaire.
 
 ## Control ID Convention

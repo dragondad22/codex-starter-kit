@@ -7,11 +7,11 @@ This document is sequencing/reference architecture, not a hand-maintained status
 
 ## Sequencing Principle
 
-Build tracer-bullet vertical slices through the lifecycle engine seam. Each milestone
+Build tracer-bullet vertical slices through the lifecycle engine seam. Each phase
 must be usable and testable end to end; avoid building all policy, all templates, or all
 adapters horizontally before proving the contract.
 
-## Milestone 0 — Repository and Governance Foundation
+## Phase 0 — Repository and Governance Foundation
 
 Outcome: this kit repository follows the rules it will ship.
 
@@ -24,7 +24,7 @@ Outcome: this kit repository follows the rules it will ship.
 - Establish native Windows/macOS/Linux CI and dependency/provenance controls.
 - Convert this roadmap into executable GitHub epics/features/tasks.
 
-## Milestone 1 — Walking Skeleton: Create and Verify
+## Phase 1 — Walking Skeleton: Create and Verify
 
 Outcome: one engine command creates a minimal managed repository and verifies it on all
 three operating systems.
@@ -41,7 +41,7 @@ three operating systems.
 - Prove idempotence, plan preconditions, conflict safety, rollback, malicious paths, and
   cross-platform semantic equivalence.
 
-## Milestone 2 — Codex Plugin Vertical Slice
+## Phase 2 — Codex Plugin Vertical Slice
 
 Outcome: a user installs the plugin and completes guided create using the same engine.
 
@@ -53,7 +53,7 @@ Outcome: a user installs the plugin and completes guided create using the same e
 - Publish install/update documentation without coupling repository migration to plugin
   update.
 
-## Milestone 3 — GitHub Executable Work System
+## Phase 3 — GitHub Executable Work System
 
 Outcome: managed repositories have synchronized Issues/Project and one Ready issue can be
 executed end to end.
@@ -69,7 +69,7 @@ executed end to end.
 - Implement Horizon roadmap intake/promotion and Project drift reconciliation.
 - Test partial failure, rate limits, field-option migration snapshots, and offline queues.
 
-## Milestone 4 — Retrofit and Claude Migration
+## Phase 4 — Retrofit and Claude Migration
 
 Outcome: existing repositories receive a read-only assessment and safe semantic migration.
 
@@ -81,7 +81,7 @@ Outcome: existing repositories receive a read-only assessment and safe semantic 
 - Test messy, partial, symlinked, monorepo, documentation, infrastructure, and data
   fixtures.
 
-## Milestone 5 — Signed Policy Distribution and Upgrade
+## Phase 5 — Signed Policy Distribution and Upgrade
 
 Outcome: team members and CI resolve identical policy online/offline and safely upgrade.
 
@@ -93,11 +93,13 @@ Outcome: team members and CI resolve identical policy online/offline and safely 
 - Add organization and repository policy layering with D2 enforcement.
 - Exercise revoked, incompatible, tampered, missing, offline, and historical-pack cases.
 
-## Milestone 6 — Release and Communication
+## Phase 6 — Release and Communication
 
 Outcome: at least three different project outputs release through one contract.
 
 - Implement change records and audience-specific generated communication.
+- Implement finite release Milestones, aggregate release issues, S.M.A.R.T. scope and
+  trigger validation, scope-change memory, and release-readiness views.
 - Implement application/service, library/package, and documentation/infrastructure
   release adapters as representative variants.
 - Produce GitHub Release/tag, version transaction, provenance, evidence, and Project/
@@ -105,7 +107,7 @@ Outcome: at least three different project outputs release through one contract.
 - Add signing/SBOM/attestation adapter triggers.
 - Test partial publication, rollback, rerun, and emergency release paths.
 
-## Milestone 7 — Regulatory Launch Coverage
+## Phase 7 — Regulatory Launch Coverage
 
 Outcome: named regulatory packs meet the launch definition with qualified review and
 representative evidence fixtures.
@@ -119,7 +121,7 @@ representative evidence fixtures.
 - Run pilot retrofits and releases with real representative repositories before claiming
   support.
 
-## Milestone 8 — Scale and Fleet Operations
+## Phase 8 — Scale and Fleet Operations
 
 Outcome: teams can govern many repositories without losing local reproducibility.
 
@@ -132,7 +134,7 @@ Outcome: teams can govern many repositories without losing local reproducibility
 
 ## Cross-Cutting Definition of Done
 
-Every milestone requires:
+Every phase requires:
 
 - executable GitHub issues with readiness validated;
 - tests at the lifecycle engine seam and adapter contracts;
@@ -146,7 +148,7 @@ Every milestone requires:
 
 ## Immediate Investigation Issues
 
-These must be resolved before Milestone 1 implementation choices:
+These must be resolved before Phase 1 implementation choices:
 
 1. Engine implementation/package/signing evaluation across native target platforms.
 2. Schema and content-addressed state format evaluation.

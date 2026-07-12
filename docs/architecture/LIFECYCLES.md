@@ -129,6 +129,26 @@ Later gates cannot weaken earlier enforcement.
 
 ## Release Lifecycle
 
+Release planning keeps three dimensions separate: Horizon is rolling feature direction,
+the GitHub Milestone is finite release membership, and the aggregate release issue owns
+readiness and execution.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Proposed
+    Proposed --> Committed: outcome + membership approved
+    Committed --> Proposed: material scope reconsidered
+    Committed --> ReleaseCandidate: included work dispositioned
+    ReleaseCandidate --> Committed: blocker or required correction
+    ReleaseCandidate --> Released: aggregate gates + approval + publication
+```
+
+Each named release has exactly one Milestone and one aggregate release issue. Scope
+additions, removals, and deferrals record rationale and effect on the release claim.
+Release-candidate additions normally resolve blockers or required corrections. A release
+trigger may be outcome-, time-, event-, or hybrid-bound, but it starts final evaluation;
+it never bypasses a gate. Milestone progress is planning information, not release evidence.
+
 1. Select merged scope and release adapter.
 2. Resolve change records and proposed identifier.
 3. Freeze candidate source, engine, policy, dependencies, and environment facts.

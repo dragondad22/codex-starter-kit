@@ -58,7 +58,9 @@ All work is tracked in [GitHub Issues](https://github.com/dragondad22/codex-star
 and the repository's single [Codex Starter Kit Project](https://github.com/users/dragondad22/projects/8).
 
 - Feature ideas enter as `type:feature` issues in `Status: Backlog`.
-- `Horizon: Now / Next / Later` expresses roadmap intent.
+- `Horizon: Now / Next / Later` expresses rolling roadmap intent, not release membership.
+- A named release uses one finite GitHub Milestone plus an aggregate release issue for
+  scope, gates, evidence, approval, and publication.
 - An implementation issue becomes `Ready` only when an AI or developer can execute it
   without inventing missing decisions.
 - Normal delivery is Ready issue → issue-named branch → pull request → required gates →
