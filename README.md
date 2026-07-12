@@ -46,6 +46,7 @@ preferred Codex experience; it is not the sole conformance authority.
 - [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Lifecycle state machines](docs/architecture/LIFECYCLES.md)
 - [Policy-pack map](docs/architecture/POLICY_PACKS.md)
+- [Current support matrix](docs/architecture/SUPPORT_MATRIX.md)
 - [Implementation roadmap](docs/roadmap/IMPLEMENTATION_ROADMAP.md)
 - [Discovery and approved decisions](docs/discovery/CODEX_STARTER_KIT_REVIEW.md)
 - [Durable decision index](docs/decisions/INDEX.md)

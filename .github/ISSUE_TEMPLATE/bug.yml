@@ -1,47 +1,64 @@
-name: Bug or quality finding
-description: Report reproducible incorrect, unsafe, inaccessible, or misleading behavior.
-title: ""
-labels: ["type:bug", "needs-triage"]
-body:
-  - type: textarea
-    id: summary
-    attributes:
-      label: Summary
-      description: What happened and who is affected?
-    validations:
-      required: true
-  - type: textarea
-    id: reproduce
-    attributes:
-      label: Reproduction
-      description: Exact conditions and steps, with sensitive data removed.
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: Version or commit
-  - type: textarea
-    id: evidence
-    attributes:
-      label: Evidence
-      description: Logs, screenshots, or artifacts with credentials and private data removed.
-  - type: checkboxes
-    id: security
-    attributes:
-      label: Security check
-      options:
-        - label: This report does not disclose a vulnerability or live credential.
-          required: true
+{
+  "name": "Bug or quality finding",
+  "description": "Report reproducible incorrect, unsafe, inaccessible, or misleading behavior.",
+  "title": "",
+  "labels": ["type:bug", "needs-triage"],
+  "body": [
+    {
+      "type": "textarea",
+      "id": "summary",
+      "attributes": {
+        "label": "Summary",
+        "description": "What happened and who is affected?"
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "reproduce",
+      "attributes": {
+        "label": "Reproduction",
+        "description": "Exact conditions and steps, with sensitive data removed."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "expected",
+      "attributes": {"label": "Expected behavior"},
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "actual",
+      "attributes": {"label": "Actual behavior"},
+      "validations": {"required": true}
+    },
+    {
+      "type": "input",
+      "id": "version",
+      "attributes": {"label": "Version or commit"}
+    },
+    {
+      "type": "textarea",
+      "id": "evidence",
+      "attributes": {
+        "label": "Evidence",
+        "description": "Logs, screenshots, or artifacts with credentials and private data removed."
+      }
+    },
+    {
+      "type": "checkboxes",
+      "id": "security",
+      "attributes": {
+        "label": "Security check",
+        "options": [
+          {
+            "label": "This report does not disclose a vulnerability or live credential.",
+            "required": true
+          }
+        ]
+      }
+    }
+  ]
+}

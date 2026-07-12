@@ -9,10 +9,36 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
+  foundation:
+    name: foundation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Validate documentation
-        run: python3 scripts/validate_docs.py
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: ""
+      - name: Run foundation validator tests
+        run: python -m unittest discover -s tests -p "test_*.py"
+      - name: Validate repository foundation
+        run: python scripts/validate_docs.py
+
+  validate:
+    name: validate
+    if: always()
+    needs: foundation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every native runner to pass
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            if ("${{ needs.foundation.result }}" !== "success") {
+              core.setFailed("One or more native foundation jobs failed.");
+            }

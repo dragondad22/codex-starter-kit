@@ -12,7 +12,9 @@
 6. `architecture/LIFECYCLES.md` — repository, issue, control, release, upgrade, and risk
    transitions.
 7. `architecture/POLICY_PACKS.md` — initial policy ownership and regulatory-pack method.
-8. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the
+8. `architecture/SUPPORT_MATRIX.md` — current native foundation validation and explicit
+   product-runtime limitations.
+9. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the
    live roadmap authority.
 
 ## Document lifecycle
