@@ -1,9 +1,9 @@
 # Codex Starter Kit — Implementation Roadmap
 
 **Status:** Draft sequencing proposal  
-**Roadmap authority:** Once GitHub is configured, live features and ordering move to the
-required GitHub Project Horizon view. This document then becomes generated/reference
-architecture, not a hand-maintained status tracker.
+**Roadmap authority:** Live features and ordering are maintained in the
+[Codex Starter Kit GitHub Project](https://github.com/users/dragondad22/projects/8).
+This document is sequencing/reference architecture, not a hand-maintained status tracker.
 
 ## Sequencing Principle
 
