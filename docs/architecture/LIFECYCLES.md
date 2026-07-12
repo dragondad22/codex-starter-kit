@@ -68,6 +68,19 @@ The `Yes`/`Unsure` notice must say, in concise project-appropriate language:
 | Read, transform, transmit, or expose specially handled content through the unverified route | `unsupported`; provide safe next actions |
 | Activate a new tool, integration, or authority as a workaround | Require separate informed approval and capability verification |
 
+Safe next actions are progressive and do not require the user to disclose the content:
+
+1. identify the project or organization policy owner and the person authorized to decide
+   how the content may be handled;
+2. record the proposed data scope, purpose, actor, tool/service/environment route,
+   recipients, retention, and authorization expiry;
+3. have the applicable security, privacy, contractual, regulatory, or other qualified
+   reviewer confirm the required guarantees and acceptable evidence;
+4. verify the complete route against those requirements and retain the evidence; or
+5. use redacted, minimized, synthetic, or otherwise approved non-sensitive material for
+   the current work. If no suitable route or substitute exists, do not perform the
+   content-handling operation and link the deferred capability to issue #21.
+
 ## Retrofit Lifecycle
 
 ```mermaid

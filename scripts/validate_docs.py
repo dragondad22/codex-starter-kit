@@ -68,6 +68,13 @@ SENSITIVE_BOUNDARY_MARKERS = {
         "comprehensive highly sensitive or regulated-content",
     ),
 }
+PROHIBITED_ACTIVE_ASSURANCE_CLAIMS = (
+    "genuinely supports regulated projects",
+    "regulated projects must be genuinely supported in the first release",
+    "regulated projects fully supported",
+    "launch must support regulated projects",
+    "regulatory policy and evidence supported at launch",
+)
 
 
 def _load_json_document(path: Path, root: Path) -> tuple[Any | None, list[str]]:
@@ -219,6 +226,22 @@ def validate_sensitive_data_boundary(root: Path) -> list[str]:
                 failures.append(
                     f"{relative}: missing sensitive-data boundary marker: {marker}"
                 )
+
+    for path in root.rglob("*.md"):
+        if ".git" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for claim in PROHIBITED_ACTIVE_ASSURANCE_CLAIMS:
+            start = lowered.find(claim)
+            while start >= 0:
+                historical_context = lowered[start : start + 1_000]
+                if "superseded" not in historical_context:
+                    failures.append(
+                        f"{path.relative_to(root)}: unqualified first-release assurance "
+                        f"claim: {claim}"
+                    )
+                start = lowered.find(claim, start + len(claim))
     return failures
 
 

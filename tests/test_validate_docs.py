@@ -329,6 +329,29 @@ class SensitiveDataBoundaryValidationTests(unittest.TestCase):
             )
         )
 
+    def test_rejects_unqualified_first_release_assurance_claim_anywhere(self) -> None:
+        readme = self.root / "README.md"
+        readme.write_text(
+            "The launch must support regulated projects.", encoding="utf-8"
+        )
+
+        failures = validate_sensitive_data_boundary(self.root)
+
+        self.assertTrue(
+            any("unqualified first-release assurance claim" in failure for failure in failures)
+        )
+
+    def test_allows_a_superseded_historical_assurance_claim(self) -> None:
+        history = self.root / "docs/discovery/HISTORY.md"
+        history.parent.mkdir(parents=True, exist_ok=True)
+        history.write_text(
+            "Regulated projects fully supported. This statement is superseded by the "
+            "amended v1 assurance boundary.",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(validate_sensitive_data_boundary(self.root), [])
+
 
 if __name__ == "__main__":
     unittest.main()

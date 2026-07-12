@@ -17,6 +17,8 @@
    product-runtime limitations.
 9. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the
    live roadmap authority.
+10. `evidence/ISSUE-20-32.md` — change and verification record for the amended v1
+    sensitive-data boundary and native issue hierarchy rule.
 
 ## Document lifecycle
 
