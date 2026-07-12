@@ -1,7 +1,7 @@
 # Issues #20 and #32 — Change and verification record
 
-**Date:** 2026-07-12  
-**Change owner:** dragondad22  
+**Date:** 2026-07-12
+**Change owner:** dragondad22
 **Issues:** [#20](https://github.com/dragondad22/codex-starter-kit/issues/20),
 [#32](https://github.com/dragondad22/codex-starter-kit/issues/32)
 
