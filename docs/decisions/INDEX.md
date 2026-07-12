@@ -17,3 +17,4 @@
 | D10 | [DEC-0010](DEC-0010-claude-kit-semantic-migration.md) | Semantic Claude-kit migration without runtime compatibility debt |
 | D11 | [DEC-0011](DEC-0011-governed-breadcrumbs.md) | Stable governed references and layered context loading |
 | D12 | [DEC-0012](DEC-0012-managed-repository-conformance.md) | Evidence-backed managed-repository conformance contract |
+| D13 | [DEC-0013](DEC-0013-question-and-research-work.md) | Governed question and research work with durable promotion |

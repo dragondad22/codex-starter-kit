@@ -20,7 +20,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
         (self.root / "docs/decisions").mkdir(parents=True)
         (self.root / "docs/discovery").mkdir(parents=True)
         (self.root / "docs/discovery/CODEX_STARTER_KIT_REVIEW.md").write_text(
-            "\n".join(f'<a id="d{number}"></a>' for number in range(1, 13)),
+            "\n".join(f'<a id="d{number}"></a>' for number in range(1, 14)),
             encoding="utf-8",
         )
 
@@ -76,21 +76,21 @@ class DecisionRouteValidationTests(unittest.TestCase):
         )
 
     def test_accepts_exactly_one_route_for_each_approved_decision(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         self.write_index(rows)
 
         self.assertEqual(validate_decision_routes(self.root), [])
 
     def test_rejects_a_missing_route(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 12)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
         self.write_index(rows)
 
         failures = validate_decision_routes(self.root)
 
-        self.assertTrue(any("missing route: D12" in failure for failure in failures))
+        self.assertTrue(any("missing route: D13" in failure for failure in failures))
 
     def test_rejects_a_duplicate_route(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         rows.append(("D1", rows[0][1]))
         self.write_index(rows)
 
@@ -100,7 +100,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
 
     def test_rejects_a_record_whose_source_does_not_match_its_route(self) -> None:
         rows = []
-        for number in range(1, 13):
+        for number in range(1, 14):
             source = "D2" if number == 1 else None
             rows.append((f"D{number}", self.write_record(number, source)))
         self.write_index(rows)
@@ -110,7 +110,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
         self.assertTrue(any("D1 record does not declare Source decision: D1" in failure for failure in failures))
 
     def test_rejects_a_record_missing_required_sections(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         broken = self.root / "docs/decisions" / rows[0][1]
         broken.write_text("# DEC-0001\n\n**Source decision:** D1\n", encoding="utf-8")
         self.write_index(rows)
@@ -121,7 +121,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
 
     def test_rejects_a_mismatched_stable_decision_identity(self) -> None:
         rows = []
-        for number in range(1, 13):
+        for number in range(1, 14):
             record_id = "DEC-9999" if number == 1 else None
             rows.append((f"D{number}", self.write_record(number, record_id=record_id)))
         self.write_index(rows)
@@ -131,7 +131,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
         self.assertTrue(any("D1 record heading does not start with DEC-0001" in failure for failure in failures))
 
     def test_rejects_one_record_target_reused_by_multiple_decisions(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         rows[1] = ("D2", rows[0][1])
         self.write_index(rows)
 
@@ -140,7 +140,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
         self.assertTrue(any("record target reused" in failure for failure in failures))
 
     def test_rejects_a_source_link_without_the_exact_d_item_anchor(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         record = self.root / "docs/decisions" / rows[0][1]
         record.write_text(
             record.read_text(encoding="utf-8").replace(
@@ -155,7 +155,7 @@ class DecisionRouteValidationTests(unittest.TestCase):
         self.assertTrue(any("D1 record missing exact source breadcrumb" in failure for failure in failures))
 
     def test_rejects_a_missing_source_anchor(self) -> None:
-        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 13)]
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 14)]
         discovery = self.root / "docs/discovery/CODEX_STARTER_KIT_REVIEW.md"
         discovery.write_text(
             discovery.read_text(encoding="utf-8").replace('<a id="d1"></a>', ""),

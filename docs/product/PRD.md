@@ -89,6 +89,9 @@ The product ships as three layers from its first usable release:
 38. As a macOS or Linux user, I want the same policy and evidence semantics so that OS differences do not alter conformance.
 39. As an incident responder, I want a governed emergency path so that urgent work remains traceable and creates follow-up obligations.
 40. As a future maintainer, I want historical packs, decisions, issues, and evidence linked so that I can reconstruct why the project changed.
+41. As a project owner, I want consequential unresolved questions tracked without routine clarification flooding the board so that dependencies and answer authority stay visible.
+42. As a decision maker, I want bounded research authorized by objective, depth, cost, and stopping conditions so that expensive evidence gathering is deliberate and reusable.
+43. As a future maintainer, I want resolved questions and authoritative records to reference each other so that I can trace a conclusion without treating issue discussion as authority.
 
 ## Implementation Decisions
 
@@ -107,6 +110,10 @@ The product ships as three layers from its first usable release:
 - Logical directory roles map policy concepts to concrete paths.
 - GitHub Issues and exactly one linked GitHub Project are mandatory.
 - Ready issues use a human summary and a complete AI execution brief.
+- Consequential questions and bounded research use subtype-specific Ready and completion
+  contracts; ordinary clarification remains outside the Project.
+- Material question answers are promoted with reciprocal issue/authority references, and
+  research produces durable human-owned records without silently establishing decisions.
 - The default delivery flow is Ready issue, issue branch, PR, gates, squash merge.
 - Version and release adapters are selected from project outputs and policy.
 - Linux, macOS, and Windows are native first-release targets.

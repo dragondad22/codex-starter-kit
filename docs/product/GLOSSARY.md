@@ -8,6 +8,12 @@ Do not introduce a synonym for a governed term without updating this reference.
 
 ## Terms
 
+### Actionable work item
+
+A work item whose objective, scope, authority, dependencies, evidence, and subtype-specific
+completion contract are sufficient for an assigned human or AI to proceed without
+inventing a new decision. It may be implementation, question, or research work.
+
 ### Accepted exception
 
 A separately approved disposition allowing work to cross a specific gate despite an
@@ -57,6 +63,18 @@ claims are not automatically sufficient evidence.
 A Ready GitHub issue containing a human summary and complete implementation brief that an
 authorized AI or developer can execute without new product or policy decisions.
 
+### Promotion
+
+The explicit transfer of a material issue result into the authoritative decision,
+specification, policy, human-owned record, or structured state that governs its meaning.
+The destination and issue retain reciprocal references.
+
+### Question work item
+
+A `type:question` issue for a consequential unresolved question whose answer must outlive
+the current conversation, materially affects work, requires named authority or evidence,
+or is likely to be referenced again. Its issue discussion is not authoritative.
+
 ### Horizon
 
 Feature roadmap intent in the GitHub Project: `Now`, `Next`, `Later`, or blank. It is not
@@ -90,8 +108,19 @@ routing metadata, and migrations.
 
 ### Ready
 
-The issue readiness state indicating that scope, decisions, references, acceptance,
-tests, evidence, dependencies, and authority are sufficient for implementation.
+The work-item readiness state indicating that objective, scope, decisions, references,
+acceptance, evidence, dependencies, and authority satisfy the applicable subtype contract.
+
+### Research record
+
+A durable human-owned account of bounded research, including its questions or mapping
+objective, intended use, method, sources, findings, conflicting evidence, uncertainty,
+limitations, and freshness. It informs but does not silently establish a decision.
+
+### Research work item
+
+A `type:research` issue authorizing bounded evidence-producing work by a human or AI at a
+declared depth or effort, with explicit stopping conditions, output, and review needs.
 
 ### Status
 

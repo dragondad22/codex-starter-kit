@@ -18,7 +18,7 @@ Every record contains:
 - stable `DEC-NNNN` identity and title;
 - `Accepted`, `Superseded`, or `Retired` status;
 - owner and decision date;
-- exactly one source D-item for the initial D1–D12 promotion;
+- exactly one source D-item;
 - context, decision, consequences, and source sections;
 - replacement links when superseded.
 

@@ -1408,9 +1408,29 @@ documents:
   investigation issues.
 
 These are derived artifacts while this discovery record remains the discussion and source
-history. Approved D1–D12 are promoted into `docs/decisions/INDEX.md` and its linked
+history. Approved D1–D13 are promoted into `docs/decisions/INDEX.md` and its linked
 records, which are the normal authority surface. If a record and its source D-item
 conflict, stop and reconcile them through an explicit superseding decision.
+
+<a id="d13"></a>
+## D13 decision — question and research work
+
+**Status:** **Agreed (Chris, 2026-07-12)**
+
+Consequential unresolved questions and bounded research are first-class GitHub work
+items. `type:question` is reserved for answers that must survive the current conversation,
+block or materially alter work, require named authority or evidence, or will likely be
+referenced again; ordinary clarification must not flood the Project. `type:research`
+requires an objective or bounded exploratory mapping goal, intended use, scope, source
+expectations, authorized depth or effort, stopping conditions, review needs, and a durable
+human-owned research record.
+
+Issues coordinate this work but are not authoritative sources. A material question answer
+is promoted into the applicable decision, specification, policy, human-owned record, or
+structured state. The promoted record references the issue, and the issue's closing
+comment references that record. Research preserves provenance, uncertainty, limitations,
+and freshness and informs decisions without silently becoming one. The discovery document
+remains coherent source history rather than being replaced by fragmented issue threads.
 
 ## Decisions to work through
 
@@ -1428,6 +1448,7 @@ conflict, stop and reconcile them through an explicit superseding decision.
 | [D10](#d10) | Compatibility with Claude kit? | Semantic import with preserved human/GitHub history and explicit mapping; no file-for-file runtime compatibility | **Agreed (2026-07-11)** |
 | [D11](#d11) | Breadcrumb identity scope? | Stable IDs for governed policy, controls, decisions, and specifications; normal links elsewhere | **Agreed (2026-07-11)** |
 | [D12](#d12) | What does “managed by the kit” guarantee? | Versioned, evidence-backed conformance with explicit coverage, applicability, and risk states; no false-green results | **Agreed (2026-07-11)** |
+| [D13](#d13) | How are consequential questions and research governed? | Sparse question work; bounded executable research; reciprocal promotion links; issues coordinate but do not become authority | **Agreed (2026-07-12)** |
 
 ## Suggested first discussion
 
