@@ -33,12 +33,40 @@ specific scope and lifecycle gate.
 2. Draft or ingest a human project brief.
 3. Obtain brief approval before targeted questions.
 4. Collect/detect structured facts with provenance and confidence.
-5. Classify project outputs, users, data, deployment, collaboration, and regulation.
-6. Compile policy and layout roles.
-7. Generate a plan: files, GitHub setup, tools, human actions, risks, and evidence.
-8. Obtain approvals/install authority.
-9. Apply locally, then reconcile GitHub/external desired state.
-10. Verify repository contract and emit initial conformance/coverage summary.
+5. Record whether special data handling is intentional: `No`, `Yes`, or `Unsure`.
+6. For `Yes` or `Unsure`, present the concise data-handling notice and record explicit
+   acknowledgment without treating it as authorization or assurance.
+7. Classify project outputs, users, data, deployment, collaboration, and regulation.
+8. Compile policy, layout roles, coverage limits, and required capability states.
+9. Generate a plan: files, GitHub setup, tools, human actions, risks, and evidence.
+10. Obtain approvals/install authority; never infer content-handling authority from the
+    notice acknowledgment.
+11. Apply locally, then reconcile GitHub/external desired state. If an operation needs an
+    unavailable verified sensitive-data route, report `unsupported` before transmission.
+12. Verify repository contract and emit initial conformance/coverage summary, retaining
+    `needs-review` for unresolved sensitive or regulatory determinations.
+
+The `No` path does not trigger a detailed privacy interview. Any later fact that
+contradicts the declaration invalidates affected applicability and evidence. `Yes` and
+`Unsure` do not block safe metadata-only planning or remediation, but they cannot yield a
+pass for sensitive-data handling or regulatory conformance without current evidence.
+
+The `Yes`/`Unsure` notice must say, in concise project-appropriate language:
+
+- the declaration triggered the notice;
+- the current Codex, tool, service, and environment route is not assumed verified for the
+  content;
+- the user should not supply or transmit that content until handling authorization and
+  route assurance are established;
+- safe metadata-only planning and remediation can continue; and
+- acknowledgment only records receipt of the notice.
+
+| Requested work | Missing verified route outcome |
+|---|---|
+| Read metadata, record the declaration, plan, or document limitations without exposing content | Continue with explicit coverage limits |
+| Determine legal, contractual, privacy, or regulatory applicability | `needs-review` unless qualified current evidence resolves it |
+| Read, transform, transmit, or expose specially handled content through the unverified route | `unsupported`; provide safe next actions |
+| Activate a new tool, integration, or authority as a workaround | Require separate informed approval and capability verification |
 
 ## Retrofit Lifecycle
 

@@ -9,6 +9,7 @@ from scripts.validate_docs import (
     validate_decision_routes,
     validate_issue_templates,
     validate_label_manifest,
+    validate_sensitive_data_boundary,
     validate_workflow,
 )
 
@@ -283,6 +284,50 @@ class FoundationManifestValidationTests(unittest.TestCase):
         self.assertTrue(any("missing native runner: windows-latest" in failure for failure in failures))
         self.assertTrue(any("action is not pinned" in failure for failure in failures))
         self.assertTrue(any("explicit shell dependency" in failure for failure in failures))
+
+
+class SensitiveDataBoundaryValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        for relative, content in {
+            "docs/decisions/DEC-0001-first-release-scope.md": (
+                "content classification; handling authorization; product assurance; "
+                "`No`, `Yes`, or `Unsure`; issue #21"
+            ),
+            "docs/architecture/LIFECYCLES.md": (
+                "Missing verified route outcome; `needs-review`; `unsupported`"
+            ),
+            "docs/product/PRD.md": (
+                "Acknowledgment never authorizes tool access or transmission; "
+                "comprehensive highly sensitive or regulated-content"
+            ),
+        }.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_accepts_complete_sensitive_data_boundary_routes(self) -> None:
+        self.assertEqual(validate_sensitive_data_boundary(self.root), [])
+
+    def test_rejects_missing_sensitive_data_boundary_marker(self) -> None:
+        path = self.root / "docs/product/PRD.md"
+        path.write_text(
+            "comprehensive highly sensitive or regulated-content",
+            encoding="utf-8",
+        )
+
+        failures = validate_sensitive_data_boundary(self.root)
+
+        self.assertTrue(
+            any(
+                "missing sensitive-data boundary marker" in failure
+                for failure in failures
+            )
+        )
 
 
 if __name__ == "__main__":

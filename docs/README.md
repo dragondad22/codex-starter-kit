@@ -11,7 +11,8 @@
    security, transactions, and versioning.
 6. `architecture/LIFECYCLES.md` — repository, issue, control, release, upgrade, and risk
    transitions.
-7. `architecture/POLICY_PACKS.md` — initial policy ownership and regulatory-pack method.
+7. `architecture/POLICY_PACKS.md` — initial policy ownership, sensitive-data boundary,
+   and Later regulatory-pack method.
 8. `architecture/SUPPORT_MATRIX.md` — current native foundation validation and explicit
    product-runtime limitations.
 9. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the

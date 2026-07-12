@@ -91,7 +91,8 @@ coverage, and required action. Keep implementation machinery behind progressive 
 
 **Permissions mapping:** Repository owner/maintainer; may hold multiple operational roles.
 
-**Evidence and owner:** Discovery decisions D1–D14; maintained by the project owner.
+**Evidence and owner:** Discovery decisions D1–D14, including the D1 sensitive-data
+assurance amendment; maintained by the project owner.
 
 **Anti-assumptions:** Solo does not mean hobby, low risk, unregulated, technically novice,
 or authorized to self-approve every control.
@@ -193,8 +194,9 @@ professional/legal duties, reviewing many repositories, and prohibited from acce
 developer self-attestation.
 
 **Risks and concerns:** False-green results, missing provenance, stale evidence,
-unqualified legal claims, concealed exceptions, inadequate separation, and unreviewable
-AI reasoning.
+unqualified legal claims, content exposed through an unverified route, user acknowledgment
+misrepresented as authorization or assurance, concealed exceptions, inadequate
+separation, and unreviewable AI reasoning.
 
 **Authority:** Approves or rejects evidence and risks within assigned qualifications;
 cannot waive prohibited controls, law, binding contracts, or duties outside their remit.

@@ -5,7 +5,7 @@
 
 | Source | Record | Summary |
 |---|---|---|
-| D1 | [DEC-0001](DEC-0001-first-release-scope.md) | First-release audiences, project types, GitHub, and regulatory scope |
+| D1 | [DEC-0001](DEC-0001-first-release-scope.md) | First-release audiences, project types, GitHub, and amended sensitive/regulated scope |
 | D2 | [DEC-0002](DEC-0002-policy-applicability-and-risk.md) | Universal/triggered policy and governed risk exceptions |
 | D3 | [DEC-0003](DEC-0003-three-layer-distribution.md) | Plugin adapter, standalone engine, and managed repository |
 | D4 | [DEC-0004](DEC-0004-state-and-document-authority.md) | Structured state, generated views, and human-owned records |

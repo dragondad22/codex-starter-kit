@@ -488,6 +488,18 @@ why. Project-specific deviations and accepted risks must be recorded locally.
   policy, applicability decisions, required evidence, exceptions, and verification are
   part of the launch contract—not merely future extension points.
 
+**Amendment approved through issue #20 (Chris, 2026-07-12):** The preceding regulated-
+project statement is retained as source history but superseded in scope. V1 detects a
+project-level need for special confidentiality, privacy, contractual, or regulatory
+handling using `No`, `Yes`, or `Unsure`; `Yes` and `Unsure` trigger a concise notice,
+acknowledgment, coverage limitations, and applicable `needs-review` or `unsupported`
+states. Classification, authorization to handle content, and assurance that the selected
+Codex/tool/environment route is suitable are separate facts. Acknowledgment supplies none
+of the latter two, and the kit does not claim comprehensive or verified highly sensitive
+or regulated-content handling. Universal secrets, least-authority, no-silent-transmission,
+and truthful-status rules still apply. Detailed sensitive-data execution assurance and
+qualified regulatory coverage remain Later work in issue #21.
+
 This breadth makes project classification and policy compilation core functionality.
 The system must distinguish “not applicable” from “not checked” and retain the evidence
 behind either result.
@@ -1456,7 +1468,7 @@ Milestone.
 
 | ID | Question | Starting recommendation | Status |
 |---|---|---|---|
-| [D1](#d1) | Who and what must the first release serve? | All principal project areas; solo-first but team-scalable; GitHub initially; regulated projects fully supported | **Agreed (2026-07-11)** |
+| [D1](#d1) | Who and what must the first release serve? | All principal project areas; solo-first but team-scalable; GitHub initially; sensitive/regulated context detected with truthful v1 limits | **Agreed (2026-07-11); amended (2026-07-12)** |
 | [D2](#d2) | What is universal versus trigger-derived? | Agreed universal trust baseline, context-triggered policy families, and corrective/residual/prohibited exception model | **Agreed (2026-07-11)** |
 | [D3](#d3) | Distribution shape? | Plugin adapter + standalone deterministic lifecycle engine + durable managed-repository contract, all from day one | **Agreed (2026-07-11)** |
 | [D4](#d4) | Interview and project-state source of truth? | Structured authoritative state; generated Markdown views; separately governed human-owned records | **Agreed (2026-07-11)** |

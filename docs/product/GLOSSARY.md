@@ -51,6 +51,12 @@ expectation.
 An evidence-backed result for an explicit scope, policy version, source revision, and
 lifecycle gate. Avoid the unqualified term “compliant.”
 
+### Content classification
+
+A recorded statement about the confidentiality, privacy, contractual, regulatory, or
+other handling needs of information. It does not by itself authorize an actor or tool to
+handle the content and does not prove that a product route satisfies those needs.
+
 ### Control
 
 A versioned requirement with applicability, evaluation, enforcement, exception, evidence,
@@ -103,6 +109,12 @@ The destination and issue retain reciprocal references.
 A `type:question` issue for a consequential unresolved question whose answer must outlive
 the current conversation, materially affects work, requires named authority or evidence,
 or is likely to be referenced again. Its issue discussion is not authoritative.
+
+### Handling authorization
+
+Permission for a named actor to expose specified content to a named tool, service, or
+environment for a bounded purpose. It is separate from content classification and from
+evidence that the route provides suitable handling guarantees.
 
 ### Horizon
 
@@ -162,6 +174,12 @@ authority, risks, and communication needs. An AI actor is not a persona.
 
 An immutable signed/versioned bundle of focused standards, controls, templates, schemas,
 routing metadata, and migrations.
+
+### Product assurance
+
+Evidence that an end-to-end product route—including the AI client, connected tools,
+services, environment, authority, and data flow—provides required handling guarantees for
+an explicit scope. User acknowledgment or tool availability is not product assurance.
 
 ### PRD (Product Requirements Document)
 
@@ -245,6 +263,13 @@ be outcome-, time-, event-, or hybrid-bound.
 A human-owned description of behavior or qualities to build and verify, tied to personas,
 scenarios, requirements, constraints, acceptance criteria, and governing decisions. A PRD
 describes product outcomes; specifications provide the more focused contract for delivery.
+
+### Special-data-handling declaration
+
+The v1 project-level answer to whether the project intentionally contains or processes
+information requiring special confidentiality, privacy, contractual, or regulatory
+handling: `No`, `Yes`, or `Unsure`. `Yes` and `Unsure` trigger a notice and truthful
+coverage limits; no answer grants handling authority or establishes conformance.
 
 ### Status
 

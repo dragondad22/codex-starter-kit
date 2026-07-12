@@ -191,6 +191,30 @@ it cannot provide.
 - AI actors must identify the applicable human persona(s); agent convenience cannot
   override audience outcomes, authority, accessibility, or communication needs.
 
+### Sensitive-data assurance boundary
+
+V1 records one project declaration: whether the project intentionally contains or
+processes information requiring special confidentiality, privacy, contractual, or
+regulatory handling. Allowed values are `No`, `Yes`, and `Unsure`; the value is a
+human-owned declaration with provenance, not a tool-derived legal conclusion.
+
+`Yes` and `Unsure` trigger a concise notice and explicit acknowledgment. The state model
+keeps three facts separate:
+
+- **content classification:** what handling the project says its information requires;
+- **handling authorization:** whether a named actor may expose that information to a
+  named tool, service, or environment for a bounded purpose; and
+- **product assurance:** evidence that the complete route can provide the required
+  handling guarantees.
+
+Acknowledgment proves only that the notice was presented and accepted for workflow
+continuation. It grants no handling authority and supplies no assurance evidence. Without
+a verified sensitive-data route, the engine may inspect metadata, plan, document, and
+guide remediation without exposing the content. Determinations requiring qualified
+interpretation are `needs-review`; operations that require the unavailable route are
+`unsupported`. No adapter may silently transmit content, activate a tool, or broaden
+authority to escape either state.
+
 ## Versioning
 
 Version independently:

@@ -4,8 +4,8 @@
 **Scope:** Repository governance and documentation validation only
 
 The lifecycle engine and plugin do not exist yet. This matrix proves the current public
-repository foundation on native runners; it must not be presented as product-runtime
-support.
+repository foundation on native runners; it must not be presented as product-runtime,
+sensitive-data-route, or regulatory support.
 
 | Environment | Foundation validation | Evidence |
 |---|---|---|

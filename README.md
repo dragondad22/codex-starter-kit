@@ -82,9 +82,11 @@ If you discover a vulnerability, do not open a public issue. Follow
 
 The design follows a strict rule: no evidence means no pass. A managed result must state
 what was checked, what failed, what was not applicable, what could not be checked, and
-what needs qualified human review. This system will support regulatory workflows, but it
-will not replace legal, security, accessibility, safety, or domain experts where qualified
-judgment is required.
+what needs qualified human review. The first release will detect projects that need
+special data handling, apply universal safeguards, and report limitations truthfully; it
+will not claim that Codex, connected tools, or a development environment are certified or
+verified for highly sensitive content. It will not replace legal, security, privacy,
+accessibility, safety, or domain experts where qualified judgment is required.
 
 ## License
 

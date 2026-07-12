@@ -107,11 +107,13 @@ Outcome: at least three different project outputs release through one contract.
 - Add signing/SBOM/attestation adapter triggers.
 - Test partial publication, rollback, rerun, and emergency release paths.
 
-## Phase 7 — Regulatory Launch Coverage
+## Phase 7 — Verified Sensitive-Data and Regulatory Coverage
 
-Outcome: named regulatory packs meet the launch definition with qualified review and
-representative evidence fixtures.
+Outcome: selected sensitive-data routes and named regulatory packs meet a later approved
+release definition with qualified review and representative evidence fixtures.
 
+- Implement the detailed sensitive-data and AI/tool execution assurance boundary from
+  issue #21, including verified routes and truthful unsupported behavior.
 - Select initial jurisdictions/industries from intended real projects.
 - Establish authoritative-source monitoring and expert-review workflow.
 - Build reusable data/privacy/access/audit/evidence controls first.
@@ -155,4 +157,4 @@ These must be resolved before Phase 1 implementation choices:
 3. GitHub authentication/app/CLI adapter authority and rate-limit strategy.
 4. Plugin distribution/publication and minimum Codex capability matrix.
 5. Policy signing, trusted publisher, registry, mirror, and revocation design.
-6. Initial regulatory coverage and qualified-review plan.
+6. Later sensitive-data route assurance and initial regulatory coverage plan.

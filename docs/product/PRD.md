@@ -40,6 +40,8 @@ The product ships as three layers from its first usable release:
 - No evidence means no pass.
 - Decisions made in conversation become authoritative only when durably approved.
 - Policy applicability is derived from recorded facts and versioned rules.
+- Content classification, handling authorization, and product assurance are separate
+  facts; acknowledgment cannot substitute for any of them.
 - Human-owned records and generated views never silently overwrite one another.
 - Every executable issue can be implemented without the originating conversation.
 - New structure appears when a real capability requires it and follows explicit rules.
@@ -54,7 +56,7 @@ The product ships as three layers from its first usable release:
 3. As a developer with an existing repository, I want a read-only assessment and retrofit plan so that adopting the system does not destroy my work.
 4. As a former Claude-kit user, I want my decisions and GitHub history migrated semantically so that I do not lose project memory.
 5. As a developer, I want project facts recorded explicitly so that policy applicability is explainable.
-6. As a regulated-project owner, I want regulatory policy and evidence supported at launch so that compliance is not a future promise.
+6. As an owner of a project that may require special data handling, I want a short declaration and truthful capability limits so that ordinary work stays concise and absent assurance never looks like conformance.
 7. As a developer, I want universal security and engineering controls enabled by default so that project size does not become an excuse for unsafe work.
 8. As a policy owner, I want context-triggered controls so that irrelevant obligations do not obscure applicable ones.
 9. As a reviewer, I want every control to have an explicit state and evidence so that green status is trustworthy.
@@ -102,6 +104,11 @@ The product ships as three layers from its first usable release:
 - The Codex plugin is a guided adapter; it is not the sole enforcement authority.
 - CI and direct developer use call the same engine interface.
 - Structured state is authoritative for lifecycle facts and policy computation.
+- V1 records whether special data handling is intentional as `No`, `Yes`, or `Unsure`;
+  `Yes` and `Unsure` trigger a concise notice, acknowledgment, and explicit coverage
+  limitations.
+- Acknowledgment never authorizes tool access or transmission and never establishes
+  sensitive-data or regulatory conformance.
 - Human briefs, decisions, risks, specifications, and communications remain human-owned.
 - Every managed project maintains one human-owned persona registry with stable IDs;
   governed artifacts reference personas rather than redefining audiences inline.
@@ -144,6 +151,9 @@ The product ships as three layers from its first usable release:
   partial failure, rate limits, and reconciliation.
 - End-to-end tracer tests cover empty create, existing retrofit, Ready issue delivery,
   release evidence, offline verification, and managed upgrade.
+- Sensitive-data boundary tests cover all three declaration values, concise ordinary
+  flow, notice acknowledgment, absent-route `needs-review`/`unsupported` states, and no
+  silent tool activation or transmission.
 
 ## Success Measures
 
@@ -162,6 +172,9 @@ The product ships as three layers from its first usable release:
 - Preserving Claude-specific commands or permission files as runtime interfaces.
 - Replacing legal, regulatory, security, accessibility, or domain experts where policy
   requires qualified human judgment.
+- Detailed data taxonomies, DLP/egress enforcement, provider or environment certification,
+  local/private AI runtimes, and comprehensive highly sensitive or regulated-content
+  assurance in v1.
 - Guaranteeing that all third-party tools or Codex clients are available offline.
 - Silently installing tools, broadening permissions, or migrating repositories.
 - A cloud-only conformance service as the sole authority.
@@ -171,5 +184,7 @@ The product ships as three layers from its first usable release:
 
 This PRD intentionally specifies outcomes and interfaces before an implementation
 language. Engine packaging, signing infrastructure, registry hosting, minimum OS/client
-versions, and initial regulatory packs require architecture issues with evidence-backed
-tool selection.
+versions, verified sensitive-data routes, and regulatory packs require architecture
+issues with evidence-backed tool selection and qualified review. The detailed
+sensitive-data and AI/tool execution boundary is tracked as Later work in
+[issue #21](https://github.com/dragondad22/codex-starter-kit/issues/21).
