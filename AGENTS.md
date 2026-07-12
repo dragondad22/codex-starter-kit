@@ -21,6 +21,9 @@ and design; the approved product contract lives in `docs/`.
 - Recommend useful installs or upgrades with trust, authority, data, cost, compatibility,
   and fallback implications. Do not silently install or broaden authority.
 - Normal Git flow: Ready issue → issue-named branch → PR → required gates → squash merge.
+- A draft PR means implementation, verification, or internal review is still in progress.
+  Once planned work and required checks/reviews are complete, mark it ready for review;
+  never leave a finished PR in draft and make reviewers guess.
 - Every material change updates affected documentation and its change/evidence record.
 
 ## Agent skills

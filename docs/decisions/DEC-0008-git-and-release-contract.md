@@ -22,6 +22,8 @@ queue adapters from project context and policy.
 Milestones represent releases only. Emergency work uses a governed break-glass path.
 Release operations are transactional, evidence-backed, audience-aware, and tied to
 immutable source/artifact identity without forcing invented SemVer on every repository.
+Draft PR status communicates that more implementation, verification, or internal review
+is expected; a completed, verified, internally reviewed PR is moved to ready for review.
 
 ## Source
 

@@ -7,6 +7,10 @@ The discovery record preserves discussion and source history. A decision record 
 one approved decision into durable context, consequences, and authority. If a record and
 its source D-item conflict, stop and reconcile them; do not silently choose one.
 
+Agents normally load the index and only the relevant decision records. The long discovery
+record is provenance: follow a record's source breadcrumb only when reviewing origin,
+resolving ambiguity, or proposing supersession.
+
 ## Required format
 
 Every record contains:
