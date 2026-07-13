@@ -272,10 +272,11 @@ func evaluateSeedControls(root string, inspection Inspection) []ControlResult {
 			Evidence: []EvidenceReference{{Kind: "inline", Target: "coverage_limitations"}}, Diagnostics: []string{},
 		},
 		{
-			ID: "CORE-RECOVERY-001", State: ControlPass,
-			Summary: "The create-v1 recovery protocol provides idempotent replay, live/stale lease handling, " +
-				"committed-prefix resume, rollback, reconciliation, and recovery evidence.",
-			Evidence: []EvidenceReference{{Kind: "engine-capability", Target: "create-recovery:v1"}}, Diagnostics: []string{},
+			ID: "CORE-RECOVERY-001", State: ControlNeedsReview,
+			Summary: "The create-v1 recovery protocol is implemented, but this verification run cannot bind " +
+				"the executing binary to retained native test provenance.",
+			Rationale: "Issue #30 must publish current, versioned build and native-equivalence evidence before recovery can pass.",
+			Evidence:  []EvidenceReference{}, Diagnostics: []string{},
 		},
 		evaluateRoutes(root),
 	}

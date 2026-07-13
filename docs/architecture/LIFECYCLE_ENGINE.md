@@ -54,7 +54,7 @@ state. Aggregate `pass` is possible only when every evaluated control passes.
 | `CORE-SECRETS-001` | `not-configured` until an approved scanner provides defensible coverage |
 | `CORE-OWNERSHIP-001` | Passes only for a complete valid managed-file ownership/provenance contract |
 | `CORE-COVERAGE-001` | Passes when evaluated controls and coverage limits are disclosed |
-| `CORE-RECOVERY-001` | Passes for the bounded create-v1 recovery protocol and cites `create-recovery:v1` capability evidence |
+| `CORE-RECOVERY-001` | `needs-review` until #30 binds the executing build to retained native recovery evidence |
 | `CORE-ROUTES-001` | Passes only when stable seed routes parse and resolve |
 
 The engine injects a clock so controlled runs can reproduce timestamps and semantics.
@@ -110,7 +110,7 @@ managed-file manifest.
 | `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
 | `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
-| Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts recorded outside the unavailable repository lock |
+| Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts plus content-addressed stale-lease, abandoned-stage, and replay observations |
 | `AGENTS.md` | generated | Concise repository orientation and routes |
 | `docs/product/BRIEF.md` | human-owned | Approved seed project brief |
 | `docs/product/PERSONAS.md` | human-owned | Confirmed seed persona registry |
@@ -154,7 +154,9 @@ Apply serializes local mutation with a JSON lifecycle lease containing a random 
 plan ID, process ID, and creation time. A lease is recoverable only when it is older than
 the bounded stale interval and native process-liveness inspection says its owner is gone.
 Active, recent, or malformed leases are never stolen. Stale lease content is first archived
-under the Git-local attempt ledger, and lease release removes only the token owned by the
+through a unique quarantine, then represented by a content-addressed, self-digested evidence
+record under the Git-local attempt ledger. Evidence paths use exclusive create-or-identical
+writes and never replace prior content. Lease release removes only the token owned by the
 current process.
 
 The staging directory is named for that lease token and carries a transaction marker bound
@@ -171,6 +173,10 @@ reports this recoverable state as `setup_incomplete` with recovery instructions 
 references; it never reports the repository as successfully managed. Ordinary commit or
 postcondition failures roll back files created by the current attempt where possible. A
 rollback failure remains an explicit non-recoverable failure rather than successful state.
+An exact completed replay emits a distinct, content-addressed Git-local observation event
+while preserving the prior operation status, changed-file semantics, and recovery history.
+An operation event found before authoritative state is a reconciliation boundary rather
+than trusted as an automatically resumable artifact.
 
 ## Current limits
 
@@ -186,7 +192,8 @@ rollback failure remains an explicit non-recoverable failure rather than success
   Windows CI adds a native directory-junction fixture, and the case-collision fixture records
   the runner's filesystem behavior. #30 owns broader reparse-point capability evidence,
   exact filesystem support claims, and released native support closure.
-- Seed verification is implemented, and bounded create recovery passes. Secrets remain
-  `not-configured`, so no current aggregate verification result is expected to pass.
+- Seed verification is implemented. Recovery remains `needs-review` until build provenance
+  is bound to native evidence, and secrets remain `not-configured`, so no current aggregate
+  verification result is expected to pass.
 - Runtime support is not published until #30 proves native semantic equivalence and exact
   OS/architecture/filesystem assumptions.

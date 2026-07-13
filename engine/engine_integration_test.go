@@ -298,8 +298,11 @@ func TestCreateAfterApplyReturnsExplicitNoChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay identical no-change plan: %v", err)
 	}
-	if !reflect.DeepEqual(replayed, result) {
-		t.Fatalf("replayed no-change result changed semantics:\nfirst:  %#v\nsecond: %#v", result, replayed)
+	if replayed.Status != result.Status || !reflect.DeepEqual(replayed.ChangedFiles, result.ChangedFiles) || !reflect.DeepEqual(replayed.Recovery, result.Recovery) {
+		t.Fatalf("replayed no-change result changed operation semantics:\nfirst:  %#v\nsecond: %#v", result, replayed)
+	}
+	if len(replayed.Evidence) != len(result.Evidence)+1 || !strings.HasPrefix(replayed.Evidence[len(replayed.Evidence)-1], "git:starter-kit-attempts/replay-") {
+		t.Fatalf("no-change replay did not emit distinct attempt evidence: %#v", replayed)
 	}
 }
 
@@ -323,8 +326,11 @@ func TestIdenticalAppliedCreatePlanReturnsStableIdempotentResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay identical applied plan: %v", err)
 	}
-	if !reflect.DeepEqual(second, first) {
-		t.Fatalf("replayed result changed semantics:\nfirst:  %#v\nsecond: %#v", first, second)
+	if second.Status != first.Status || !reflect.DeepEqual(second.ChangedFiles, first.ChangedFiles) || !reflect.DeepEqual(second.Recovery, first.Recovery) {
+		t.Fatalf("replayed result changed operation semantics:\nfirst:  %#v\nsecond: %#v", first, second)
+	}
+	if len(second.Evidence) != len(first.Evidence)+1 || !strings.HasPrefix(second.Evidence[len(second.Evidence)-1], "git:starter-kit-attempts/replay-") {
+		t.Fatalf("replay did not emit distinct attempt evidence: %#v", second)
 	}
 	afterReplay, err := lifecycle.Inspect(t.Context(), repository)
 	if err != nil {
@@ -332,6 +338,48 @@ func TestIdenticalAppliedCreatePlanReturnsStableIdempotentResult(t *testing.T) {
 	}
 	if afterReplay.PreconditionDigest != beforeReplay.PreconditionDigest {
 		t.Fatalf("idempotent replay mutated repository: before %s, after %s", beforeReplay.PreconditionDigest, afterReplay.PreconditionDigest)
+	}
+}
+
+func TestRecoveryBearingCreateAndNoChangePlansRemainIdempotent(t *testing.T) {
+	now := time.Date(2026, 7, 13, 19, 0, 0, 0, time.UTC)
+	for _, noChange := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no_change_%t", noChange), func(t *testing.T) {
+			repository := newGitRepository(t)
+			lifecycle := engine.New(engine.WithClock(fixedClock{now}))
+			plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			if noChange {
+				if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+					t.Fatalf("seed managed repository: %v", err)
+				}
+				plan, err = lifecycle.Create(t.Context(), approvedCreate(repository))
+				if err != nil || !plan.NoChange {
+					t.Fatalf("create no-change plan: %#v, %v", plan, err)
+				}
+			}
+			token := "22222222222222222222222222222222"
+			lease := fmt.Sprintf("{\"schema_version\":1,\"token\":%q,\"plan_id\":%q,\"pid\":2147483647,\"created_at\":%q}\n", token, plan.ID, now.Add(-time.Hour).Format(time.RFC3339Nano))
+			if err := os.WriteFile(filepath.Join(repository, ".git", "starter-kit.lock"), []byte(lease), 0o600); err != nil {
+				t.Fatalf("write stale lease: %v", err)
+			}
+			first, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+			if err != nil || len(first.Recovery) == 0 || len(first.Evidence) == 0 {
+				t.Fatalf("apply with recovery: %#v, %v", first, err)
+			}
+			second, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+			if err != nil {
+				t.Fatalf("replay recovery-bearing plan: %v", err)
+			}
+			if second.Status != first.Status || !reflect.DeepEqual(second.ChangedFiles, first.ChangedFiles) || !reflect.DeepEqual(second.Recovery, first.Recovery) {
+				t.Fatalf("replay lost recovery-bearing semantics:\nfirst:  %#v\nsecond: %#v", first, second)
+			}
+			if len(second.Evidence) != len(first.Evidence)+1 {
+				t.Fatalf("replay attempt evidence missing: first %#v, second %#v", first.Evidence, second.Evidence)
+			}
+		})
 	}
 }
 
@@ -782,9 +830,18 @@ func TestApplyRecoversDeadStaleLifecycleLeaseWithEvidence(t *testing.T) {
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
 		t.Fatalf("recovered lease remained at lock path: %v", err)
 	}
-	archive := filepath.Join(repository, ".git", "starter-kit-attempts", "stale-lock-"+token+".json")
-	if _, err := os.Stat(archive); err != nil {
+	reference := result.Evidence[0]
+	if !strings.HasPrefix(reference, "git:starter-kit-attempts/stale-lock-") {
+		t.Fatalf("stale lease evidence is not content-addressed: %q", reference)
+	}
+	archive := filepath.Join(repository, ".git", strings.TrimPrefix(reference, "git:"))
+	content, err := os.ReadFile(archive)
+	if err != nil {
 		t.Fatalf("stale lease evidence missing: %v", err)
+	}
+	var evidence map[string]any
+	if json.Unmarshal(content, &evidence) != nil || evidence["ownership"] != "machine-evidence" || evidence["source"] != "engine:apply:v1" || evidence["lease_digest"] == "" || evidence["evidence_digest"] == "" {
+		t.Fatalf("stale lease evidence lacks provenance or digests: %s", content)
 	}
 }
 
@@ -815,8 +872,9 @@ func TestApplyDoesNotStealLiveLifecycleLease(t *testing.T) {
 	if readErr != nil || string(content) != lease {
 		t.Fatalf("apply stole or changed a live lease: %q, %v", content, readErr)
 	}
-	if _, err := os.Stat(filepath.Join(repository, ".git", "starter-kit-attempts", "stale-lock-"+token+".json")); !os.IsNotExist(err) {
-		t.Fatalf("live lease was archived as stale: %v", err)
+	archives, err := filepath.Glob(filepath.Join(repository, ".git", "starter-kit-attempts", "stale-lock-*.json"))
+	if err != nil || len(archives) != 0 {
+		t.Fatalf("live lease was archived as stale: %#v, %v", archives, err)
 	}
 }
 
@@ -883,6 +941,58 @@ func TestApplyResumesInterruptedMatchingCreateWithoutReplacingCommittedPrefix(t 
 	}
 }
 
+func TestInterruptedResumeRejectsSelfConsistentForgedOperationEvent(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	for _, file := range plan.Files {
+		if file.Path == ".starter-kit/state.json" {
+			continue
+		}
+		target := filepath.Join(repository, filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("create interrupted parent: %v", err)
+		}
+		if err := os.WriteFile(target, []byte(file.Content), 0o644); err != nil {
+			t.Fatalf("write interrupted artifact: %v", err)
+		}
+	}
+	forged := map[string]any{
+		"schema_version": 1, "ownership": "machine-evidence", "source": "engine:apply:v1",
+		"plan_id": plan.ID, "operation": "create", "status": "applied",
+		"actor": "not-configured", "authority": "not-configured",
+		"repository_digest": "sha256:" + strings.Repeat("0", 64),
+		"changed_files":     []string{plan.Result.Path}, "external_effects": []string{},
+		"diagnostics": []string{}, "conflicts": []any{}, "recovery": []string{},
+		"evidence": []string{}, "recoverable": false, "event_digest": "",
+	}
+	forged["event_digest"] = identifyJSON(t, forged)
+	document, err := json.MarshalIndent(forged, "", "  ")
+	if err != nil {
+		t.Fatalf("encode forged event: %v", err)
+	}
+	document = append(document, '\n')
+	eventPath := filepath.Join(repository, filepath.FromSlash(plan.Result.Path))
+	if err := os.MkdirAll(filepath.Dir(eventPath), 0o755); err != nil {
+		t.Fatalf("create event parent: %v", err)
+	}
+	if err := os.WriteFile(eventPath, document, 0o644); err != nil {
+		t.Fatalf("write forged event: %v", err)
+	}
+
+	_, err = lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "reconcile" || len(failure.Conflicts) == 0 {
+		t.Fatalf("forged interrupted event was not reconciled: %#v, %v", failure, err)
+	}
+	if content, readErr := os.ReadFile(eventPath); readErr != nil || !reflect.DeepEqual(content, document) {
+		t.Fatalf("forged event was replaced: %q, %v", content, readErr)
+	}
+}
+
 func TestStatusExplainsIncompleteCreateAndSafeRecovery(t *testing.T) {
 	repository := newGitRepository(t)
 	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
@@ -932,7 +1042,7 @@ func TestApplyPreservesUnrecognizedStagingLookalikeForReconciliation(t *testing.
 
 	_, err = lifecycle.Apply(t.Context(), plan.ID, plan)
 	var failure *engine.ApplyFailure
-	if !errors.As(err, &failure) || failure.Stage != "recover-stage" {
+	if !errors.As(err, &failure) || failure.Stage != "recover-stage" || !failure.Recoverable || len(failure.Recovery) == 0 {
 		t.Fatalf("unrecognized stage did not stop safely: %#v, %v", failure, err)
 	}
 	content, readErr := os.ReadFile(filepath.Join(stagePath, "human.txt"))
@@ -1348,6 +1458,16 @@ func identifyPlan(t *testing.T, plan engine.Plan) string {
 	content, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatalf("encode plan identity fixture: %v", err)
+	}
+	digest := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func identifyJSON(t *testing.T, value any) string {
+	t.Helper()
+	content, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode JSON identity fixture: %v", err)
 	}
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])
