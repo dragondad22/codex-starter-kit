@@ -31,6 +31,8 @@
     downstream consumers.
 16. `evidence/ISSUE-15.md` — Project-state drift correction and standing reconciliation
     contract for parents, blockers, and dependents.
+17. `evidence/ISSUE-40.md` — canonical glossary ordering rule, validator, and regression
+    evidence.
 
 ## Document lifecycle
 

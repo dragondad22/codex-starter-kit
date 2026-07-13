@@ -8,10 +8,41 @@ from pathlib import Path
 from scripts.validate_docs import (
     validate_decision_routes,
     validate_issue_templates,
+    validate_glossary_order,
     validate_label_manifest,
     validate_sensitive_data_boundary,
     validate_workflow,
 )
+
+
+class GlossaryOrderValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        (self.root / "docs/product").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def write_glossary(self, terms: list[str]) -> None:
+        content = "# Glossary\n\n" + "\n\n".join(
+            f"### {term}\n\nDefinition." for term in terms
+        )
+        (self.root / "docs/product/GLOSSARY.md").write_text(
+            content, encoding="utf-8"
+        )
+
+    def test_accepts_case_insensitive_alphabetical_term_order(self) -> None:
+        self.write_glossary(["Adapter", "Breadcrumb", "PRD", "Product assurance"])
+
+        self.assertEqual(validate_glossary_order(self.root), [])
+
+    def test_rejects_out_of_order_terms(self) -> None:
+        self.write_glossary(["Readiness", "Question work item", "Status"])
+
+        failures = validate_glossary_order(self.root)
+
+        self.assertTrue(any("expected 'Question work item'" in failure for failure in failures))
 
 
 class DecisionRouteValidationTests(unittest.TestCase):

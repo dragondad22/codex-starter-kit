@@ -14,12 +14,6 @@ Observable conditions used to determine whether work or a specification has been
 completed correctly. Good criteria describe externally verifiable outcomes and important
 negative paths rather than only listing implementation steps.
 
-### Actionable work item
-
-A work item whose objective, scope, authority, dependencies, evidence, and subtype-specific
-completion contract are sufficient for an assigned human or AI to proceed without
-inventing a new decision. It may be implementation, question, or research work.
-
 ### Accepted exception
 
 A separately approved disposition allowing work to cross a specific gate despite an
@@ -29,6 +23,12 @@ underlying failed or incomplete control. It never changes that control to `pass`
 
 Risk inherent in a chosen architecture or operating model whose acceptance is reviewed
 periodically rather than tied to a promised remediation date.
+
+### Actionable work item
+
+A work item whose objective, scope, authority, dependencies, evidence, and subtype-specific
+completion contract are sufficient for an assigned human or AI to proceed without
+inventing a new decision. It may be implementation, question, or research work.
 
 ### Adapter
 
@@ -98,35 +98,6 @@ authorized AI or developer can execute without new product or policy decisions.
 A user- or stakeholder-visible capability represented on the Horizon roadmap. A feature
 may begin as lightweight intake and later be refined or decomposed into executable work.
 
-### Promotion
-
-The explicit transfer of a material issue result into the authoritative decision,
-specification, policy, human-owned record, or structured state that governs its meaning.
-The destination and issue retain reciprocal references.
-
-### Readiness
-
-Executability on the GitHub Project: `Intake`, `Needs refinement`, `Ready`, or `Blocked`.
-Readiness answers whether authorized work can start now. Its states are:
-
-- **Intake:** The item has been captured but has not passed refinement. It is not
-  executable.
-- **Needs refinement:** The item has been promoted for clarification, but its objective,
-  scope, authority, decisions, references, acceptance, evidence, or dependencies are not
-  yet sufficient for execution.
-- **Ready:** The item satisfies its subtype-specific execution contract, has the required
-  authority, and has no unresolved blocker. Ready work may remain Status `Backlog` until
-  deliberately selected.
-- **Blocked:** A known unresolved dependency, control, or required human action prevents
-  otherwise planned work from starting or continuing. When the final blocker resolves,
-  re-evaluate the item and move it to Ready if no other readiness gap remains.
-
-### Question work item
-
-A `type:question` issue for a consequential unresolved question whose answer must outlive
-the current conversation, materially affects work, requires named authority or evidence,
-or is likely to be referenced again. Its issue discussion is not authoritative.
-
 ### Handling authorization
 
 Permission for a named actor to expose specified content to a named tool, service, or
@@ -188,17 +159,23 @@ authority, risks, and communication needs. An AI actor is not a persona.
 An immutable signed/versioned bundle of focused standards, controls, templates, schemas,
 routing metadata, and migrations.
 
+### PRD (Product Requirements Document)
+
+A human-owned product document explaining the problem, intended users and outcomes,
+requirements, boundaries, success measures, and product-level testing decisions. It says
+what the product must achieve, not every implementation detail.
+
 ### Product assurance
 
 Evidence that an end-to-end product route—including the AI client, connected tools,
 services, environment, authority, and data flow—provides required handling guarantees for
 an explicit scope. User acknowledgment or tool availability is not product assurance.
 
-### PRD (Product Requirements Document)
+### Promotion
 
-A human-owned product document explaining the problem, intended users and outcomes,
-requirements, boundaries, success measures, and product-level testing decisions. It says
-what the product must achieve, not every implementation detail.
+The explicit transfer of a material issue result into the authoritative decision,
+specification, policy, human-owned record, or structured state that governs its meaning.
+The destination and issue retain reciprocal references.
 
 ### Pull request (PR)
 
@@ -206,16 +183,28 @@ A proposed set of repository changes submitted for checks, review, and merge. Th
 the work item, governing records, changed artifacts, verification, evidence, deviations,
 and follow-up work.
 
-### Research record
+### Question work item
 
-A durable human-owned account of bounded research, including its questions or mapping
-objective, intended use, method, sources, findings, conflicting evidence, uncertainty,
-limitations, and freshness. It informs but does not silently establish a decision.
+A `type:question` issue for a consequential unresolved question whose answer must outlive
+the current conversation, materially affects work, requires named authority or evidence,
+or is likely to be referenced again. Its issue discussion is not authoritative.
 
-### Research work item
+### Readiness
 
-A `type:research` issue authorizing bounded evidence-producing work by a human or AI at a
-declared depth or effort, with explicit stopping conditions, output, and review needs.
+Executability on the GitHub Project: `Intake`, `Needs refinement`, `Ready`, or `Blocked`.
+Readiness answers whether authorized work can start now. Its states are:
+
+- **Intake:** The item has been captured but has not passed refinement. It is not
+  executable.
+- **Needs refinement:** The item has been promoted for clarification, but its objective,
+  scope, authority, decisions, references, acceptance, evidence, or dependencies are not
+  yet sufficient for execution.
+- **Ready:** The item satisfies its subtype-specific execution contract, has the required
+  authority, and has no unresolved blocker. Ready work may remain Status `Backlog` until
+  deliberately selected.
+- **Blocked:** A known unresolved dependency, control, or required human action prevents
+  otherwise planned work from starting or continuing. When the final blocker resolves,
+  re-evaluate the item and move it to Ready if no other readiness gap remains.
 
 ### Release
 
@@ -249,10 +238,26 @@ Milestone. It is separate from Horizon.
 The declared outcome, time, event, or hybrid condition that initiates final release
 evaluation. Satisfying the trigger never overrides a failed or prohibited release gate.
 
+### Research record
+
+A durable human-owned account of bounded research, including its questions or mapping
+objective, intended use, method, sources, findings, conflicting evidence, uncertainty,
+limitations, and freshness. It informs but does not silently establish a decision.
+
+### Research work item
+
+A `type:research` issue authorizing bounded evidence-producing work by a human or AI at a
+declared depth or effort, with explicit stopping conditions, output, and review needs.
+
 ### Roadmap
 
 The ordered view of feature direction maintained through live Project issues and Horizon.
 It is not a release manifest or a duplicate document listing current issue status.
+
+### S.M.A.R.T. Release
+
+A release that is Scoped, Measurable, Approved, Releasable, and Triggered. Its trigger may
+be outcome-, time-, event-, or hybrid-bound.
 
 ### Semantic Versioning (SemVer)
 
@@ -261,23 +266,18 @@ Broadly, major versions communicate incompatible contract changes, minor version
 backward-compatible capability, and patch versions make backward-compatible fixes.
 Not every project output uses SemVer.
 
-### S.M.A.R.T. Release
-
-A release that is Scoped, Measurable, Approved, Releasable, and Triggered. Its trigger may
-be outcome-, time-, event-, or hybrid-bound.
-
-### Specification (spec)
-
-A human-owned description of behavior or qualities to build and verify, tied to personas,
-scenarios, requirements, constraints, acceptance criteria, and governing decisions. A PRD
-describes product outcomes; specifications provide the more focused contract for delivery.
-
 ### Special-data-handling declaration
 
 The v1 project-level answer to whether the project intentionally contains or processes
 information requiring special confidentiality, privacy, contractual, or regulatory
 handling: `No`, `Yes`, or `Unsure`. `Yes` and `Unsure` trigger a notice and truthful
 coverage limits; no answer grants handling authority or establishes conformance.
+
+### Specification (spec)
+
+A human-owned description of behavior or qualities to build and verify, tied to personas,
+scenarios, requirements, constraints, acceptance criteria, and governing decisions. A PRD
+describes product outcomes; specifications provide the more focused contract for delivery.
 
 ### Status
 
