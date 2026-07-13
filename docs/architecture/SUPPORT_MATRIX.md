@@ -12,17 +12,23 @@ regulatory coverage. Explicit non-pass control states remain part of supported b
 
 ## Tested runtime envelope
 
-| Native target | Runner selector | Architecture authority | Filesystem boundary | Evidence source |
+| Native target | Resolved completing-PR image | Architecture | Tested tools | Evidence identity |
 |---|---|---|---|---|
-| Linux | GitHub-hosted `ubuntu-latest` | Exact `GOARCH` and runner architecture in the native report | Native filesystem backing the runner's temporary directory | `phase1-native-ubuntu-latest` artifact |
-| macOS | GitHub-hosted `macos-latest` | Exact `GOARCH` and runner architecture in the native report | Native filesystem backing the runner's temporary directory | `phase1-native-macos-latest` artifact |
-| Windows | GitHub-hosted `windows-latest` | Exact `GOARCH` and runner architecture in the native report | Native filesystem backing the runner's temporary directory | `phase1-native-windows-latest` artifact |
+| Linux | `ubuntu24` `20260705.232.1` from `ubuntu-latest` | runner `X64`; `linux/amd64` | Go 1.26.5; Git 2.54.0 | `sha256:fe0736bc2ecd27d9507adc5edc90e7296b457cbfc0b889c54d57ad7a1a6212c8` |
+| macOS | `macos26` `20260630.0213.1` from `macos-latest` | runner `ARM64`; `darwin/arm64` | Go 1.26.5; Git 2.55.0 | `sha256:2aebcbd1783732c39aaa1789fe6e6c15d802772d279bbf95f26f33893a3cb54d` |
+| Windows | `win25-vs2026` `20260628.158.1` from `windows-latest` | runner `X64`; `windows/amd64` | Go 1.26.5; Git 2.54.0.windows.1 | `sha256:242fe43b9c6a7699e30047fed0b6d63f717a17b3eb7c0fda0204cbc7c1606d8a` |
 
-`latest` is a moving CI selector, not an OS-version claim. Every native report records
+These values come from PR #44 run `29268327253` at source revision
+`c29eaf3441c6adfaf5c849c262988a0c7d45d4b3`. The three reports share semantic digest
+`sha256:38d2405d313853059f4faae8424a0a302775f8e3ddc70fddb81f0d319b7329ad`;
+the aggregate comparison evidence digest is
+`sha256:dd3d8d84821010f355673d60de170caecec3936fd92def60f0c67970e0f0c81e`.
+
+`latest` is a moving CI selector, not an evergreen OS-version claim. Every native report records
 `ImageOS`, `ImageVersion`, `RUNNER_OS`, `RUNNER_ARCH`, Go version, Git version, and
 `GOOS`/`GOARCH`; those resolved values are the exact tested versions for that run. The
-completing pull request records its resolved image values before closure. Support outside
-those tested architecture/image families is `needs-review`, not inferred from Go's broader
+table above is the durable snapshot for the completing pull request. Support outside those
+tested architecture/image families is `needs-review`, not inferred from Go's broader
 compilation targets.
 
 The filesystem brand is deliberately not guessed. Support assumes only the behaviors

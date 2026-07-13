@@ -27,9 +27,21 @@ shell, WSL, container, Codex client, or network effect.
 | `phase1-native-windows-latest` | Resolved image/runner/Go/Git facts, Windows capabilities, portable semantics, semantic and evidence digests | One completing-PR Windows run |
 | `phase1-native-summary` | Owned/sourced/self-digested comparison with three validated evidence paths, resolved platform/architecture set, shared semantic digest, `equivalent: true` | Aggregate comparison, not a substitute for individual capability facts |
 
-The completing pull request is the durable link to the exact 30-day CI artifacts. Before
-closure, the resolved image, architecture, Go, Git, and shared semantic digest are copied
-into this record so the expiring artifact is not the only provenance route.
+The completing pull request is the durable link to the exact 30-day CI artifacts. Run
+[`29268327253`](https://github.com/dragondad22/codex-starter-kit/actions/runs/29268327253)
+captured source revision `c29eaf3441c6adfaf5c849c262988a0c7d45d4b3`:
+
+| Target | Resolved image | Architecture | Go / Git | Report evidence digest |
+|---|---|---|---|---|
+| Linux | `ubuntu24` `20260705.232.1` | runner `X64`; `linux/amd64` | Go 1.26.5 / Git 2.54.0 | `sha256:fe0736bc2ecd27d9507adc5edc90e7296b457cbfc0b889c54d57ad7a1a6212c8` |
+| macOS | `macos26` `20260630.0213.1` | runner `ARM64`; `darwin/arm64` | Go 1.26.5 / Git 2.55.0 | `sha256:2aebcbd1783732c39aaa1789fe6e6c15d802772d279bbf95f26f33893a3cb54d` |
+| Windows | `win25-vs2026` `20260628.158.1` | runner `X64`; `windows/amd64` | Go 1.26.5 / Git 2.54.0.windows.1 | `sha256:242fe43b9c6a7699e30047fed0b6d63f717a17b3eb7c0fda0204cbc7c1606d8a` |
+
+All three reports produced semantic digest
+`sha256:38d2405d313853059f4faae8424a0a302775f8e3ddc70fddb81f0d319b7329ad`.
+The aggregate summary reported `equivalent: true` for `darwin/arm64`, `linux/amd64`, and
+`windows/amd64`, with evidence digest
+`sha256:dd3d8d84821010f355673d60de170caecec3936fd92def60f0c67970e0f0c81e`.
 
 ## Phase 1 roadmap coverage
 
