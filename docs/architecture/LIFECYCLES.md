@@ -145,6 +145,32 @@ starts or completes, even when its remaining Ready children are still Backlog. C
 of every native child closes the parent as Done unless an unsatisfied parent criterion is
 represented by a concrete outstanding child.
 
+## Professional Engineering Baseline
+
+Every supported delivery path applies the same professional engineering baseline even
+when the engagement mode is delegated and the user's normal output is concise. Project
+facts determine which standards and controls apply; size, personal use, or a one-shot
+request do not create a lower-quality passing route.
+
+1. Establish the requested outcome, users, acceptance, supported environment, and claims.
+2. Resolve repository standards and relevant external guidance for code, security,
+   privacy/data, dependencies, user experience/accessibility, testing, documentation,
+   operations, and support.
+3. Plan and implement the complete supported behavior, including failure, recovery,
+   setup, upgrade, and help paths that apply.
+4. Test for acceptance gaps, regressions, unsafe assumptions, and unsupported behavior
+   throughout delivery and between releases.
+5. Record every applicable result and its evidence. Record a genuinely irrelevant concern
+   as `not-applicable` with its deciding facts and rule; do not skip it invisibly.
+6. Produce a quality receipt that leads with the requested and delivered outcome and
+   links checks, evidence, limitations, and unresolved work.
+
+An operating profile may change human checkpoints, add project-specific assurance,
+require independent review, retain more evidence, or expand the normal view. It cannot
+convert a failed or missing professional-baseline result into a pass. An exploratory
+prototype narrows its claim and lifespan and remains isolated until the supported-delivery
+gate is satisfied.
+
 ## Control Evaluation Lifecycle
 
 ```mermaid
@@ -181,7 +207,9 @@ Later gates cannot weaken earlier enforcement.
 
 Release planning keeps three dimensions separate: Horizon is rolling feature direction,
 the GitHub Milestone is finite release membership, and the aggregate release issue owns
-readiness and execution.
+readiness and execution. Phase membership is a fourth, optional planning fact: phase
+completion does not constitute or trigger a release, and releases may include phased and
+non-phased work.
 
 ```mermaid
 stateDiagram-v2
@@ -189,15 +217,26 @@ stateDiagram-v2
     Proposed --> Committed: outcome + membership approved
     Committed --> Proposed: material scope reconsidered
     Committed --> ReleaseCandidate: included work dispositioned
-    ReleaseCandidate --> Committed: blocker or required correction
+    ReleaseCandidate --> Committed: candidate invalidated
     ReleaseCandidate --> Released: aggregate gates + approval + publication
 ```
 
 Each named release has exactly one Milestone and one aggregate release issue. Scope
 additions, removals, and deferrals record rationale and effect on the release claim.
-Release-candidate additions normally resolve blockers or required corrections. A release
-trigger may be outcome-, time-, event-, or hybrid-bound, but it starts final evaluation;
-it never bypasses a gate. Milestone progress is planning information, not release evidence.
+Merged work since the prior release is automatically discovered into proposed scope, then
+explicitly admitted, classified as present but internal/non-user-visible, isolated or
+reverted, excluded with truthful disclosure, or made blocking. A Milestone edit cannot
+make merged source absent. This is the **automatically discover; explicitly admit** rule.
+
+A Release Candidate binds one source revision, dependency and policy resolution,
+configuration, and artifact set. Any change invalidates that candidate and requires a new
+identity, refreshed affected evidence, reconciliation, and renewed required approvals.
+Published manifests and approval records are immutable; correction uses a later release
+or an explicit withdrawal or revocation record.
+
+A release trigger may be outcome-, time-, event-, or hybrid-bound, but it starts final
+evaluation and never bypasses a gate. No release publishes automatically. Milestone
+progress is planning information, not release evidence.
 
 1. Select merged scope and release adapter.
 2. Resolve change records and proposed identifier.
@@ -209,6 +248,12 @@ it never bypasses a gate. Milestone progress is planning information, not releas
 8. Tag/release/publish/deploy through approved adapters.
 9. Record digests, provenance, environment, approvals, and evidence.
 10. Reconcile issues, milestones, Project, and stakeholder views.
+
+The aggregate issue records the product owner or other configured scope/publication
+authority separately from evidence review, qualified assurance, and signing authority.
+A signature proves artifact identity under its trust contract; it does not approve scope,
+accept risk, or authorize publication. Required separation-of-duties conflicts remain
+explicit.
 
 Partial publication produces `ManagedDegraded` and a reconciliation/incident plan; it
 cannot be summarized as a successful complete release.

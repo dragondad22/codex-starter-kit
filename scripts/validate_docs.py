@@ -38,6 +38,7 @@ DECISION_ROUTE = re.compile(
     r"^\|\s*(D(?:[1-9]|1[0-5]))\s*\|\s*\[(DEC-\d{4})\]\(([^)]+\.md)\)\s*\|",
     re.MULTILINE,
 )
+DECISION_INDEX_LINK = re.compile(r"\[(DEC-\d{4})\]\(([^)]+\.md)\)")
 APPROVED_DECISIONS = tuple(f"D{number}" for number in range(1, 16))
 DECISION_MARKERS = (
     "**Status:** Accepted",
@@ -269,7 +270,7 @@ def validate_glossary_order(root: Path) -> list[str]:
 
 
 def validate_decision_routes(root: Path) -> list[str]:
-    """Return failures for the D1-D15 durable decision routes."""
+    """Return failures for discovery routes and all durable decision records."""
 
     index = root / "docs/decisions/INDEX.md"
     if not index.is_file():
@@ -340,6 +341,45 @@ def validate_decision_routes(root: Path) -> list[str]:
         if len(sources) > 1:
             failures.append(
                 f"docs/decisions/INDEX.md: record target reused by {', '.join(sources)}: {target}"
+            )
+
+    indexed_targets: dict[str, list[str]] = {}
+    for record_id, target in DECISION_INDEX_LINK.findall(text):
+        indexed_targets.setdefault(target, []).append(record_id)
+
+    for record in sorted(index.parent.glob("DEC-[0-9][0-9][0-9][0-9]-*.md")):
+        record_ids = indexed_targets.get(record.name, [])
+        if not record_ids:
+            failures.append(
+                f"{record.relative_to(root)}: unindexed decision record"
+            )
+            continue
+        if len(record_ids) > 1:
+            failures.append(
+                f"docs/decisions/INDEX.md: decision record indexed more than once: {record.name}"
+            )
+            continue
+        expected_id = record.name[:8]
+        if record_ids[0] != expected_id:
+            failures.append(
+                f"docs/decisions/INDEX.md: {record.name} uses {record_ids[0]}, expected {expected_id}"
+            )
+        record_text = record.read_text(encoding="utf-8")
+        if not record_text.startswith(f"# {expected_id} "):
+            failures.append(
+                f"{record.relative_to(root)}: heading does not start with {expected_id}"
+            )
+        for marker in DECISION_MARKERS:
+            if marker not in record_text:
+                failures.append(
+                    f"{record.relative_to(root)}: decision record missing required marker: {marker}"
+                )
+
+    for target in indexed_targets:
+        record = index.parent / target
+        if not record.is_file():
+            failures.append(
+                f"docs/decisions/INDEX.md: indexed decision record missing: {target}"
             )
     return failures
 

@@ -17,6 +17,13 @@ mechanically validated one-way context graph from orientation to workflow to pol
 evidence. Ordinary explanatory pages may use normal relative links unless another
 artifact depends on them authoritatively.
 
+At the surface where a persona naturally makes a decision, expose the minimum relevant
+outcome, scope, state, coverage, uncertainty, downstream impact, and breadcrumb needed to
+interpret that surface correctly. Keep deeper detail in one authoritative record rather
+than duplicating it. Derived operational views must reconcile when authoritative inputs
+change; essential context must not depend on the human knowing which hidden document to
+open.
+
 ## Consequences
 
 A generated registry owns current paths and load-when metadata. Broken, duplicated,
@@ -26,4 +33,5 @@ generated; root routing has an explicit context budget.
 ## Source
 
 [Discovery decision D11](../discovery/CODEX_STARTER_KIT_REVIEW.md#d11) and its breadcrumb
-interface workshop.
+interface workshop. The point-of-use application was clarified through
+[issue #23](https://github.com/dragondad22/codex-starter-kit/issues/23).

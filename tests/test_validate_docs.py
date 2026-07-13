@@ -113,6 +113,15 @@ class DecisionRouteValidationTests(unittest.TestCase):
 
         self.assertEqual(validate_decision_routes(self.root), [])
 
+    def test_rejects_an_unindexed_post_discovery_decision(self) -> None:
+        rows = [(f"D{number}", self.write_record(number)) for number in range(1, 16)]
+        self.write_record(16, source="Issue #23")
+        self.write_index(rows)
+
+        failures = validate_decision_routes(self.root)
+
+        self.assertTrue(any("unindexed decision record" in failure for failure in failures))
+
     def test_rejects_a_missing_route(self) -> None:
         rows = [(f"D{number}", self.write_record(number)) for number in range(1, 15)]
         self.write_index(rows)
