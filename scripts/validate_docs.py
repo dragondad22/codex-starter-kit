@@ -205,6 +205,7 @@ def validate_workflow(root: Path) -> list[str]:
     for command in (
         "python scripts/validate_docs.py",
         "python -m unittest discover -s tests",
+        "go test ./...",
     ):
         if command not in text:
             failures.append(f"{path.relative_to(root)}: missing command: {command}")

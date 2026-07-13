@@ -35,6 +35,19 @@ collaborator work already in progress is not treated as unsolicited intake.
 The approved constraints are summarized in [AGENTS.md](AGENTS.md). Until executable
 policy packs exist, the discovery decisions and architecture documents are authoritative.
 
+## Local validation
+
+Run the Python foundation checks and Go engine suite before opening a pull request:
+
+```text
+python3 -m unittest discover -s tests -p "test_*.py"
+python3 scripts/validate_docs.py
+go test ./...
+```
+
+CI runs the equivalent commands with Python 3.12 and Go 1.26.5 on native Ubuntu, macOS,
+and Windows runners. Do not add a universal shell dependency to make validation pass.
+
 ## Conduct and security
 
 Be respectful, specific, and evidence-driven. Report vulnerabilities privately according

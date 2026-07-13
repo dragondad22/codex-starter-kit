@@ -1,0 +1,88 @@
+# Lifecycle Engine — Phase 1 Create Interface
+
+**Status:** Implemented development slice
+**Decision:** [DEC-0015](../decisions/DEC-0015-lifecycle-engine-toolchain.md)
+**Issue:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)
+
+## Interface
+
+The `starter-kit` CLI and Go callers cross the same lifecycle-engine seam. The CLI emits
+JSON on standard output and diagnostics on standard error:
+
+```text
+starter-kit inspect --repository <path>
+starter-kit create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
+starter-kit plan --operation create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
+starter-kit apply --plan <plan.json> --plan-id <sha256:...>
+starter-kit status --repository <path>
+```
+
+`create` is the focused convenience operation for a create plan. The caller supplies the
+brief and separately confirms brief approval and the seed owner persona; omission stops
+planning rather than inventing human authority. `plan --operation create` produces the
+same immutable result for unchanged inputs. The caller reviews and stores that JSON plan,
+then supplies both the plan document and its separately retained identifier to `apply`.
+Apply re-hashes the plan, re-inspects content/Git preconditions, constrains every path to
+the repository, stages and verifies content, acquires the lifecycle lock, refuses existing
+targets, commits state last, validates the complete managed contract, rolls back a failed
+commit where possible, and returns a structured result. Repeating create produces
+`no_change` only when the manifest, state, and every managed artifact remain valid.
+
+The current seam implements `create`, `inspect`, `plan`, `apply`, and `status`. `verify`
+is #27; `retrofit` and `upgrade` remain later phases. A missing operation must not be
+represented as available.
+
+## Versioned JSON contracts
+
+Every document/result includes `schema_version: 1`. Plan identity is the SHA-256 digest
+of its canonical Go-encoded JSON with an empty `plan_id`; file digests are SHA-256. Plans
+contain content-based repository and Git precondition digests, proposed paths, ownership,
+provenance source, content, content digest, and the approved-input digests/confirmations.
+Plans also declare the reserved `.starter-kit/events/` machine-evidence path with
+ownership and source. A successful mutation stages its plan ID, operation, status,
+repository digest, and changed paths with the other files and commits that event before
+authoritative state. Failed accepted applies record the same structured failure evidence;
+no-change applies record their evaluation event. This is a state-last recoverable baseline,
+not a claim of crash-safe atomicity; #29 owns interruption recovery. Go types are not
+durable authority: compatibility is defined by observable JSON fields and black-box
+behavior through the engine seam.
+
+Failure-only event directories do not by themselves assert that a managed contract is
+present, so correcting the precondition and replanning remains possible. A lock rejection
+cannot safely mutate the lock-protected repository surface; it is recorded instead in the
+Git-local `starter-kit-attempts` ledger and returned as structured failure JSON.
+
+Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
+`docs/` and are never silently replaced. Generated views identify their role through the
+managed-file manifest.
+
+| Artifact | Ownership | Purpose |
+|---|---|---|
+| `.starter-kit/project.json` | managed | Approved/detected seed project facts and lifecycle |
+| `.starter-kit/policy-lock.json` | managed | Truthful `not_configured` seed policy state until #27 |
+| `.starter-kit/layout.json` | managed | Logical role-to-path mapping |
+| `.starter-kit/managed-files.json` | managed | Ownership, provenance digest, and path manifest |
+| `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
+| `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
+| `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
+| Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts recorded outside the unavailable repository lock |
+| `AGENTS.md` | generated | Concise repository orientation and routes |
+| `docs/product/BRIEF.md` | human-owned | Approved seed project brief |
+| `docs/product/PERSONAS.md` | human-owned | Confirmed seed persona registry |
+| `docs/decisions/INDEX.md` | human-owned | Durable decision index |
+| `docs/evidence/CONFORMANCE.md` | generated | Truthful initial not-yet-verified summary |
+
+## Current limits
+
+- Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
+- Phase 1 uses the Go standard library and the structured `git` executable/argument seam.
+- Staging, exclusive locking, state-last commit, postcondition validation, and best-effort
+  rollback are present. #29 owns interruption fixtures, stale-lock recovery, durable
+  recovery evidence, stronger atomicity, and deeper conflict/reconciliation behavior.
+- Clean relative paths are root-constrained and symlink parents are rejected. #28 owns the
+  complete hostile path, junction, reserved-name, case-collision, malformed-state, secret,
+  and malicious-plan matrix.
+- Seed control evaluation and conformance evidence are #27; the initial summary explicitly
+  reports that verification has not run and claims no pass.
+- Runtime support is not published until #30 proves native semantic equivalence and exact
+  OS/architecture/filesystem assumptions.

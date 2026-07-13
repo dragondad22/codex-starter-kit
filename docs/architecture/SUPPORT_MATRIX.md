@@ -1,11 +1,12 @@
-# Foundation Support Matrix
+# Foundation and Phase 1 Support Matrix
 
-**Status:** Active foundation evidence  
-**Scope:** Repository governance and documentation validation only
+**Status:** Active development evidence
+**Scope:** Repository foundation plus the unreleased Phase 1 create slice
 
-The lifecycle engine and plugin do not exist yet. This matrix proves the current public
-repository foundation on native runners; it must not be presented as product-runtime,
-sensitive-data-route, or regulatory support.
+The lifecycle-engine create slice exists, but product runtime support is not published
+until #30 closes the complete Phase 1 native-equivalence contract. The plugin, verified
+sensitive-data routes, and regulatory coverage do not exist. This matrix must not be
+presented as a production, sensitive-data-route, or regulatory support claim.
 
 | Environment | Foundation validation | Evidence |
 |---|---|---|
@@ -13,12 +14,14 @@ sensitive-data-route, or regulatory support.
 | macOS, current GitHub-hosted image | Required | Native matrix job |
 | Windows, current GitHub-hosted image | Required | Native matrix job |
 | Python 3.12 | Pinned in CI | `actions/setup-python` by immutable commit |
+| Go 1.26.5 | Pinned in CI | `actions/setup-go` by immutable commit |
 
 Every native job runs the same semantic commands:
 
 ```text
 python -m unittest discover -s tests -p "test_*.py"
 python scripts/validate_docs.py
+go test ./...
 ```
 
 The validator uses only the Python standard library. GitHub issue forms and the label
@@ -34,11 +37,14 @@ unpinned package installation.
 - The label manifest has unique names, valid colors, and descriptions.
 - Workflow actions are pinned, all three native runners are present, and no explicit
   platform shell is required.
+- Engine-seam tests exercise an empty real Git repository through inspect, create/plan,
+  apply, status, stale-precondition rejection, and explicit no-change behavior.
 
 ## Deferred support decisions
 
-DEC-0015 selects Go 1.26.5 for initial contributor and CI builds. The engine
-implementation issues will publish exact minimum OS versions, CPU
+DEC-0015 selects Go 1.26.5 for contributor and CI builds. Issue #30 will publish exact
+minimum OS versions, CPU
 architectures, filesystems, installer/package behavior, Codex client compatibility, and
-external runtime requirements. Until those are implemented and tested, only the
-foundation scope above is supported.
+external runtime requirements after #27–#29 close their verification, hostile-input, and
+recovery obligations. Until then, the matrix records development evidence rather than a
+released runtime promise.
