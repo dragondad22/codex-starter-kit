@@ -39,6 +39,12 @@
     and recovery evidence with the explicit failure-mode matrix.
 20. `evidence/ISSUE-30.md` — native semantic-equivalence evidence, complete Phase 1
     coverage disposition, runtime boundary, and downstream assumptions.
+21. `decisions/DEC-0016-starter-kit-1-0-outcome.md` — approved stable-release outcome,
+    qualification, authority, limitation, and membership contract for this repository.
+22. `decisions/DEC-0017-professional-engineering-baseline.md` — universal professional
+    quality baseline and the separation of engagement, assurance, and evidence ceremony.
+23. `evidence/ISSUE-23.md` — promotion, coverage, verification, and GitHub-state record for
+    the 1.0.0 release-definition work.
 
 ## Document lifecycle
 

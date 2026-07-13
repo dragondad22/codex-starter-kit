@@ -46,6 +46,13 @@ A verified defect where observed behavior is incorrect, unsafe, inaccessible, or
 misleading relative to an applicable requirement, specification, or reasonable supported
 expectation.
 
+### Canary repository
+
+A changing real-world repository used to discover new product conditions and regressions.
+It supplements repeatable qualification evidence but cannot be the sole basis for a
+release pass. A confirmed supported-contract failure remains blocking or requires a
+truthful approved limitation.
+
 ### Conformance
 
 An evidence-backed result for an explicit scope, policy version, source revision, and
@@ -76,6 +83,12 @@ later work and why; it is more authoritative than the discussion that produced i
 
 The deterministic result of compiling universal, project-type, triggered, organization,
 repository, and approved-risk policy layers for a project.
+
+### Engagement mode
+
+The configured degree and timing of human participation, ranging from delegated execution
+with approved defaults to collaborative decision-by-decision work. It changes interaction,
+not the professional engineering baseline or the truth of control results.
 
 ### Epic
 
@@ -149,10 +162,26 @@ The single finite GitHub manifest for one named release. It identifies approved 
 membership but does not by itself prove aggregate release readiness. Epics and Horizon
 express different concepts and are not milestones.
 
+### Operating profile
+
+A governed configuration of engagement, project-specific assurance, and evidence
+presentation or retention. It may add controls, approvals, and detail above the universal
+professional engineering baseline; it is not a code-quality tier. Evidence presentation
+sets the normal summary depth and routes to inspectable detail. Evidence retention sets
+how long and where evidence is preserved, subject to governing policy. Neither may hide a
+non-pass or discard evidence required to support a claim.
+
 ### Persona
 
 An evidence-backed human audience perspective with goals, motivations, constraints,
 authority, risks, and communication needs. An AI actor is not a persona.
+
+### Phase
+
+An ordered roadmap outcome used to sequence product capability and its evidence. Phase
+membership must be explicit, either directly on cross-cutting work or derived from a
+native parent assigned to the phase. A phase is not a sprint, Horizon value, execution
+state, or release Milestone; completing one does not publish a release.
 
 ### Policy pack
 
@@ -171,6 +200,14 @@ Evidence that an end-to-end product route—including the AI client, connected t
 services, environment, authority, and data flow—provides required handling guarantees for
 an explicit scope. User acknowledgment or tool availability is not product assurance.
 
+### Professional engineering baseline
+
+The universal applicability-aware quality bar for every supported deliverable, regardless
+of project size, audience, or engagement mode. It includes relevant coding and external
+standards, security, complete user experience, testing, documentation, maintainability,
+and acceptance verification. Applicability may differ, but a lower-quality passing mode
+does not exist.
+
 ### Promotion
 
 The explicit transfer of a material issue result into the authoritative decision,
@@ -182,6 +219,18 @@ The destination and issue retain reciprocal references.
 A proposed set of repository changes submitted for checks, review, and merge. The PR links
 the work item, governing records, changed artifacts, verification, evidence, deviations,
 and follow-up work.
+
+### Qualification snapshot
+
+An immutable representative repository state pinned by source revision and digest and
+used to produce repeatable release-blocking evidence. Unlike a canary repository, it does
+not change during qualification.
+
+### Quality receipt
+
+A concise human view of what was requested and delivered, which professional-baseline
+checks applied, what evidence supports the result, and every limitation or non-pass. It
+routes to deeper evidence and does not replace it.
 
 ### Question work item
 
@@ -214,13 +263,20 @@ release adapter.
 
 ### Release candidate
 
-A release scope and exact source/artifact set undergoing final aggregate verification.
-New scope normally enters only to resolve blockers or required corrections.
+A release scope and one exact source, dependency, policy, configuration, and artifact set
+undergoing final aggregate verification. Any change invalidates that candidate and
+requires a newly identified candidate with refreshed affected evidence and approvals.
 
 ### Release issue
 
 The aggregate executable issue that owns one release's scope, exclusions, gates, evidence,
 limitations, approvals, publication, rollback, communication, and completion.
+
+### Release membership disposition
+
+The explicit treatment of discovered work for a named release: admitted, present but
+internal or non-user-visible, isolated or reverted, excluded with truthful disclosure, or
+blocking. Source presence and Milestone membership remain distinct facts.
 
 ### Release readiness
 

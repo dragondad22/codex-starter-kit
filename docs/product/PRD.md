@@ -37,6 +37,10 @@ The product ships as three layers from its first usable release:
 ## Product Principles
 
 - Easy means complexity hidden behind a coherent interface, not reduced rigor.
+- Quality is invariant; ceremony is variable. Small, personal, or delegated work receives
+  the same professional engineering baseline as larger work.
+- Engagement, project-specific assurance, and evidence presentation are separate choices;
+  low interaction never means unverified or knowingly lower-quality output.
 - No evidence means no pass.
 - Decisions made in conversation become authoritative only when durably approved.
 - Policy applicability is derived from recorded facts and versioned rules.
@@ -48,6 +52,8 @@ The product ships as three layers from its first usable release:
 - Online convenience never removes offline reproducibility.
 - Upgrades and tool installation are valid, explainable options—not silent side effects.
 - Risks are owned, time-bounded or periodically reviewed, and never disguised as passes.
+- Put the minimum governed context and breadcrumb at the human's natural decision surface,
+  with deeper detail routed to one authoritative reference.
 
 ## User Stories
 
@@ -96,6 +102,11 @@ The product ships as three layers from its first usable release:
 43. As a future maintainer, I want resolved questions and authoritative records to reference each other so that I can trace a conclusion without treating issue discussion as authority.
 44. As a product owner, I want rolling Horizon intent separated from finite release membership so that current direction can evolve without making a named release endless.
 45. As a release approver, I want one aggregate release issue with measurable scope, gates, evidence, trigger, and approval so that milestone completion cannot falsely imply readiness.
+46. As a developer delegating a small or personal project, I want the professional engineering baseline applied without supervising every decision so that fast interaction does not produce untrusted code.
+47. As a user, I want complete product and interaction quality rather than a minimally functional interface so that AI implementation is something I can confidently use and have reviewed.
+48. As a project owner, I want engagement separated from assurance so that I can request low-interaction delivery with strong verification or collaborative exploration with deliberately narrow claims.
+49. As a reviewer, I want a concise quality receipt backed by inspectable evidence so that I can trust ordinary delivery and expand detail when risk or governance requires it.
+50. As a stakeholder using GitHub, I want release and phase context at the operational surface so that I do not need hidden documentation knowledge to interpret project state.
 
 ## Implementation Decisions
 
@@ -125,6 +136,11 @@ The product ships as three layers from its first usable release:
   research produces durable human-owned records without silently establishing decisions.
 - Native GitHub Milestones are finite release manifests; Horizon remains rolling feature
   intent, and aggregate release issues own S.M.A.R.T. readiness and publication.
+- The Codex Starter Kit `1.0.0` outcome is the complete Phase 0–6 contract governed by
+  DEC-0016; Phase completion alone never triggers publication.
+- Every managed project applies the professional engineering baseline from DEC-0017.
+  Operating profiles may add assurance and change interaction or evidence presentation,
+  but they are not implementation-quality tiers.
 - The default delivery flow is Ready issue, issue branch, PR, gates, squash merge.
 - Version and release adapters are selected from project outputs and policy.
 - Linux, macOS, and Windows are native first-release targets.
@@ -151,6 +167,12 @@ The product ships as three layers from its first usable release:
   partial failure, rate limits, and reconciliation.
 - End-to-end tracer tests cover empty create, existing retrofit, Ready issue delivery,
   release evidence, offline verification, and managed upgrade.
+- Baseline-quality tests cover applicable coding standards, security and secret exposure,
+  complete user and accessibility flows, failure and recovery, documentation/help, and
+  acceptance against the original request; skipped concerns require an explicit
+  `not-applicable` result and rationale.
+- Delegated and collaborative fixtures with the same project facts produce equivalent
+  control results even when their human interaction and evidence presentation differ.
 - Sensitive-data boundary tests cover all three declaration values, concise ordinary
   flow, notice acknowledgment, absent-route `needs-review`/`unsupported` states, and no
   silent tool activation or transmission.
@@ -165,6 +187,10 @@ The product ships as three layers from its first usable release:
 - Supported platform suites produce equivalent semantic results.
 - GitHub Project drift is detected and reconciled without losing field assignments.
 - Policy upgrades identify every changed obligation and invalidated evidence item.
+- Near-one-shot work produces the same applicable professional-baseline results as
+  collaborative work and a concise receipt that links every non-pass or limitation.
+- No supported deliverable passes solely because its basic function executes while
+  applicable security, user experience, testing, or documentation evidence is absent.
 
 ## Out of Scope
 
@@ -184,7 +210,8 @@ The product ships as three layers from its first usable release:
 
 This PRD specifies outcomes and interfaces independently of the selected implementation
 language. DEC-0015 selects Go for the engine behind the language-neutral lifecycle seam;
-engine packaging details, signing infrastructure, registry hosting, minimum OS/client
+DEC-0016 now requires signed and attested public `1.0.0` artifacts, while the signing
+identity, protected-key implementation, registry hosting, exact minimum OS/client
 versions, verified sensitive-data routes, and regulatory packs still require architecture
 issues with evidence-backed tool selection and qualified review. The detailed
 sensitive-data and AI/tool execution boundary is tracked as Later work in

@@ -61,12 +61,16 @@ security, regulatory, testing, documentation, or delivery discipline.
 
 - Build the right system without having to remember every engineering obligation.
 - Trust that AI work is safe, complete, explainable, and evidence-backed.
+- Delegate a small or personal project without accepting lower code, security, testing,
+  documentation, or user-experience quality.
 - Preserve project knowledge so future people and AIs can continue without rediscovery.
 - Scale from solo work to a team or regulated environment without replacing the workflow.
 
 **Desired outcomes:**
 
 - Move coherently from idea or existing code to planned, executable, verified work.
+- Choose concise delegated delivery or detailed collaboration independently from the
+  assurance the project requires.
 - See what applies, what passed, what failed, what remains unknown, and what needs a human.
 - Receive useful tool/upgrade options they did not know to ask for.
 - Communicate progress and decisions to technical and nontechnical audiences.
@@ -80,19 +84,22 @@ desktop OS, online or offline, and simultaneously acting as developer, product o
 reviewer, and operator.
 
 **Risks and concerns:** False confidence, leaked credentials, missing tests or obligations,
-AI shortcuts, process theater, excessive ceremony, lost decisions, unsafe upgrades, and
+AI shortcuts, insecure code that merely appears functional, minimally implemented user
+interfaces, process theater, excessive ceremony, lost decisions, unsafe upgrades, and
 being locked into tools they cannot evaluate.
 
 **Authority:** Approves product direction, ordinary implementation plans, tools, and
 project risks unless policy requires independent or qualified approval.
 
 **Information and communication:** Lead with outcome, impact, choices, recommendation,
-coverage, and required action. Keep implementation machinery behind progressive detail.
+coverage, quality receipt, and required action. Keep implementation machinery behind
+progressive detail unless the selected evidence presentation calls for the full package.
 
 **Permissions mapping:** Repository owner/maintainer; may hold multiple operational roles.
 
 **Evidence and owner:** Discovery decisions D1–D15, including the D1 sensitive-data
-assurance amendment; maintained by the project owner.
+assurance amendment, and issue #23's professional-baseline clarification; maintained by
+the project owner.
 
 **Anti-assumptions:** Solo does not mean hobby, low risk, unregulated, technically novice,
 or authorized to self-approve every control.

@@ -20,3 +20,5 @@
 | D13 | [DEC-0013](DEC-0013-question-and-research-work.md) | Governed question and research work with durable promotion |
 | D14 | [DEC-0014](DEC-0014-finite-release-targets.md) | Finite release targets beside the rolling Horizon roadmap |
 | D15 | [DEC-0015](DEC-0015-lifecycle-engine-toolchain.md) | Go engine implementation behind a language-neutral lifecycle contract |
+| Issue #23 | [DEC-0016](DEC-0016-starter-kit-1-0-outcome.md) | Codex Starter Kit 1.0.0 outcome, qualification, authority, and membership |
+| Issue #23 | [DEC-0017](DEC-0017-professional-engineering-baseline.md) | Universal professional engineering baseline with variable ceremony |

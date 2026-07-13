@@ -11,6 +11,10 @@ Build tracer-bullet vertical slices through the lifecycle engine seam. Each phas
 must be usable and testable end to end; avoid building all policy, all templates, or all
 adapters horizontally before proving the contract.
 
+Every slice applies the professional engineering baseline from DEC-0017. Engagement and
+evidence presentation may be concise, but project size or delegated execution never
+reduces applicable code, security, user-experience, testing, or documentation quality.
+
 ## Phase 0 — Repository and Governance Foundation
 
 Outcome: this kit repository follows the rules it will ship.
@@ -104,8 +108,15 @@ Outcome: at least three different project outputs release through one contract.
   release adapters as representative variants.
 - Produce GitHub Release/tag, version transaction, provenance, evidence, and Project/
   milestone synchronization.
-- Add signing/SBOM/attestation adapter triggers.
-- Test partial publication, rollback, rerun, and emergency release paths.
+- Add signing/SBOM/attestation adapters, including public Windows Authenticode and macOS
+  signing/notarization for the Starter Kit's stable release.
+- Build immutable application, library, infrastructure, data, and documentation
+  qualification snapshots plus changing canary intake.
+- Run isolated greenfield, retrofit/GitHub, and Claude-kit migration pilots with bounded
+  setup, evidence export, failure retention, and verified cleanup.
+- Test partial publication, candidate invalidation, rollback, cancellation/failure
+  retention, scheduled cleanup, idempotent rerun, insufficient cleanup authority, partial
+  deletion, evidence survival, cleanup failure, and emergency release paths.
 
 ## Phase 7 — Verified Sensitive-Data and Regulatory Coverage
 
@@ -146,6 +157,7 @@ Every phase requires:
 - policy/control IDs and breadcrumb validation;
 - upgrade/migration implications;
 - human conformance summary and machine evidence manifest;
+- a concise quality receipt backed by applicable professional-baseline evidence;
 - no unresolved prohibited exception or false-pass state.
 
 ## Immediate Investigation Issues
