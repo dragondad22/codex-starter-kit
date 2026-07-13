@@ -103,7 +103,7 @@ func TestApplyCreatePlanProducesManagedRepository(t *testing.T) {
 	if manifest.Self.Path != ".starter-kit/managed-files.json" || manifest.Self.Ownership != "managed" || manifest.Self.Source == "" {
 		t.Fatalf("manifest does not classify itself: %#v", manifest.Self)
 	}
-	eventContent, err := os.ReadFile(filepath.Join(repository, filepath.FromSlash(plan.ResultPath)))
+	eventContent, err := os.ReadFile(filepath.Join(repository, filepath.FromSlash(plan.Result.Path)))
 	if err != nil {
 		t.Fatalf("read apply event: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestCreateAfterApplyReturnsExplicitNoChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply no-change plan: %v", err)
 	}
-	if result.Status != engine.ApplyStatusNoChange || len(result.ChangedFiles) != 0 {
+	if result.Status != engine.ApplyStatusNoChange || len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != unchanged.Result.Path {
 		t.Fatalf("unexpected no-change result: %#v", result)
 	}
 }
@@ -323,6 +323,35 @@ func TestApplyRejectsRepositoryChangedAfterPlanning(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsIndexOnlyGitChangeWithSameFilesystemSnapshot(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	path := filepath.Join(repository, "README.md")
+	if err := os.WriteFile(path, []byte("staged only\n"), 0o644); err != nil {
+		t.Fatalf("write index fixture: %v", err)
+	}
+	command := exec.Command("git", "-C", repository, "add", "README.md")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("stage index fixture: %v: %s", err, output)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("restore empty worktree: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "precondition" {
+		t.Fatalf("unexpected Git precondition failure: %#v, %v", failure, err)
+	}
+	if result.Status != engine.ApplyStatusFailed {
+		t.Fatalf("Git precondition result = %#v", result)
+	}
+}
+
 func TestApplyAcquiresLifecycleLockBeforePreconditionRecheck(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -330,7 +359,7 @@ func TestApplyAcquiresLifecycleLockBeforePreconditionRecheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(repository, ".starter-kit.lock"), []byte("held\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(repository, ".git", "starter-kit.lock"), []byte("held\n"), 0o600); err != nil {
 		t.Fatalf("create held lock: %v", err)
 	}
 
@@ -379,6 +408,28 @@ func TestApplyRejectsSelfConsistentPlanPathOutsideRepository(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsSelfConsistentUnsupportedPlanContracts(t *testing.T) {
+	tests := map[string]func(*engine.Plan){
+		"schema":    func(plan *engine.Plan) { plan.SchemaVersion = 2 },
+		"operation": func(plan *engine.Plan) { plan.Operation = engine.Operation("upgrade") },
+		"approval":  func(plan *engine.Plan) { plan.Approval.BriefApproved = false },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			repository := newGitRepository(t)
+			plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			mutate(&plan)
+			plan.ID = identifyPlan(t, plan)
+			if _, err := engine.New().Apply(t.Context(), plan.ID, plan); err == nil {
+				t.Fatal("apply accepted unsupported self-consistent plan contract")
+			}
+		})
+	}
+}
+
 func TestApplyRollsBackWhenManagedContractPostconditionFails(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -403,8 +454,8 @@ func TestApplyRollsBackWhenManagedContractPostconditionFails(t *testing.T) {
 	if !errors.As(err, &failure) || !failure.Recoverable || failure.Stage != "postcondition" {
 		t.Fatalf("unexpected apply failure: %#v, %v", failure, err)
 	}
-	if result.Status != engine.ApplyStatusFailed || len(result.ChangedFiles) != 0 {
-		t.Fatalf("rollback result must report no retained changes: %#v", result)
+	if result.Status != engine.ApplyStatusFailed || len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != plan.Result.Path {
+		t.Fatalf("rollback result must report only retained failure evidence: %#v", result)
 	}
 	for _, path := range []string{"AGENTS.md", ".starter-kit/state.json"} {
 		if _, statErr := os.Stat(filepath.Join(repository, filepath.FromSlash(path))); !os.IsNotExist(statErr) {

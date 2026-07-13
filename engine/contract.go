@@ -103,6 +103,27 @@ func validateManagedContract(root string) (bool, []string) {
 			problems = append(problems, "state does not describe a supported managed lifecycle")
 		}
 	}
+	eventPaths, eventGlobErr := filepath.Glob(filepath.Join(starterPath, "events", "*.json"))
+	if eventGlobErr != nil {
+		problems = append(problems, fmt.Sprintf("enumerate operation events: %v", eventGlobErr))
+	}
+	for _, eventPath := range eventPaths {
+		eventContent, readErr := os.ReadFile(eventPath)
+		if readErr != nil {
+			problems = append(problems, fmt.Sprintf("read operation event: %v", readErr))
+			continue
+		}
+		var event operationEvent
+		if err := json.Unmarshal(eventContent, &event); err != nil {
+			problems = append(problems, fmt.Sprintf("parse operation event: %v", err))
+			continue
+		}
+		recordedDigest := event.EventDigest
+		event.EventDigest = ""
+		if event.SchemaVersion != 1 || event.Ownership != "machine-evidence" || event.Source == "" || event.PlanID == "" || event.Operation == "" || event.Status == "" || recordedDigest == "" || digestJSON(event) != recordedDigest {
+			problems = append(problems, fmt.Sprintf("operation event lacks required provenance: %s", filepath.Base(eventPath)))
+		}
+	}
 	sort.Strings(problems)
 	return true, problems
 }

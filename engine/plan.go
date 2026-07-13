@@ -31,7 +31,7 @@ type Plan struct {
 	Files            []PlannedFile  `json:"files"`
 	NoChange         bool           `json:"no_change"`
 	Approval         CreateApproval `json:"approval"`
-	ResultPath       string         `json:"result_path"`
+	Result           PlannedResult  `json:"result"`
 }
 
 // CreateRequest contains the human-owned inputs and confirmations needed to plan create.
@@ -53,6 +53,13 @@ type CreateApproval struct {
 	BriefDigest           string `json:"brief_digest"`
 	BriefApproved         bool   `json:"brief_approved"`
 	OwnerPersonaConfirmed bool   `json:"owner_persona_confirmed"`
+}
+
+// PlannedResult declares the ownership and destination of operation-result evidence.
+type PlannedResult struct {
+	Path      string `json:"path"`
+	Ownership string `json:"ownership"`
+	Source    string `json:"source"`
 }
 
 // PlannedFile describes one file mutation without executing it.
@@ -109,7 +116,11 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 			BriefApproved:         request.Create.BriefApproved,
 			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
 		},
-		ResultPath: operationEventPath(request.Operation, inspection.PreconditionDigest),
+		Result: PlannedResult{
+			Path:      operationEventPath(request.Operation, inspection.PreconditionDigest),
+			Ownership: "machine-evidence",
+			Source:    "engine:apply:v1",
+		},
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
@@ -138,7 +149,11 @@ func noChangePlan(inspection Inspection, request PlanRequest) (Plan, error) {
 			BriefApproved:         request.Create.BriefApproved,
 			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
 		},
-		ResultPath: operationEventPath(request.Operation, inspection.PreconditionDigest),
+		Result: PlannedResult{
+			Path:      operationEventPath(request.Operation, inspection.PreconditionDigest),
+			Ownership: "machine-evidence",
+			Source:    "engine:apply:v1",
+		},
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil

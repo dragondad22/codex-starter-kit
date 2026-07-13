@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -67,6 +68,12 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if digestJSON(planWithBlankID(plan)) != plan.ID {
 		return ApplyResult{}, errors.New("plan content does not match its identifier")
 	}
+	if plan.SchemaVersion != 1 || plan.Operation != CreateOperation {
+		return ApplyResult{}, errors.New("plan schema version or operation is unsupported")
+	}
+	if !plan.Approval.BriefApproved || !plan.Approval.OwnerPersonaConfirmed || plan.Approval.BriefDigest == "" {
+		return ApplyResult{}, errors.New("plan lacks required brief or persona approval evidence")
+	}
 	root, err := cleanRepositoryRoot(plan.Repository)
 	if err != nil {
 		return ApplyResult{}, err
@@ -77,10 +84,13 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if err := validatePlanFiles(root, plan.Files); err != nil {
 		return ApplyResult{}, err
 	}
-	if err := validateRelativePath(root, plan.ResultPath); err != nil || !strings.HasPrefix(plan.ResultPath, ".starter-kit/events/") {
+	if err := validateRelativePath(root, plan.Result.Path); err != nil || !strings.HasPrefix(plan.Result.Path, ".starter-kit/events/") || plan.Result.Ownership != "machine-evidence" || plan.Result.Source == "" {
 		return ApplyResult{}, errors.New("plan result path is not a valid engine event path")
 	}
-	lockPath := filepath.Join(root, ".starter-kit.lock")
+	lockPath, err := lifecycleLockPath(ctx, root)
+	if err != nil {
+		return ApplyResult{}, err
+	}
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
@@ -92,81 +102,130 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 
 	inspection, err := e.Inspect(ctx, plan.Repository)
 	if err != nil {
-		return ApplyResult{}, err
+		return failAndRecord(root, plan, "precondition", []string{}, true, err)
 	}
 	if inspection.PreconditionDigest != plan.RepositoryDigest {
-		return ApplyResult{}, errors.New("repository changed after the plan was created")
+		return failAndRecord(root, plan, "precondition", []string{}, true, errors.New("repository changed after the plan was created"))
 	}
 	if plan.NoChange {
 		if !inspection.Managed || len(plan.Files) != 0 {
-			return ApplyResult{}, errors.New("no-change plan requires a valid unchanged managed repository")
+			return failAndRecord(root, plan, "precondition", []string{}, true, errors.New("no-change plan requires a valid unchanged managed repository"))
 		}
-		return ApplyResult{1, plan.ID, ApplyStatusNoChange, []string{}}, nil
+		result := ApplyResult{1, plan.ID, ApplyStatusNoChange, []string{plan.Result.Path}}
+		if err := recordApplyEvent(root, plan, result, nil); err != nil {
+			return failAndRecord(root, plan, "record-result", []string{}, true, err)
+		}
+		return result, nil
 	}
 	stageRoot, err := os.MkdirTemp(root, ".starter-kit-stage-")
 	if err != nil {
-		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
-			Stage: "stage", Recoverable: true, Cause: err.Error(), ChangedFiles: []string{},
-		}
+		return failAndRecord(root, plan, "stage", []string{}, true, err)
 	}
 	defer os.RemoveAll(stageRoot)
 	for _, planned := range plan.Files {
 		staged := filepath.Join(stageRoot, filepath.FromSlash(planned.Path))
 		if err := os.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
-			return failedApply(plan.ID, "stage", []string{}, err)
+			return failAndRecord(root, plan, "stage", []string{}, true, err)
 		}
 		if err := os.WriteFile(staged, []byte(planned.Content), 0o644); err != nil {
-			return failedApply(plan.ID, "stage", []string{}, err)
+			return failAndRecord(root, plan, "stage", []string{}, true, err)
 		}
 		content, err := os.ReadFile(staged)
 		if err != nil || digestBytes(content) != planned.Digest {
 			if err == nil {
 				err = errors.New("staged content digest mismatch")
 			}
-			return failedApply(plan.ID, "stage-verify", []string{}, err)
+			return failAndRecord(root, plan, "stage-verify", []string{}, true, err)
 		}
 	}
 
-	changed := make([]string, 0, len(plan.Files))
-	for _, planned := range stateLast(plan.Files) {
+	result := ApplyResult{1, plan.ID, ApplyStatusApplied, commitPaths(plan)}
+	eventFile := plannedEventFile(plan, result, nil)
+	stagedEvent := filepath.Join(stageRoot, filepath.FromSlash(eventFile.Path))
+	if err := os.MkdirAll(filepath.Dir(stagedEvent), 0o755); err != nil {
+		return failAndRecord(root, plan, "stage-result", []string{}, true, err)
+	}
+	if err := os.WriteFile(stagedEvent, []byte(eventFile.Content), 0o644); err != nil {
+		return failAndRecord(root, plan, "stage-result", []string{}, true, err)
+	}
+
+	changed := make([]string, 0, len(result.ChangedFiles))
+	for _, planned := range commitFiles(plan.Files, eventFile) {
 		if err := ensureNoSymlinkParents(root, planned.Path); err != nil {
-			return failedCommittedApply(root, plan.ID, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, err)
 		}
 		target := filepath.Join(root, filepath.FromSlash(planned.Path))
 		if fileExists(target) {
-			return failedCommittedApply(root, plan.ID, "commit", changed, fmt.Errorf("refusing to overwrite existing file: %s", planned.Path))
+			return failedCommittedApply(root, plan, "commit", changed, fmt.Errorf("refusing to overwrite existing file: %s", planned.Path))
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return failedCommittedApply(root, plan.ID, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, err)
 		}
 		staged := filepath.Join(stageRoot, filepath.FromSlash(planned.Path))
 		if err := os.Rename(staged, target); err != nil {
-			return failedCommittedApply(root, plan.ID, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, err)
 		}
 		changed = append(changed, planned.Path)
 	}
 	contractPresent, problems := validateManagedContract(root)
 	if !contractPresent || len(problems) != 0 {
-		return failedCommittedApply(root, plan.ID, "postcondition", changed, fmt.Errorf("invalid managed contract: %v", problems))
-	}
-	result := ApplyResult{1, plan.ID, ApplyStatusApplied, changed}
-	if err := recordApplyEvent(root, plan, result); err != nil {
-		return failedCommittedApply(root, plan.ID, "record-result", changed, err)
+		return failedCommittedApply(root, plan, "postcondition", changed, fmt.Errorf("invalid managed contract: %v", problems))
 	}
 	return result, nil
 }
 
-func recordApplyEvent(root string, plan Plan, result ApplyResult) error {
-	event := struct {
-		SchemaVersion    int         `json:"schema_version"`
-		PlanID           string      `json:"plan_id"`
-		Operation        Operation   `json:"operation"`
-		Status           ApplyStatus `json:"status"`
-		RepositoryDigest string      `json:"repository_digest"`
-		ChangedFiles     []string    `json:"changed_files"`
-	}{1, plan.ID, plan.Operation, result.Status, plan.RepositoryDigest, result.ChangedFiles}
-	content := []byte(jsonDocument(event))
-	target := filepath.Join(root, filepath.FromSlash(plan.ResultPath))
+func lifecycleLockPath(ctx context.Context, root string) (string, error) {
+	command := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--absolute-git-dir")
+	output, err := command.Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve Git directory for lifecycle lock: %w", err)
+	}
+	gitDirectory := strings.TrimSpace(string(output))
+	if gitDirectory == "" || !filepath.IsAbs(gitDirectory) {
+		return "", errors.New("Git returned a non-absolute lifecycle lock directory")
+	}
+	return filepath.Join(gitDirectory, "starter-kit.lock"), nil
+}
+
+type operationEvent struct {
+	SchemaVersion    int         `json:"schema_version"`
+	Ownership        string      `json:"ownership"`
+	Source           string      `json:"source"`
+	PlanID           string      `json:"plan_id"`
+	Operation        Operation   `json:"operation"`
+	Status           ApplyStatus `json:"status"`
+	RepositoryDigest string      `json:"repository_digest"`
+	ChangedFiles     []string    `json:"changed_files"`
+	Error            string      `json:"error,omitempty"`
+	Recoverable      bool        `json:"recoverable"`
+	EventDigest      string      `json:"event_digest"`
+}
+
+func plannedEventFile(plan Plan, result ApplyResult, applyErr error) PlannedFile {
+	event := operationEvent{
+		SchemaVersion: 1, Ownership: plan.Result.Ownership, Source: plan.Result.Source,
+		PlanID: plan.ID, Operation: plan.Operation, Status: result.Status,
+		RepositoryDigest: plan.RepositoryDigest, ChangedFiles: result.ChangedFiles,
+	}
+	var failure *ApplyFailure
+	if errors.As(applyErr, &failure) {
+		event.Error = failure.Cause
+		event.Recoverable = failure.Recoverable
+	} else if applyErr != nil {
+		event.Error = applyErr.Error()
+	}
+	event.EventDigest = digestJSON(event)
+	content := jsonDocument(event)
+	return PlannedFile{
+		Path: plan.Result.Path, Ownership: plan.Result.Ownership, Source: plan.Result.Source,
+		Digest: digestBytes([]byte(content)), Content: content,
+	}
+}
+
+func recordApplyEvent(root string, plan Plan, result ApplyResult, applyErr error) error {
+	eventFile := plannedEventFile(plan, result, applyErr)
+	content := []byte(eventFile.Content)
+	target := filepath.Join(root, filepath.FromSlash(eventFile.Path))
 	if existing, err := os.ReadFile(target); err == nil {
 		if string(existing) == string(content) {
 			return nil
@@ -175,7 +234,7 @@ func recordApplyEvent(root string, plan Plan, result ApplyResult) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := ensureNoSymlinkParents(root, plan.ResultPath); err != nil {
+	if err := ensureNoSymlinkParents(root, plan.Result.Path); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -204,6 +263,34 @@ func recordApplyEvent(root string, plan Plan, result ApplyResult) error {
 		return err
 	}
 	return os.Rename(temporaryPath, target)
+}
+
+func commitFiles(files []PlannedFile, event PlannedFile) []PlannedFile {
+	ordered := make([]PlannedFile, 0, len(files)+1)
+	var state *PlannedFile
+	for _, file := range files {
+		if file.Path == ".starter-kit/state.json" {
+			copy := file
+			state = &copy
+			continue
+		}
+		ordered = append(ordered, file)
+	}
+	ordered = append(ordered, event)
+	if state != nil {
+		ordered = append(ordered, *state)
+	}
+	return ordered
+}
+
+func commitPaths(plan Plan) []string {
+	event := PlannedFile{Path: plan.Result.Path}
+	files := commitFiles(plan.Files, event)
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	return paths
 }
 
 func validatePlanFiles(root string, files []PlannedFile) error {
@@ -266,40 +353,28 @@ func removeEmptyParents(root, directory string) {
 	}
 }
 
-func failedApply(planID, stage string, changed []string, err error) (ApplyResult, error) {
-	result := ApplyResult{1, planID, ApplyStatusFailed, append([]string{}, changed...)}
-	return result, &ApplyFailure{
-		Stage: stage, Recoverable: true, Cause: err.Error(), ChangedFiles: append([]string{}, changed...),
+func failAndRecord(root string, plan Plan, stage string, changed []string, recoverable bool, err error) (ApplyResult, error) {
+	retained := append([]string{}, changed...)
+	retained = append(retained, plan.Result.Path)
+	result := ApplyResult{1, plan.ID, ApplyStatusFailed, retained}
+	failure := &ApplyFailure{
+		Stage: stage, Recoverable: recoverable, Cause: err.Error(),
+		ChangedFiles: append([]string{}, retained...),
 	}
+	if eventErr := recordApplyEvent(root, plan, result, failure); eventErr != nil {
+		result.ChangedFiles = append([]string{}, changed...)
+		failure.ChangedFiles = append([]string{}, changed...)
+		failure.Recoverable = false
+		failure.Cause = fmt.Sprintf("%s; recording failure event failed: %v", failure.Cause, eventErr)
+	}
+	return result, failure
 }
 
-func failedCommittedApply(root, planID, stage string, changed []string, err error) (ApplyResult, error) {
+func failedCommittedApply(root string, plan Plan, stage string, changed []string, err error) (ApplyResult, error) {
 	if rollbackErr := rollbackFiles(root, changed); rollbackErr != nil {
-		result := ApplyResult{1, planID, ApplyStatusFailed, append([]string{}, changed...)}
-		return result, &ApplyFailure{
-			Stage: stage, Recoverable: false,
-			Cause:        fmt.Sprintf("%v; rollback failed: %v", err, rollbackErr),
-			ChangedFiles: append([]string{}, changed...),
-		}
+		return failAndRecord(root, plan, stage, changed, false, fmt.Errorf("%v; rollback failed: %v", err, rollbackErr))
 	}
-	return failedApply(planID, stage, []string{}, err)
-}
-
-func stateLast(files []PlannedFile) []PlannedFile {
-	ordered := make([]PlannedFile, 0, len(files))
-	var state *PlannedFile
-	for _, file := range files {
-		if file.Path == ".starter-kit/state.json" {
-			copy := file
-			state = &copy
-			continue
-		}
-		ordered = append(ordered, file)
-	}
-	if state != nil {
-		ordered = append(ordered, *state)
-	}
-	return ordered
+	return failAndRecord(root, plan, stage, []string{}, true, err)
 }
 
 // Status reports lifecycle state from the authoritative local state document.

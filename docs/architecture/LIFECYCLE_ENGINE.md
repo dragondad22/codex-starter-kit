@@ -38,10 +38,14 @@ Every document/result includes `schema_version: 1`. Plan identity is the SHA-256
 of its canonical Go-encoded JSON with an empty `plan_id`; file digests are SHA-256. Plans
 contain content-based repository and Git precondition digests, proposed paths, ownership,
 provenance source, content, content digest, and the approved-input digests/confirmations.
-Plans also declare the reserved `.starter-kit/events/` result path. A successful mutation
-atomically records its plan ID, operation, status, repository digest, and changed paths
-there before returning success. Go types are not durable authority: compatibility is
-defined by observable JSON fields and black-box behavior through the engine seam.
+Plans also declare the reserved `.starter-kit/events/` machine-evidence path with
+ownership and source. A successful mutation stages its plan ID, operation, status,
+repository digest, and changed paths with the other files and commits that event before
+authoritative state. Failed accepted applies record the same structured failure evidence;
+no-change applies record their evaluation event. This is a state-last recoverable baseline,
+not a claim of crash-safe atomicity; #29 owns interruption recovery. Go types are not
+durable authority: compatibility is defined by observable JSON fields and black-box
+behavior through the engine seam.
 
 Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
 `docs/` and are never silently replaced. Generated views identify their role through the
@@ -55,7 +59,7 @@ managed-file manifest.
 | `.starter-kit/managed-files.json` | managed | Ownership, provenance digest, and path manifest |
 | `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
-| `.starter-kit/events/*.json` | generated | Structured immutable mutation-result events |
+| `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
 | `AGENTS.md` | generated | Concise repository orientation and routes |
 | `docs/product/BRIEF.md` | human-owned | Approved seed project brief |
 | `docs/product/PERSONAS.md` | human-owned | Confirmed seed persona registry |

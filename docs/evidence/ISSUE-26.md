@@ -13,9 +13,10 @@ the owner persona, retains its SHA-256 plan identifier, and supplies both to app
 rechecks identity and content/Git preconditions, constrains paths, stages and verifies
 content, locks the lifecycle, refuses existing targets, writes authoritative state last,
 validates the complete contract, rolls back failed commits where possible, and returns a
-structured result. Successful mutation results are also recorded under the plan-declared
-`.starter-kit/events/` path. Only a valid unchanged managed repository with the same
-approved inputs produces `no_change`.
+structured result. Accepted successful, failed, and no-change apply results are recorded
+as self-describing machine evidence under the plan-declared `.starter-kit/events/` path;
+successful event evidence is staged and committed before authoritative state. Only a valid
+unchanged managed repository with the same approved inputs produces `no_change`.
 
 The created repository separates managed machine state, generated projections, and
 human-owned records. It includes stable routes, ownership/provenance digests, a concise
