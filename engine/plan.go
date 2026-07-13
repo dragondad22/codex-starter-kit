@@ -72,6 +72,20 @@ type PlannedFile struct {
 	Content   string `json:"content"`
 }
 
+var createFileOwnershipV1 = map[string]string{
+	".starter-kit/layout.json":        "managed",
+	".starter-kit/managed-files.json": "managed",
+	".starter-kit/policy-lock.json":   "managed",
+	".starter-kit/project.json":       "managed",
+	".starter-kit/routes.json":        "generated",
+	".starter-kit/state.json":         "managed",
+	"AGENTS.md":                       "generated",
+	"docs/decisions/INDEX.md":         "human-owned",
+	"docs/evidence/CONFORMANCE.md":    "generated",
+	"docs/product/BRIEF.md":           "human-owned",
+	"docs/product/PERSONAS.md":        "human-owned",
+}
+
 // Create composes the create operation into a reviewable plan.
 func (e *Engine) Create(ctx context.Context, request CreateRequest) (Plan, error) {
 	return e.Plan(ctx, PlanRequest{Operation: CreateOperation, Create: request})
@@ -84,6 +98,9 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	}
 	if request.Create.Brief == "" || !request.Create.BriefApproved || !request.Create.OwnerPersonaConfirmed {
 		return Plan{}, errors.New("create requires an approved brief and confirmed owner persona")
+	}
+	if containsSensitiveText(request.Create.Brief) {
+		return Plan{}, errors.New("create brief contains sensitive-looking content that cannot enter a plan")
 	}
 	inspection, err := e.Inspect(ctx, request.Create.Repository)
 	if err != nil {
@@ -102,8 +119,8 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	if inspection.ContractPresent {
 		return Plan{}, fmt.Errorf("managed-repository contract is invalid: %v", inspection.Problems)
 	}
-	if inspection.UserFileCount != 0 {
-		return Plan{}, fmt.Errorf("create requires an empty repository; found %d user files", inspection.UserFileCount)
+	if inspection.UserFileCount != 0 || inspection.UserDirectoryCount != 0 {
+		return Plan{}, fmt.Errorf("create requires an empty repository; found %d user files and %d user directories", inspection.UserFileCount, inspection.UserDirectoryCount)
 	}
 
 	plan := Plan{
@@ -306,4 +323,12 @@ func digestJSON(value interface{}) string {
 func digestBytes(value []byte) string {
 	digest := sha256.Sum256(value)
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func validSHA256Digest(value string) bool {
+	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil && len(decoded) == sha256.Size
 }

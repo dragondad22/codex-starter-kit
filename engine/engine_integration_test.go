@@ -24,8 +24,12 @@ func TestInspectEmptyGitRepository(t *testing.T) {
 		t.Fatalf("inspect empty Git repository: %v", err)
 	}
 
-	if result.Repository != filepath.Clean(repository) {
-		t.Fatalf("repository = %q, want %q", result.Repository, filepath.Clean(repository))
+	canonicalRepository, err := filepath.EvalSymlinks(repository)
+	if err != nil {
+		t.Fatalf("canonicalize repository fixture: %v", err)
+	}
+	if result.Repository != filepath.Clean(canonicalRepository) {
+		t.Fatalf("repository = %q, want canonical %q", result.Repository, filepath.Clean(canonicalRepository))
 	}
 	if !result.Git {
 		t.Fatal("expected repository to be detected as Git")
@@ -35,6 +39,50 @@ func TestInspectEmptyGitRepository(t *testing.T) {
 	}
 	if result.UserFileCount != 0 {
 		t.Fatalf("user file count = %d, want 0", result.UserFileCount)
+	}
+}
+
+func TestLifecycleGitExecutionTreatsRepositoryMetacharactersAsOneArgument(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "injected.txt")
+	repository := filepath.Join(root, "repo;touch injected.txt")
+	if err := os.Mkdir(repository, 0o755); err != nil {
+		t.Fatalf("create repository path: %v", err)
+	}
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize Git repository: %v: %s", err, output)
+	}
+
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan for metacharacter path: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan for metacharacter path: %v", err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("repository path was interpreted as a shell command: %v", err)
+	}
+}
+
+func TestLifecycleGitExecutionIgnoresHostileGitEnvironmentOverrides(t *testing.T) {
+	repository := newGitRepository(t)
+	outside := newGitRepository(t)
+	if err := os.WriteFile(filepath.Join(outside, ".git", "starter-kit.lock"), []byte("outside lock\n"), 0o600); err != nil {
+		t.Fatalf("create hostile external lock: %v", err)
+	}
+	t.Setenv("GIT_DIR", filepath.Join(outside, ".git"))
+	t.Setenv("GIT_WORK_TREE", outside)
+
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan with hostile Git environment: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("hostile Git environment redirected lifecycle execution: %v", err)
 	}
 }
 
@@ -186,6 +234,39 @@ func TestCreateRequiresExplicitHumanOwnedApprovals(t *testing.T) {
 	}
 }
 
+func TestCreateRejectsFixtureSecretWithoutEchoingItIntoDiagnostics(t *testing.T) {
+	repository := newGitRepository(t)
+	secret := "ghp_12345678901234567890"
+	request := approvedCreate(repository)
+	request.Brief = "Create a repository with token " + secret
+
+	_, err := engine.New().Create(t.Context(), request)
+	if err == nil {
+		t.Fatal("create accepted fixture secret into a reviewable plan")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("create diagnostic exposed fixture secret: %v", err)
+	}
+}
+
+func TestCreateRejectsSecretBearingRepositoryPathWithoutEchoingIt(t *testing.T) {
+	secret := "ghp_12345678901234567890"
+	repository := filepath.Join(t.TempDir(), "repository-"+secret)
+	if err := os.Mkdir(repository, 0o755); err != nil {
+		t.Fatalf("create secret-bearing repository path: %v", err)
+	}
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize Git repository: %v: %s", err, output)
+	}
+
+	if _, err := engine.New().Create(t.Context(), approvedCreate(repository)); err == nil {
+		t.Fatal("create accepted a secret-bearing repository path into a plan")
+	} else if strings.Contains(err.Error(), secret) {
+		t.Fatalf("repository-path diagnostic exposed fixture secret: %v", err)
+	}
+}
+
 func TestCreateAfterApplyReturnsExplicitNoChange(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -302,6 +383,144 @@ func TestManifestCannotHideADeletedRequiredArtifact(t *testing.T) {
 	}
 	if status.Lifecycle != engine.LifecycleManagedDegraded {
 		t.Fatalf("altered manifest hid required artifact: %#v", status)
+	}
+}
+
+func TestStatusFailsClosedForSelfConsistentAdversarialManagedState(t *testing.T) {
+	tests := map[string]func(*testing.T, string){
+		"layout escape": func(t *testing.T, repository string) {
+			rewriteManagedFile(t, repository, ".starter-kit/layout.json", `{"schema_version":1,"roles":{"decisions":"../outside","evidence":"docs/evidence","product":"docs/product"}}`+"\n")
+		},
+		"missing routes": func(t *testing.T, repository string) {
+			rewriteManagedFile(t, repository, ".starter-kit/routes.json", `{"schema_version":1,"routes":{}}`+"\n")
+		},
+		"unsupported engine state": func(t *testing.T, repository string) {
+			rewriteManagedFile(t, repository, ".starter-kit/state.json", `{"schema_version":1,"lifecycle":"managed","engine_version":"untrusted"}`+"\n")
+		},
+		"forged ownership": func(t *testing.T, repository string) {
+			manifestPath := filepath.Join(repository, ".starter-kit", "managed-files.json")
+			content, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatalf("read manifest: %v", err)
+			}
+			var manifest map[string]interface{}
+			if err := json.Unmarshal(content, &manifest); err != nil {
+				t.Fatalf("decode manifest: %v", err)
+			}
+			for _, raw := range manifest["files"].([]interface{}) {
+				entry := raw.(map[string]interface{})
+				if entry["path"] == "AGENTS.md" {
+					entry["ownership"] = "human-owned"
+				}
+			}
+			encoded, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatalf("encode manifest: %v", err)
+			}
+			if err := os.WriteFile(manifestPath, append(encoded, '\n'), 0o644); err != nil {
+				t.Fatalf("write manifest: %v", err)
+			}
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			repository := newGitRepository(t)
+			lifecycle := engine.New()
+			plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+				t.Fatalf("apply plan: %v", err)
+			}
+			mutate(t, repository)
+
+			status, err := lifecycle.Status(t.Context(), repository)
+			if err != nil {
+				t.Fatalf("status adversarial repository: %v", err)
+			}
+			if status.Lifecycle != engine.LifecycleManagedDegraded || len(status.Problems) == 0 {
+				t.Fatalf("adversarial managed state did not fail closed: %#v", status)
+			}
+		})
+	}
+}
+
+func TestStatusRedactsFixtureSecretFromAdversarialOwnershipData(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	manifestPath := filepath.Join(repository, ".starter-kit", "managed-files.json")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	manifest["files"].([]interface{})[0].(map[string]interface{})["path"] = "../" + secret
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, encoded, 0o644); err != nil {
+		t.Fatalf("write adversarial manifest: %v", err)
+	}
+
+	status, err := lifecycle.Status(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("status adversarial repository: %v", err)
+	}
+	if status.Lifecycle != engine.LifecycleManagedDegraded {
+		t.Fatalf("adversarial manifest did not degrade status: %#v", status)
+	}
+	if strings.Contains(strings.Join(status.Problems, " "), secret) {
+		t.Fatalf("status exposed fixture secret: %#v", status.Problems)
+	}
+}
+
+func TestStatusFailsClosedForSelfConsistentAdversarialProvenance(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	manifestPath := filepath.Join(repository, ".starter-kit", "managed-files.json")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	manifest["files"].([]interface{})[0].(map[string]interface{})["source"] = "attacker:forged:v1"
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, append(encoded, '\n'), 0o644); err != nil {
+		t.Fatalf("write adversarial manifest: %v", err)
+	}
+
+	status, err := lifecycle.Status(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("status adversarial repository: %v", err)
+	}
+	if status.Lifecycle != engine.LifecycleManagedDegraded || len(status.Problems) == 0 {
+		t.Fatalf("forged persisted provenance did not fail closed: %#v", status)
 	}
 }
 
@@ -440,6 +659,262 @@ func TestApplyRejectsSelfConsistentPlanPathOutsideRepository(t *testing.T) {
 	}
 }
 
+func TestApplyDoesNotEchoFixtureSecretFromHostilePlanPath(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	plan.Files[0].Path = "../" + secret + "/escape.txt"
+	plan.ID = identifyPlan(t, plan)
+
+	_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+	if err == nil {
+		t.Fatal("apply accepted hostile secret-bearing path")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("apply diagnostic exposed fixture secret: %v", err)
+	}
+}
+
+func TestApplyRejectsSecretBearingForgedResultPathBeforeManagedEffects(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	plan.Result.Path = ".starter-kit/events/create-" + secret + ".json"
+	plan.ID = identifyPlan(t, plan)
+
+	_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+	if err == nil {
+		t.Fatal("apply accepted a forged secret-bearing result path")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("apply diagnostic exposed fixture secret: %v", err)
+	}
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "validate-plan" || len(failure.ChangedFiles) != 0 {
+		t.Fatalf("forged result path lacks structured pre-transaction failure: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".starter-kit")); !os.IsNotExist(err) {
+		t.Fatalf("rejected result path produced repository effects: %v", err)
+	}
+	evidencePath := filepath.Join(repository, ".git", "starter-kit-attempts", strings.TrimPrefix(plan.ID, "sha256:")+".json")
+	evidence, readErr := os.ReadFile(evidencePath)
+	if readErr != nil {
+		t.Fatalf("read rejected-plan evidence: %v", readErr)
+	}
+	if strings.Contains(string(evidence), secret) || !strings.Contains(string(evidence), `"status": "failed"`) {
+		t.Fatalf("rejected-plan evidence is unsafe or untruthful: %s", evidence)
+	}
+}
+
+func TestApplyRejectsSecretBearingRepositoryDigestBeforeGeneratingEvidence(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	plan.RepositoryDigest = secret
+	plan.Result.Path = ".starter-kit/events/create-" + secret[:16] + ".json"
+	plan.ID = identifyPlan(t, plan)
+
+	_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+	if err == nil {
+		t.Fatal("apply accepted a secret-bearing repository digest")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("apply diagnostic exposed fixture secret: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".starter-kit")); !os.IsNotExist(err) {
+		t.Fatalf("invalid repository digest produced managed effects: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".git", "starter-kit-attempts")); !os.IsNotExist(err) {
+		t.Fatalf("invalid repository digest entered ordinary evidence: %v", err)
+	}
+}
+
+func TestApplyRejectsFixtureSecretInSelfConsistentPlanBeforeStaging(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	plan.Files[0].Content = "token=" + secret + "\n"
+	digest := sha256.Sum256([]byte(plan.Files[0].Content))
+	plan.Files[0].Digest = "sha256:" + hex.EncodeToString(digest[:])
+	plan.ID = identifyPlan(t, plan)
+
+	_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+	if err == nil {
+		t.Fatal("apply accepted fixture secret in a self-consistent plan")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("apply diagnostic exposed fixture secret: %v", err)
+	}
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "validate-plan" || len(failure.ChangedFiles) != 0 {
+		t.Fatalf("fixture secret lacks structured pre-transaction failure: %v", err)
+	}
+}
+
+func TestApplyRejectsUnsafeCrossPlatformPathNamespaceBeforeManagedEffects(t *testing.T) {
+	tests := map[string]func(*engine.Plan){
+		"absolute":            func(plan *engine.Plan) { plan.Files[0].Path = "/escape.txt" },
+		"windows absolute":    func(plan *engine.Plan) { plan.Files[0].Path = "C:/escape.txt" },
+		"unclean":             func(plan *engine.Plan) { plan.Files[0].Path = "docs/../escape.txt" },
+		"empty segment":       func(plan *engine.Plan) { plan.Files[0].Path = "docs//escape.txt" },
+		"reserved name":       func(plan *engine.Plan) { plan.Files[0].Path = "docs/CON.txt" },
+		"trailing dot":        func(plan *engine.Plan) { plan.Files[0].Path = "docs/escape." },
+		"ambiguous unicode":   func(plan *engine.Plan) { plan.Files[0].Path = "docs/café.txt" },
+		"case-fold collision": func(plan *engine.Plan) { plan.Files[0].Path, plan.Files[1].Path = "docs/Case.txt", "docs/case.txt" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			repository := newGitRepository(t)
+			plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			mutate(&plan)
+			plan.ID = identifyPlan(t, plan)
+
+			_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+			if err == nil {
+				t.Fatal("apply accepted unsafe cross-platform path namespace")
+			}
+			var failure *engine.ApplyFailure
+			if !errors.As(err, &failure) || failure.Stage != "validate-plan" || len(failure.ChangedFiles) != 0 {
+				t.Fatalf("unsafe path lacks structured pre-transaction failure: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(repository, ".starter-kit", "state.json")); !os.IsNotExist(err) {
+				t.Fatalf("state exists after rejected plan: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreateRejectsReservedDirectorySymlinkEscapeDuringPlanning(t *testing.T) {
+	repository := newGitRepository(t)
+	outside := t.TempDir()
+	link := filepath.Join(repository, ".starter-kit")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("native filesystem cannot create symlink fixture: %v", err)
+	}
+
+	if _, err := engine.New().Create(t.Context(), approvedCreate(repository)); err == nil {
+		t.Fatal("create planned through reserved directory symlink")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatalf("read outside directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("planning wrote outside repository through symlink: %#v", entries)
+	}
+}
+
+func TestCreateRejectsSymlinkRepositoryRoot(t *testing.T) {
+	actual := newGitRepository(t)
+	link := filepath.Join(t.TempDir(), "repository-link")
+	if err := os.Symlink(actual, link); err != nil {
+		t.Skipf("native filesystem cannot create symlink fixture: %v", err)
+	}
+
+	if _, err := engine.New().Create(t.Context(), approvedCreate(link)); err == nil {
+		t.Fatal("create accepted a symlink as the authorized repository root")
+	}
+}
+
+func TestCreateCanonicalizesRepositoryRootBelowSymlinkedAncestor(t *testing.T) {
+	actual := newGitRepository(t)
+	parentLink := filepath.Join(t.TempDir(), "parent-link")
+	if err := os.Symlink(filepath.Dir(actual), parentLink); err != nil {
+		t.Skipf("native filesystem cannot create symlink fixture: %v", err)
+	}
+	linkedRoot := filepath.Join(parentLink, filepath.Base(actual))
+	canonicalRoot, err := filepath.EvalSymlinks(actual)
+	if err != nil {
+		t.Fatalf("canonicalize actual repository: %v", err)
+	}
+
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(linkedRoot))
+	if err != nil {
+		t.Fatalf("create through canonicalizable ancestor alias: %v", err)
+	}
+	if plan.Repository != canonicalRoot {
+		t.Fatalf("plan repository = %q, want canonical root %q", plan.Repository, canonicalRoot)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply canonical plan: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonicalRoot, ".starter-kit", "state.json")); err != nil {
+		t.Fatalf("canonical repository did not receive managed state: %v", err)
+	}
+}
+
+func TestStatusRejectsManagedArtifactSymlinkEvenWhenContentDigestMatches(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	managedPath := filepath.Join(repository, "AGENTS.md")
+	content, err := os.ReadFile(managedPath)
+	if err != nil {
+		t.Fatalf("read managed artifact: %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, content, 0o644); err != nil {
+		t.Fatalf("write external target: %v", err)
+	}
+	if err := os.Remove(managedPath); err != nil {
+		t.Fatalf("remove managed artifact: %v", err)
+	}
+	if err := os.Symlink(outside, managedPath); err != nil {
+		t.Skipf("native filesystem cannot create symlink fixture: %v", err)
+	}
+
+	status, err := lifecycle.Status(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("status symlinked repository: %v", err)
+	}
+	if status.Lifecycle != engine.LifecycleManagedDegraded || len(status.Problems) == 0 {
+		t.Fatalf("matching external content concealed managed symlink: %#v", status)
+	}
+}
+
+func TestCreatePreservesExistingDirectoryThatCaseCollidesWithManagedPath(t *testing.T) {
+	repository := newGitRepository(t)
+	existing := filepath.Join(repository, "DOCS")
+	if err := os.Mkdir(existing, 0o755); err != nil {
+		t.Fatalf("create user-owned directory: %v", err)
+	}
+
+	if _, err := engine.New().Create(t.Context(), approvedCreate(repository)); err == nil {
+		t.Fatal("create planned over case-colliding user-owned directory")
+	}
+	info, err := os.Stat(existing)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("user-owned directory was not preserved: %v", err)
+	}
+	caseMode := "case-sensitive"
+	if alternate, err := os.Stat(filepath.Join(repository, "docs")); err == nil && os.SameFile(info, alternate) {
+		caseMode = "case-insensitive"
+	}
+	t.Logf("native repository filesystem is %s for DOCS/docs", caseMode)
+}
+
 func TestApplyRejectsSelfConsistentUnsupportedPlanContracts(t *testing.T) {
 	tests := map[string]func(*engine.Plan){
 		"schema":    func(plan *engine.Plan) { plan.SchemaVersion = 2 },
@@ -457,6 +932,41 @@ func TestApplyRejectsSelfConsistentUnsupportedPlanContracts(t *testing.T) {
 			plan.ID = identifyPlan(t, plan)
 			if _, err := engine.New().Apply(t.Context(), plan.ID, plan); err == nil {
 				t.Fatal("apply accepted unsupported self-consistent plan contract")
+			}
+		})
+	}
+}
+
+func TestApplyRejectsCreatePlanThatExpandsOrReclassifiesManagedWrites(t *testing.T) {
+	tests := map[string]func(*engine.Plan){
+		"ownership": func(plan *engine.Plan) { plan.Files[0].Ownership = "human-owned" },
+		"source":    func(plan *engine.Plan) { plan.Files[0].Source = "repository:untrusted" },
+		"extra path": func(plan *engine.Plan) {
+			content := "unapproved\n"
+			digest := sha256.Sum256([]byte(content))
+			plan.Files = append(plan.Files, engine.PlannedFile{
+				Path: "unapproved.txt", Ownership: "managed", Source: "engine:create:v1",
+				Digest: "sha256:" + hex.EncodeToString(digest[:]), Content: content,
+			})
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			repository := newGitRepository(t)
+			plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			mutate(&plan)
+			plan.ID = identifyPlan(t, plan)
+
+			_, err = engine.New().Apply(t.Context(), plan.ID, plan)
+			if err == nil {
+				t.Fatal("apply accepted expanded or reclassified create write")
+			}
+			var failure *engine.ApplyFailure
+			if !errors.As(err, &failure) || failure.Stage != "validate-plan" || len(failure.ChangedFiles) != 0 {
+				t.Fatalf("invalid create contract lacks structured pre-transaction failure: %v", err)
 			}
 		})
 	}
@@ -524,4 +1034,35 @@ func identifyPlan(t *testing.T, plan engine.Plan) string {
 	}
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func rewriteManagedFile(t *testing.T, repository, slashPath, content string) {
+	t.Helper()
+	target := filepath.Join(repository, filepath.FromSlash(slashPath))
+	if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+		t.Fatalf("write adversarial managed file: %v", err)
+	}
+	manifestPath := filepath.Join(repository, ".starter-kit", "managed-files.json")
+	manifestContent, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	digest := sha256.Sum256([]byte(content))
+	for _, raw := range manifest["files"].([]interface{}) {
+		entry := raw.(map[string]interface{})
+		if entry["path"] == slashPath {
+			entry["digest"] = "sha256:" + hex.EncodeToString(digest[:])
+		}
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, append(encoded, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
 }

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -53,6 +52,7 @@ type Inspection struct {
 	ContractPresent    bool     `json:"contract_present"`
 	Problems           []string `json:"problems"`
 	UserFileCount      int      `json:"user_file_count"`
+	UserDirectoryCount int      `json:"user_directory_count"`
 	SnapshotDigest     string   `json:"snapshot_digest"`
 	PreconditionDigest string   `json:"precondition_digest"`
 }
@@ -73,16 +73,16 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 		return Inspection{}, err
 	}
 
-	gitCommand := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--git-dir")
-	git := gitCommand.Run() == nil
+	command := structuredGitCommand(ctx, root, "rev-parse", "--git-dir")
+	git := command.Run() == nil
 	gitHead := ""
 	gitStatusDigest := ""
 	if git {
-		headCommand := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "HEAD")
+		headCommand := structuredGitCommand(ctx, root, "rev-parse", "HEAD")
 		if output, headErr := headCommand.Output(); headErr == nil {
 			gitHead = string(bytes.TrimSpace(output))
 		}
-		statusCommand := exec.CommandContext(ctx, "git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+		statusCommand := structuredGitCommand(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 		output, statusErr := statusCommand.Output()
 		if statusErr != nil {
 			return Inspection{}, fmt.Errorf("inspect Git status: %w", statusErr)
@@ -91,6 +91,7 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 	}
 
 	count := 0
+	directoryCount := 0
 	entries := make([]snapshotEntry, 0)
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -109,11 +110,16 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 		if entry.IsDir() && strings.HasPrefix(relative, ".starter-kit-stage-") {
 			return filepath.SkipDir
 		}
+		slashPath := filepath.ToSlash(relative)
 		if entry.IsDir() {
+			if !isWithinStarterKit(slashPath) {
+				directoryCount++
+			}
+			entries = append(entries, snapshotEntry{slashPath, "directory", ""})
 			return nil
 		}
-		slashPath := filepath.ToSlash(relative)
-		if relative != ".starter-kit" && !isWithinStarterKit(slashPath) {
+		reservedRootSymlink := slashPath == ".starter-kit" && entry.Type()&os.ModeSymlink != 0
+		if reservedRootSymlink || relative != ".starter-kit" && !isWithinStarterKit(slashPath) {
 			count++
 		}
 		info, infoErr := entry.Info()
@@ -144,16 +150,17 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 	contractPresent, problems := validateManagedContract(root)
 	managed := contractPresent && len(problems) == 0
 	inspection := Inspection{
-		SchemaVersion:   1,
-		Repository:      root,
-		Git:             git,
-		GitHead:         gitHead,
-		GitStatusDigest: gitStatusDigest,
-		Managed:         managed,
-		ContractPresent: contractPresent,
-		Problems:        problems,
-		UserFileCount:   count,
-		SnapshotDigest:  snapshotDigest,
+		SchemaVersion:      1,
+		Repository:         root,
+		Git:                git,
+		GitHead:            gitHead,
+		GitStatusDigest:    gitStatusDigest,
+		Managed:            managed,
+		ContractPresent:    contractPresent,
+		Problems:           problems,
+		UserFileCount:      count,
+		UserDirectoryCount: directoryCount,
+		SnapshotDigest:     snapshotDigest,
 	}
 	inspection.PreconditionDigest = digestJSON(struct {
 		Repository      string `json:"repository"`
@@ -179,18 +186,40 @@ func cleanRepositoryRoot(repository string) (string, error) {
 	if repository == "" {
 		return "", errors.New("repository path is required")
 	}
-	root, err := filepath.Abs(repository)
+	if containsSensitiveText(repository) {
+		return "", errors.New("repository path contains sensitive-looking material")
+	}
+	requestedRoot, err := filepath.Abs(repository)
 	if err != nil {
 		return "", fmt.Errorf("resolve repository path: %w", err)
 	}
-	info, err := os.Stat(root)
+	requestedRoot = filepath.Clean(requestedRoot)
+	if containsSensitiveText(requestedRoot) {
+		return "", errors.New("resolved repository path contains sensitive-looking material")
+	}
+	requestedInfo, err := os.Lstat(requestedRoot)
 	if err != nil {
 		return "", fmt.Errorf("stat repository: %w", err)
+	}
+	if requestedInfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("repository root must not be a symlink or junction")
+	}
+	root, err := filepath.EvalSymlinks(requestedRoot)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize repository path: %w", err)
+	}
+	root = filepath.Clean(root)
+	if containsSensitiveText(root) {
+		return "", errors.New("canonical repository path contains sensitive-looking material")
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return "", fmt.Errorf("stat canonical repository: %w", err)
 	}
 	if !info.IsDir() {
 		return "", fmt.Errorf("repository is not a directory: %s", root)
 	}
-	return filepath.Clean(root), nil
+	return root, nil
 }
 
 func fileExists(path string) bool {

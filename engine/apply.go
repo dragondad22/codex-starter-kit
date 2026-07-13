@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -71,8 +70,11 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if plan.SchemaVersion != 1 || plan.Operation != CreateOperation {
 		return ApplyResult{}, errors.New("plan schema version or operation is unsupported")
 	}
-	if !plan.Approval.BriefApproved || !plan.Approval.OwnerPersonaConfirmed || plan.Approval.BriefDigest == "" {
+	if !plan.Approval.BriefApproved || !plan.Approval.OwnerPersonaConfirmed || !validSHA256Digest(plan.Approval.BriefDigest) {
 		return ApplyResult{}, errors.New("plan lacks required brief or persona approval evidence")
+	}
+	if !validSHA256Digest(plan.RepositoryDigest) {
+		return ApplyResult{}, errors.New("plan repository digest is invalid")
 	}
 	root, err := cleanRepositoryRoot(plan.Repository)
 	if err != nil {
@@ -82,10 +84,16 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 		return ApplyResult{}, errors.New("plan repository path is not canonical")
 	}
 	if err := validatePlanFiles(root, plan.Files); err != nil {
-		return ApplyResult{}, err
+		return rejectPlanBeforeTransaction(ctx, root, plan, err)
 	}
-	if err := validateRelativePath(root, plan.Result.Path); err != nil || !strings.HasPrefix(plan.Result.Path, ".starter-kit/events/") || plan.Result.Ownership != "machine-evidence" || plan.Result.Source == "" {
-		return ApplyResult{}, errors.New("plan result path is not a valid engine event path")
+	if !plan.NoChange {
+		if err := validateCreatePlanContract(plan.Files); err != nil {
+			return rejectPlanBeforeTransaction(ctx, root, plan, err)
+		}
+	}
+	expectedResultPath := operationEventPath(plan.Operation, plan.RepositoryDigest)
+	if err := validateRelativePath(root, plan.Result.Path); err != nil || plan.Result.Path != expectedResultPath || !strings.HasPrefix(plan.Result.Path, ".starter-kit/events/") || plan.Result.Ownership != "machine-evidence" || plan.Result.Source != "engine:apply:v1" {
+		return rejectPlanBeforeTransaction(ctx, root, plan, errors.New("plan result path is not the approved engine event path"))
 	}
 	lockPath, err := lifecycleLockPath(ctx, root)
 	if err != nil {
@@ -180,6 +188,44 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	return result, nil
 }
 
+func rejectPlanBeforeTransaction(ctx context.Context, root string, plan Plan, validationErr error) (ApplyResult, error) {
+	diagnostics := redactDiagnostics([]string{validationErr.Error()})
+	failure := &ApplyFailure{
+		Stage: "validate-plan", Recoverable: true, ChangedFiles: []string{}, Cause: diagnostics[0],
+	}
+	result := ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}
+	lockPath, err := lifecycleLockPath(ctx, root)
+	if err != nil {
+		failure.Recoverable = false
+		failure.Cause = fmt.Sprintf("%s; locating rejected-plan evidence failed: %v", failure.Cause, err)
+		return result, failure
+	}
+	evidencePlan := plan
+	evidencePlan.Result = PlannedResult{
+		Path:      operationEventPath(plan.Operation, plan.RepositoryDigest),
+		Ownership: "machine-evidence",
+		Source:    "engine:apply:v1",
+	}
+	if err := recordGitAttempt(lockPath, evidencePlan, result, failure); err != nil {
+		failure.Recoverable = false
+		failure.Cause = fmt.Sprintf("%s; recording rejected-plan evidence failed: %v", failure.Cause, err)
+	}
+	return result, failure
+}
+
+func validateCreatePlanContract(files []PlannedFile) error {
+	if len(files) != len(createFileOwnershipV1) {
+		return errors.New("create plan does not contain the exact approved artifact set")
+	}
+	for _, file := range files {
+		ownership, expected := createFileOwnershipV1[file.Path]
+		if !expected || file.Ownership != ownership || file.Source != "engine:create:v1" {
+			return errors.New("create plan artifact ownership or provenance is not approved")
+		}
+	}
+	return nil
+}
+
 func recordGitAttempt(lockPath string, plan Plan, result ApplyResult, applyErr error) error {
 	directory := filepath.Join(filepath.Dir(lockPath), "starter-kit-attempts")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -217,7 +263,7 @@ func recordGitAttempt(lockPath string, plan Plan, result ApplyResult, applyErr e
 }
 
 func lifecycleLockPath(ctx context.Context, root string) (string, error) {
-	command := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--absolute-git-dir")
+	command := structuredGitCommand(ctx, root, "rev-parse", "--absolute-git-dir")
 	output, err := command.Output()
 	if err != nil {
 		return "", fmt.Errorf("resolve Git directory for lifecycle lock: %w", err)
@@ -345,17 +391,21 @@ func validatePlanFiles(root string, files []PlannedFile) error {
 	seen := make(map[string]struct{}, len(files))
 	for _, file := range files {
 		if err := validateRelativePath(root, file.Path); err != nil {
-			return fmt.Errorf("invalid planned path %q: %w", file.Path, err)
+			return fmt.Errorf("invalid planned path: %w", err)
 		}
-		if _, duplicate := seen[file.Path]; duplicate {
-			return fmt.Errorf("duplicate planned path: %s", file.Path)
+		pathKey := strings.ToLower(file.Path)
+		if _, duplicate := seen[pathKey]; duplicate {
+			return errors.New("planned paths collide under case-insensitive filesystem semantics")
 		}
-		seen[file.Path] = struct{}{}
+		seen[pathKey] = struct{}{}
 		if file.Ownership == "" || file.Source == "" || file.Digest == "" {
-			return fmt.Errorf("incomplete planned provenance for %s", file.Path)
+			return errors.New("planned file has incomplete provenance")
 		}
 		if digestBytes([]byte(file.Content)) != file.Digest {
-			return fmt.Errorf("planned content digest mismatch: %s", file.Path)
+			return errors.New("planned content digest mismatch")
+		}
+		if containsSensitiveText(file.Content) {
+			return errors.New("planned content contains sensitive-looking material")
 		}
 	}
 	return nil
@@ -376,6 +426,20 @@ func ensureNoSymlinkParents(root, slashPath string) error {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("planned path traverses symlink: %s", slashPath)
 		}
+	}
+	return nil
+}
+
+func ensureNoSymlinkComponents(root, slashPath string) error {
+	if err := ensureNoSymlinkParents(root, slashPath); err != nil {
+		return err
+	}
+	info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(slashPath)))
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("managed path is a symlink")
 	}
 	return nil
 }

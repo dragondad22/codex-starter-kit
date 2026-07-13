@@ -2,9 +2,13 @@ package engine_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +173,73 @@ func TestVerifyEquivalentControlledRepositoriesProducesEquivalentSemantics(t *te
 	if first.OverallState != second.OverallState || !reflect.DeepEqual(first.Controls, second.Controls) || !reflect.DeepEqual(first.CoverageLimitations, second.CoverageLimitations) {
 		t.Fatalf("equivalent inputs produced different semantics:\n%#v\n%#v", first, second)
 	}
+}
+
+func TestPrepareVerifyRejectsSecretBearingMetadataBeforePlanOrEvidence(t *testing.T) {
+	secret := "ghp_12345678901234567890"
+	fields := map[string]func(*engine.VerifyRequest){
+		"scope":     func(request *engine.VerifyRequest) { request.Scope = "scope-" + secret },
+		"gate":      func(request *engine.VerifyRequest) { request.Gate = "gate-" + secret },
+		"actor":     func(request *engine.VerifyRequest) { request.Actor = "actor-" + secret },
+		"authority": func(request *engine.VerifyRequest) { request.Authority = "authority-" + secret },
+	}
+	for name, mutate := range fields {
+		t.Run(name, func(t *testing.T) {
+			repository := newGitRepository(t)
+			request := engine.VerifyRequest{
+				Repository: repository, Scope: "repository", Gate: "development",
+				Actor: "integration-test", Authority: "approved fixture",
+			}
+			mutate(&request)
+			if _, err := engine.New().PrepareVerify(t.Context(), request); err == nil {
+				t.Fatal("prepare verify accepted secret-bearing metadata")
+			} else if strings.Contains(err.Error(), secret) {
+				t.Fatalf("verification diagnostic exposed fixture secret: %v", err)
+			}
+		})
+	}
+}
+
+func TestVerifyRejectsSecretBearingSelfConsistentMetadataBeforeEvidence(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	createPlan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), createPlan.ID, createPlan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	plan, err := lifecycle.PrepareVerify(t.Context(), engine.VerifyRequest{
+		Repository: repository, Scope: "repository", Gate: "development",
+		Actor: "integration-test", Authority: "approved fixture",
+	})
+	if err != nil {
+		t.Fatalf("prepare verify: %v", err)
+	}
+	secret := "ghp_12345678901234567890"
+	plan.Authority = "authority-" + secret
+	plan.ID = identifyVerifyPlan(t, plan)
+
+	if _, err := lifecycle.Verify(t.Context(), plan.ID, plan); err == nil {
+		t.Fatal("verify accepted secret-bearing self-consistent metadata")
+	} else if strings.Contains(err.Error(), secret) {
+		t.Fatalf("verification diagnostic exposed fixture secret: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".starter-kit", "evidence")); !os.IsNotExist(err) {
+		t.Fatalf("secret-bearing verification metadata produced ordinary evidence: %v", err)
+	}
+}
+
+func identifyVerifyPlan(t *testing.T, plan engine.VerifyPlan) string {
+	t.Helper()
+	plan.ID = ""
+	content, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("encode verification plan identity fixture: %v", err)
+	}
+	digest := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 type fixedClock struct{ now time.Time }
