@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // Engine owns lifecycle orchestration behind the public operation seam.
@@ -77,10 +78,16 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 		if entry.IsDir() && relative == ".git" {
 			return filepath.SkipDir
 		}
+		if entry.IsDir() && strings.HasPrefix(relative, ".starter-kit-stage-") {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() {
 			return nil
 		}
 		slashPath := filepath.ToSlash(relative)
+		if slashPath == ".starter-kit.lock" {
+			return nil
+		}
 		if relative != ".starter-kit" && !isWithinStarterKit(slashPath) {
 			count++
 		}
@@ -124,12 +131,11 @@ func (e *Engine) Inspect(ctx context.Context, repository string) (Inspection, er
 		SnapshotDigest:  snapshotDigest,
 	}
 	inspection.PreconditionDigest = digestJSON(struct {
-		Repository      string `json:"repository"`
-		Git             bool   `json:"git"`
-		GitHead         string `json:"git_head"`
-		GitStatusDigest string `json:"git_status_digest"`
-		SnapshotDigest  string `json:"snapshot_digest"`
-	}{root, git, gitHead, gitStatusDigest, snapshotDigest})
+		Repository     string `json:"repository"`
+		Git            bool   `json:"git"`
+		GitHead        string `json:"git_head"`
+		SnapshotDigest string `json:"snapshot_digest"`
+	}{root, git, gitHead, snapshotDigest})
 	return inspection, nil
 }
 

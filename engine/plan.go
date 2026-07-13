@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // Operation identifies a lifecycle-engine operation.
@@ -28,6 +31,7 @@ type Plan struct {
 	Files            []PlannedFile  `json:"files"`
 	NoChange         bool           `json:"no_change"`
 	Approval         CreateApproval `json:"approval"`
+	ResultPath       string         `json:"result_path"`
 }
 
 // CreateRequest contains the human-owned inputs and confirmations needed to plan create.
@@ -77,7 +81,14 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	files, err := createFiles(request.Create)
+	if err != nil {
+		return Plan{}, fmt.Errorf("render create plan: %w", err)
+	}
 	if inspection.Managed {
+		if !plannedFilesMatch(inspection.Repository, files) {
+			return Plan{}, errors.New("managed repository differs from the requested create inputs")
+		}
 		return noChangePlan(inspection, request)
 	}
 	if inspection.ContractPresent {
@@ -87,10 +98,6 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 		return Plan{}, fmt.Errorf("create requires an empty repository; found %d user files", inspection.UserFileCount)
 	}
 
-	files, err := createFiles(request.Create)
-	if err != nil {
-		return Plan{}, fmt.Errorf("render create plan: %w", err)
-	}
 	plan := Plan{
 		SchemaVersion:    1,
 		Operation:        request.Operation,
@@ -102,9 +109,20 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 			BriefApproved:         request.Create.BriefApproved,
 			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
 		},
+		ResultPath: operationEventPath(request.Operation, inspection.PreconditionDigest),
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
+}
+
+func plannedFilesMatch(root string, files []PlannedFile) bool {
+	for _, file := range files {
+		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file.Path)))
+		if err != nil || digestBytes(content) != file.Digest {
+			return false
+		}
+	}
+	return true
 }
 
 func noChangePlan(inspection Inspection, request PlanRequest) (Plan, error) {
@@ -120,9 +138,18 @@ func noChangePlan(inspection Inspection, request PlanRequest) (Plan, error) {
 			BriefApproved:         request.Create.BriefApproved,
 			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
 		},
+		ResultPath: operationEventPath(request.Operation, inspection.PreconditionDigest),
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
+}
+
+func operationEventPath(operation Operation, preconditionDigest string) string {
+	digest := strings.TrimPrefix(preconditionDigest, "sha256:")
+	if len(digest) > 16 {
+		digest = digest[:16]
+	}
+	return fmt.Sprintf(".starter-kit/events/%s-%s.json", operation, digest)
 }
 
 func createFiles(request CreateRequest) ([]PlannedFile, error) {

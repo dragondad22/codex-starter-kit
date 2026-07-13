@@ -77,6 +77,19 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if err := validatePlanFiles(root, plan.Files); err != nil {
 		return ApplyResult{}, err
 	}
+	if err := validateRelativePath(root, plan.ResultPath); err != nil || !strings.HasPrefix(plan.ResultPath, ".starter-kit/events/") {
+		return ApplyResult{}, errors.New("plan result path is not a valid engine event path")
+	}
+	lockPath := filepath.Join(root, ".starter-kit.lock")
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
+			Stage: "lock", Recoverable: true, Cause: err.Error(), ChangedFiles: []string{},
+		}
+	}
+	_ = lock.Close()
+	defer os.Remove(lockPath)
+
 	inspection, err := e.Inspect(ctx, plan.Repository)
 	if err != nil {
 		return ApplyResult{}, err
@@ -90,16 +103,6 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 		}
 		return ApplyResult{1, plan.ID, ApplyStatusNoChange, []string{}}, nil
 	}
-	lockPath := filepath.Join(root, ".starter-kit.lock")
-	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
-			Stage: "lock", Recoverable: true, Cause: err.Error(), ChangedFiles: []string{},
-		}
-	}
-	_ = lock.Close()
-	defer os.Remove(lockPath)
-
 	stageRoot, err := os.MkdirTemp(root, ".starter-kit-stage-")
 	if err != nil {
 		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
@@ -146,7 +149,61 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if !contractPresent || len(problems) != 0 {
 		return failedCommittedApply(root, plan.ID, "postcondition", changed, fmt.Errorf("invalid managed contract: %v", problems))
 	}
-	return ApplyResult{1, plan.ID, ApplyStatusApplied, changed}, nil
+	result := ApplyResult{1, plan.ID, ApplyStatusApplied, changed}
+	if err := recordApplyEvent(root, plan, result); err != nil {
+		return failedCommittedApply(root, plan.ID, "record-result", changed, err)
+	}
+	return result, nil
+}
+
+func recordApplyEvent(root string, plan Plan, result ApplyResult) error {
+	event := struct {
+		SchemaVersion    int         `json:"schema_version"`
+		PlanID           string      `json:"plan_id"`
+		Operation        Operation   `json:"operation"`
+		Status           ApplyStatus `json:"status"`
+		RepositoryDigest string      `json:"repository_digest"`
+		ChangedFiles     []string    `json:"changed_files"`
+	}{1, plan.ID, plan.Operation, result.Status, plan.RepositoryDigest, result.ChangedFiles}
+	content := []byte(jsonDocument(event))
+	target := filepath.Join(root, filepath.FromSlash(plan.ResultPath))
+	if existing, err := os.ReadFile(target); err == nil {
+		if string(existing) == string(content) {
+			return nil
+		}
+		return errors.New("operation event path already contains different evidence")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := ensureNoSymlinkParents(root, plan.ResultPath); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	defer removeEmptyParents(root, filepath.Dir(target))
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".event-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o644); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, target)
 }
 
 func validatePlanFiles(root string, files []PlannedFile) error {

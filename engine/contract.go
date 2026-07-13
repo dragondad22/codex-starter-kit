@@ -28,6 +28,19 @@ type managedManifest struct {
 	Files         []manifestEntry `json:"files"`
 }
 
+var requiredManagedPathsV1 = []string{
+	".starter-kit/layout.json",
+	".starter-kit/policy-lock.json",
+	".starter-kit/project.json",
+	".starter-kit/routes.json",
+	".starter-kit/state.json",
+	"AGENTS.md",
+	"docs/decisions/INDEX.md",
+	"docs/evidence/CONFORMANCE.md",
+	"docs/product/BRIEF.md",
+	"docs/product/PERSONAS.md",
+}
+
 func validateManagedContract(root string) (bool, []string) {
 	starterPath := filepath.Join(root, ".starter-kit")
 	if !fileExists(starterPath) {
@@ -73,8 +86,10 @@ func validateManagedContract(root string) (bool, []string) {
 			problems = append(problems, fmt.Sprintf("managed file drift: %s", entry.Path))
 		}
 	}
-	if _, ok := seen[".starter-kit/state.json"]; !ok {
-		problems = append(problems, "managed-file manifest omits state.json")
+	for _, required := range requiredManagedPathsV1 {
+		if _, ok := seen[required]; !ok {
+			problems = append(problems, fmt.Sprintf("managed-file manifest omits required artifact: %s", required))
+		}
 	}
 	stateContent, stateErr := os.ReadFile(filepath.Join(starterPath, "state.json"))
 	if stateErr == nil {

@@ -103,6 +103,20 @@ func TestApplyCreatePlanProducesManagedRepository(t *testing.T) {
 	if manifest.Self.Path != ".starter-kit/managed-files.json" || manifest.Self.Ownership != "managed" || manifest.Self.Source == "" {
 		t.Fatalf("manifest does not classify itself: %#v", manifest.Self)
 	}
+	eventContent, err := os.ReadFile(filepath.Join(repository, filepath.FromSlash(plan.ResultPath)))
+	if err != nil {
+		t.Fatalf("read apply event: %v", err)
+	}
+	var event struct {
+		PlanID string `json:"plan_id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(eventContent, &event); err != nil {
+		t.Fatalf("decode apply event: %v", err)
+	}
+	if event.PlanID != plan.ID || event.Status != string(engine.ApplyStatusApplied) {
+		t.Fatalf("unexpected apply event: %#v", event)
+	}
 
 	status, err := lifecycle.Status(context.Background(), repository)
 	if err != nil {
@@ -198,6 +212,24 @@ func TestCreateAfterApplyReturnsExplicitNoChange(t *testing.T) {
 	}
 }
 
+func TestCreateDoesNotReportNoChangeForDifferentApprovedBrief(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	request := approvedCreate(repository)
+	plan, err := lifecycle.Create(t.Context(), request)
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	request.Brief = "A different approved project outcome."
+
+	if _, err := lifecycle.Create(t.Context(), request); err == nil {
+		t.Fatal("different create inputs must require reconciliation, not no-change")
+	}
+}
+
 func TestDriftedManagedRepositoryIsDegradedInsteadOfNoChange(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -224,6 +256,54 @@ func TestDriftedManagedRepositoryIsDegradedInsteadOfNoChange(t *testing.T) {
 	}
 }
 
+func TestManifestCannotHideADeletedRequiredArtifact(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	manifestPath := filepath.Join(repository, ".starter-kit", "managed-files.json")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	entries := manifest["files"].([]interface{})
+	filtered := make([]interface{}, 0, len(entries)-1)
+	for _, raw := range entries {
+		entry := raw.(map[string]interface{})
+		if entry["path"] != "AGENTS.md" {
+			filtered = append(filtered, entry)
+		}
+	}
+	manifest["files"] = filtered
+	content, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, content, 0o644); err != nil {
+		t.Fatalf("write altered manifest: %v", err)
+	}
+	if err := os.Remove(filepath.Join(repository, "AGENTS.md")); err != nil {
+		t.Fatalf("remove required artifact: %v", err)
+	}
+
+	status, err := lifecycle.Status(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("status altered contract: %v", err)
+	}
+	if status.Lifecycle != engine.LifecycleManagedDegraded {
+		t.Fatalf("altered manifest hid required artifact: %#v", status)
+	}
+}
+
 func TestApplyRejectsRepositoryChangedAfterPlanning(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -240,6 +320,27 @@ func TestApplyRejectsRepositoryChangedAfterPlanning(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repository, ".starter-kit", "state.json")); !os.IsNotExist(err) {
 		t.Fatalf("state file exists after rejected apply: %v", err)
+	}
+}
+
+func TestApplyAcquiresLifecycleLockBeforePreconditionRecheck(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, ".starter-kit.lock"), []byte("held\n"), 0o600); err != nil {
+		t.Fatalf("create held lock: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "lock" || !failure.Recoverable {
+		t.Fatalf("unexpected lock failure: %#v, %v", failure, err)
+	}
+	if result.Status != engine.ApplyStatusFailed {
+		t.Fatalf("lock failure result = %#v", result)
 	}
 }
 
