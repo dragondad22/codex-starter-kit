@@ -41,6 +41,11 @@ work must be represented by a concrete attached child before the parent stays op
 The field vocabulary also states explicitly that Status `Backlog` is not Horizon `Later`
 and is not a synonym for a Scrum product backlog.
 
+The glossary now keeps every allowed Readiness, Status, and Horizon value beneath its
+field definition. Standalone `Ready`, `Now (Horizon)`, `Next (Horizon)`, and
+`Later (Horizon)` entries were removed so readers do not have to search elsewhere to
+understand a field's complete state model.
+
 ## Remaining issue scope
 
 This record establishes the standing behavior and repairs the observed slice. Issue #15
