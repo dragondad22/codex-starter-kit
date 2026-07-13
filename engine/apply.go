@@ -236,8 +236,12 @@ type operationEvent struct {
 	PlanID           string      `json:"plan_id"`
 	Operation        Operation   `json:"operation"`
 	Status           ApplyStatus `json:"status"`
+	Actor            string      `json:"actor"`
+	Authority        string      `json:"authority"`
 	RepositoryDigest string      `json:"repository_digest"`
 	ChangedFiles     []string    `json:"changed_files"`
+	ExternalEffects  []string    `json:"external_effects"`
+	Diagnostics      []string    `json:"diagnostics"`
 	Error            string      `json:"error,omitempty"`
 	Recoverable      bool        `json:"recoverable"`
 	EventDigest      string      `json:"event_digest"`
@@ -247,7 +251,9 @@ func plannedEventFile(plan Plan, result ApplyResult, applyErr error) PlannedFile
 	event := operationEvent{
 		SchemaVersion: 1, Ownership: plan.Result.Ownership, Source: plan.Result.Source,
 		PlanID: plan.ID, Operation: plan.Operation, Status: result.Status,
+		Actor: "not-configured", Authority: "not-configured",
 		RepositoryDigest: plan.RepositoryDigest, ChangedFiles: result.ChangedFiles,
+		ExternalEffects: []string{}, Diagnostics: []string{},
 	}
 	var failure *ApplyFailure
 	if errors.As(applyErr, &failure) {

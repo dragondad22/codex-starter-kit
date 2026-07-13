@@ -39,6 +39,9 @@ unpinned package installation.
   platform shell is required.
 - Engine-seam tests exercise an empty real Git repository through inspect, create/plan,
   apply, status, stale-precondition rejection, and explicit no-change behavior.
+- Verification tests exercise explicit seed-control states, evidence-backed pass rules,
+  deterministic clock input, semantic equivalence, machine evidence, human summary
+  regeneration, and post-verification managed-contract validity.
 
 ## Deferred support decisions
 

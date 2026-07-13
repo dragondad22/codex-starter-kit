@@ -15,6 +15,8 @@ starter-kit create --repository <path> --brief <text> --approve-brief --confirm-
 starter-kit plan --operation create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
 starter-kit apply --plan <plan.json> --plan-id <sha256:...>
 starter-kit status --repository <path>
+starter-kit verify-plan --repository <path> --scope <scope> --gate <gate> --actor <actor> --authority <authority>
+starter-kit verify --plan <verify-plan.json> --plan-id <sha256:...>
 ```
 
 `create` is the focused convenience operation for a create plan. The caller supplies the
@@ -28,9 +30,37 @@ targets, commits state last, validates the complete managed contract, rolls back
 commit where possible, and returns a structured result. Repeating create produces
 `no_change` only when the manifest, state, and every managed artifact remain valid.
 
-The current seam implements `create`, `inspect`, `plan`, `apply`, and `status`. `verify`
-is #27; `retrofit` and `upgrade` remain later phases. A missing operation must not be
+The current seam implements `create`, `inspect`, `plan`, `apply`, `status`, and seed
+`verify`. `retrofit` and `upgrade` remain later phases. A missing operation must not be
 represented as available.
+
+## Seed verification
+
+`verify-plan` captures an immutable, reviewable repository precondition plus the explicit
+scope, lifecycle gate, requesting actor, and authority. `verify` consumes that plan and
+its separately retained identifier, rechecks the repository precondition, and records
+evidence regeneration in a content-addressed operation event. Each result is exactly
+one of `pass`, `fail`, `not-applicable`, `not-configured`,
+`needs-review`, or `accepted-exception`; an accepted exception retains its underlying
+state. Aggregate `pass` is possible only when every evaluated control passes.
+
+| Control | Seed behavior |
+|---|---|
+| `CORE-TRUTH-001` | Passes when the result model is explicit and pass states cite current evidence |
+| `CORE-SECRETS-001` | `not-configured` until an approved scanner provides defensible coverage |
+| `CORE-OWNERSHIP-001` | Passes only for a complete valid managed-file ownership/provenance contract |
+| `CORE-COVERAGE-001` | Passes when evaluated controls and coverage limits are disclosed |
+| `CORE-RECOVERY-001` | `not-configured` until #29 supplies interruption and stale-lock evidence |
+| `CORE-ROUTES-001` | Passes only when stable seed routes parse and resolve |
+
+The engine injects a clock so controlled runs can reproduce timestamps and semantics.
+Machine evidence records scope, gate, source revision/snapshot, engine and repository
+schema versions, policy state, controls, evidence references, limitations, and redacted
+diagnostics under `.starter-kit/evidence/`. Each evidence document carries a digest over
+its content with the digest field blank. The human `CONFORMANCE.md` projection and its
+managed-file digest are replaced with rollback data under the lifecycle lock. Dynamic
+verification evidence is schema/provenance/digest validated as part of the managed
+contract.
 
 ## Versioned JSON contracts
 
@@ -82,7 +112,8 @@ managed-file manifest.
 - Clean relative paths are root-constrained and symlink parents are rejected. #28 owns the
   complete hostile path, junction, reserved-name, case-collision, malformed-state, secret,
   and malicious-plan matrix.
-- Seed control evaluation and conformance evidence are #27; the initial summary explicitly
-  reports that verification has not run and claims no pass.
+- Seed verification is implemented, but secrets and recovery remain `not-configured`.
+  #28–#30 own hostile-input, interruption/recovery, and native support closure; no current
+  aggregate verification result is expected to pass.
 - Runtime support is not published until #30 proves native semantic equivalence and exact
   OS/architecture/filesystem assumptions.

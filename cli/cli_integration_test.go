@@ -120,6 +120,53 @@ func TestInspectAndPlanCommandsExposeEngineOperations(t *testing.T) {
 	}
 }
 
+func TestVerifyCommandEmitsMachineReadableControlResults(t *testing.T) {
+	repository := t.TempDir()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize Git repository: %v: %s", err, output)
+	}
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply plan: %v", err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.Run([]string{
+		"verify-plan", "--repository", repository, "--scope", "repository", "--gate", "development",
+		"--actor", "integration-test", "--authority", "approved issue #27 fixture",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("verify-plan exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var verifyPlan engine.VerifyPlan
+	if err := json.Unmarshal(stdout.Bytes(), &verifyPlan); err != nil {
+		t.Fatalf("decode verification plan: %v", err)
+	}
+	planPath := filepath.Join(t.TempDir(), "verify-plan.json")
+	if err := os.WriteFile(planPath, stdout.Bytes(), 0o600); err != nil {
+		t.Fatalf("write verification plan: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = cli.Run([]string{"verify", "--plan", planPath, "--plan-id", verifyPlan.ID}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("verify exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var result engine.VerificationResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode verification result: %v", err)
+	}
+	if result.OverallState == engine.ControlPass || len(result.Controls) == 0 {
+		t.Fatalf("unexpected verification result: %#v", result)
+	}
+}
+
 func approvedCreate(repository string) engine.CreateRequest {
 	return engine.CreateRequest{
 		Repository:            repository,

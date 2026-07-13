@@ -13,10 +13,34 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Engine owns lifecycle orchestration behind the public operation seam.
-type Engine struct{}
+type Engine struct {
+	clock Clock
+}
+
+// Clock supplies deterministic verification time.
+type Clock interface {
+	Now() time.Time
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time { return time.Now().UTC() }
+
+// Option configures an engine dependency.
+type Option func(*Engine)
+
+// WithClock injects the verification clock used in evidence.
+func WithClock(clock Clock) Option {
+	return func(engine *Engine) {
+		if clock != nil {
+			engine.clock = clock
+		}
+	}
+}
 
 // Inspection reports read-only repository facts used by planning.
 type Inspection struct {
@@ -34,8 +58,12 @@ type Inspection struct {
 }
 
 // New returns a lifecycle engine with native filesystem and Git adapters.
-func New() *Engine {
-	return &Engine{}
+func New(options ...Option) *Engine {
+	engine := &Engine{clock: systemClock{}}
+	for _, option := range options {
+		option(engine)
+	}
+	return engine
 }
 
 // Inspect gathers repository facts without modifying the repository.

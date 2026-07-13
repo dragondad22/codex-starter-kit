@@ -19,6 +19,7 @@ type Operation string
 const (
 	// CreateOperation initializes an empty or new managed repository.
 	CreateOperation Operation = "create"
+	VerifyOperation Operation = "verify"
 )
 
 // Plan is an immutable, reviewable set of proposed repository operations.
@@ -190,7 +191,7 @@ func createFiles(request CreateRequest) ([]PlannedFile, error) {
 				Status        string   `json:"status"`
 				Packs         []string `json:"packs"`
 				Reason        string   `json:"reason"`
-			}{1, "not_configured", []string{}, "seed core-trust pack is implemented by issue #27"}),
+			}{1, "not_configured", []string{}, "signed core-trust policy pack is not configured"}),
 		},
 		".starter-kit/project.json": {
 			ownership: "managed",

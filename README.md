@@ -40,7 +40,8 @@ Managed repository
 The lifecycle engine is the primary test and enforcement seam. The plugin is the
 preferred Codex experience; it is not the sole conformance authority.
 
-The current development CLI implements `inspect`, `create`, `plan`, `apply`, and `status`.
+The current development CLI implements `inspect`, `create`, `plan`, `apply`, `status`, and
+seed `verify`.
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
 contract, ownership model, and explicit limitations.
 
