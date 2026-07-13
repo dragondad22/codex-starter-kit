@@ -32,6 +32,8 @@ The completing pull request is the durable link to the exact 30-day CI artifacts
 tested head commit `9e587a772d8a1bcf511ddb1ba8e0f36d028100fe`. Every report binds GitHub's tested merge
 revision `33788da588088f26f1fc23d84812759b8021d7d3`; downloaded reports are fully
 contract-validated, and the aggregate digest covers each platform/report evidence identity.
+Local capture refuses a dirty tracked or untracked worktree before using `HEAD` as source
+provenance.
 
 | Target | Resolved image | Architecture | Go / Git | Report evidence digest |
 |---|---|---|---|---|

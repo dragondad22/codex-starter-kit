@@ -77,7 +77,8 @@ go run ./cmd/phase1-evidence compare --directory phase1-native-evidence
 Each report is bound to the tested GitHub source revision. The aggregate rejects missing
 runner/tool provenance, incomplete or duplicate capabilities and controls, invalid explicit
 states, source-revision drift, and semantic drift. Its own digest covers sorted references
-to all three source revisions and report evidence digests.
+to all three source revisions and report evidence digests. Outside GitHub Actions, capture
+refuses tracked or untracked worktree changes before attributing evidence to local `HEAD`.
 
 The compared semantics include schema/operation identity, stable planning, artifact paths,
 ownership and provenance, applied/replay/no-change states, managed lifecycle status, LF

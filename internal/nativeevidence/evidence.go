@@ -115,7 +115,7 @@ type fixedClock struct{ value time.Time }
 func (clock fixedClock) Now() time.Time { return clock.value }
 
 func Capture(ctx context.Context) (Report, error) {
-	sourceRevision, err := testedSourceRevision(ctx)
+	sourceRevision, err := testedSourceRevision(ctx, ".")
 	if err != nil {
 		return Report{}, err
 	}
@@ -557,17 +557,26 @@ func sourceRevisionKind(revision string) string {
 	return "missing"
 }
 
-func testedSourceRevision(ctx context.Context) (string, error) {
-	if revision := strings.TrimSpace(os.Getenv("GITHUB_SHA")); revision != "" {
+func testedSourceRevision(ctx context.Context, directory string) (string, error) {
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		revision := strings.TrimSpace(os.Getenv("GITHUB_SHA"))
 		if !validSourceRevision(revision) {
-			return "", errors.New("GITHUB_SHA is not a complete hexadecimal source revision")
+			return "", errors.New("GitHub-hosted native evidence lacks a complete hexadecimal GITHUB_SHA source revision")
 		}
 		return strings.ToLower(revision), nil
 	}
-	if os.Getenv("GITHUB_ACTIONS") == "true" {
-		return "", errors.New("GitHub-hosted native evidence lacks GITHUB_SHA source provenance")
+	statusCommand := exec.CommandContext(ctx, "git", "status", "--porcelain", "--untracked-files=all")
+	statusCommand.Dir = directory
+	status, err := statusCommand.Output()
+	if err != nil {
+		return "", fmt.Errorf("inspect local source worktree: %w", err)
 	}
-	revision, err := exec.CommandContext(ctx, "git", "rev-parse", "HEAD").Output()
+	if len(status) != 0 {
+		return "", errors.New("local native evidence requires a clean tracked and untracked source worktree")
+	}
+	revisionCommand := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	revisionCommand.Dir = directory
+	revision, err := revisionCommand.Output()
 	if err != nil {
 		return "", fmt.Errorf("resolve tested source revision: %w", err)
 	}

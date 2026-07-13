@@ -3,7 +3,9 @@ package nativeevidence
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 )
 
 func TestCaptureExercisesCompletePhase1Seam(t *testing.T) {
+	setCaptureProvenance(t)
 	report, err := Capture(context.Background())
 	if err != nil {
 		t.Fatalf("capture native evidence: %v", err)
@@ -48,6 +51,7 @@ func TestCaptureExercisesCompletePhase1Seam(t *testing.T) {
 }
 
 func TestCompareRequiresThreeEquivalentNativeReports(t *testing.T) {
+	setCaptureProvenance(t)
 	report, err := Capture(context.Background())
 	if err != nil {
 		t.Fatalf("capture fixture: %v", err)
@@ -92,6 +96,7 @@ func TestCompareRequiresThreeEquivalentNativeReports(t *testing.T) {
 }
 
 func TestReadRejectsIncompleteEvidenceContracts(t *testing.T) {
+	setCaptureProvenance(t)
 	report, err := Capture(context.Background())
 	if err != nil {
 		t.Fatalf("capture fixture: %v", err)
@@ -136,6 +141,7 @@ func TestReadRejectsIncompleteEvidenceContracts(t *testing.T) {
 }
 
 func TestCompareRejectsSourceRevisionDrift(t *testing.T) {
+	setCaptureProvenance(t)
 	report, err := Capture(context.Background())
 	if err != nil {
 		t.Fatalf("capture fixture: %v", err)
@@ -157,6 +163,36 @@ func TestCompareRejectsSourceRevisionDrift(t *testing.T) {
 	}
 	if _, err := Compare(directory); err == nil {
 		t.Fatal("comparison accepted source revision drift")
+	}
+}
+
+func TestTestedSourceRevisionRejectsDirtyLocalWorktree(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
+	t.Setenv("GITHUB_SHA", "")
+	directory := t.TempDir()
+	runGit(t, directory, "init", "--quiet")
+	tracked := filepath.Join(directory, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte("clean\n"), 0o600); err != nil {
+		t.Fatalf("write tracked fixture: %v", err)
+	}
+	runGit(t, directory, "add", "tracked.txt")
+	runGit(t, directory, "-c", "user.name=Phase 1 Evidence", "-c", "user.email=evidence@example.invalid", "commit", "--quiet", "-m", "fixture")
+	revision, err := testedSourceRevision(context.Background(), directory)
+	if err != nil || !validSourceRevision(revision) {
+		t.Fatalf("resolve clean local revision: %q, %v", revision, err)
+	}
+	if err := os.WriteFile(tracked, []byte("dirty\n"), 0o600); err != nil {
+		t.Fatalf("dirty tracked fixture: %v", err)
+	}
+	if _, err := testedSourceRevision(context.Background(), directory); err == nil {
+		t.Fatal("local source provenance accepted a dirty tracked worktree")
+	}
+	runGit(t, directory, "checkout", "--quiet", "--", "tracked.txt")
+	if err := os.WriteFile(filepath.Join(directory, "untracked.txt"), []byte("dirty\n"), 0o600); err != nil {
+		t.Fatalf("write untracked fixture: %v", err)
+	}
+	if _, err := testedSourceRevision(context.Background(), directory); err == nil {
+		t.Fatal("local source provenance accepted an untracked file")
 	}
 }
 
@@ -186,4 +222,23 @@ func capabilityByID(capabilities []Capability, id string) *Capability {
 		}
 	}
 	return nil
+}
+
+func setCaptureProvenance(t *testing.T) {
+	t.Helper()
+	t.Setenv("GITHUB_ACTIONS", "true")
+	t.Setenv("GITHUB_SHA", strings.Repeat("f", 40))
+	t.Setenv("RUNNER_OS", map[string]string{"darwin": "macOS", "linux": "Linux", "windows": "Windows"}[runtime.GOOS])
+	t.Setenv("RUNNER_ARCH", map[string]string{"amd64": "X64", "arm64": "ARM64"}[runtime.GOARCH])
+	t.Setenv("ImageOS", "test-image")
+	t.Setenv("ImageVersion", "test-version")
+}
+
+func runGit(t *testing.T, directory string, args ...string) {
+	t.Helper()
+	command := exec.Command("git", args...)
+	command.Dir = directory
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
 }
