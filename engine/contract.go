@@ -48,6 +48,18 @@ func validateManagedContract(root string) (bool, []string) {
 	}
 	problems := make([]string, 0)
 	manifestPath := filepath.Join(starterPath, "managed-files.json")
+	if !fileExists(manifestPath) {
+		contractMarker := false
+		for _, marker := range []string{"state.json", "project.json", "layout.json", "policy-lock.json", "routes.json"} {
+			if fileExists(filepath.Join(starterPath, marker)) {
+				contractMarker = true
+				break
+			}
+		}
+		if !contractMarker {
+			return false, []string{}
+		}
+	}
 	content, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return true, []string{fmt.Sprintf("read managed-file manifest: %v", err)}

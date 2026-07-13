@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
@@ -323,6 +324,33 @@ func TestApplyRejectsRepositoryChangedAfterPlanning(t *testing.T) {
 	}
 }
 
+func TestFailureEvidenceDoesNotPreventARecoveredCreateRetry(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	fixturePath := filepath.Join(repository, "temporary.txt")
+	if err := os.WriteFile(fixturePath, []byte("change\n"), 0o644); err != nil {
+		t.Fatalf("change repository: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err == nil {
+		t.Fatal("changed repository must fail apply")
+	}
+	if err := os.Remove(fixturePath); err != nil {
+		t.Fatalf("restore repository: %v", err)
+	}
+
+	retry, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("plan recovered create: %v", err)
+	}
+	if _, err := lifecycle.Apply(t.Context(), retry.ID, retry); err != nil {
+		t.Fatalf("apply recovered create: %v", err)
+	}
+}
+
 func TestApplyRejectsIndexOnlyGitChangeWithSameFilesystemSnapshot(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -370,6 +398,10 @@ func TestApplyAcquiresLifecycleLockBeforePreconditionRecheck(t *testing.T) {
 	}
 	if result.Status != engine.ApplyStatusFailed {
 		t.Fatalf("lock failure result = %#v", result)
+	}
+	attemptPath := filepath.Join(repository, ".git", "starter-kit-attempts", strings.TrimPrefix(plan.ID, "sha256:")+".json")
+	if _, err := os.Stat(attemptPath); err != nil {
+		t.Fatalf("lock failure attempt evidence missing: %v", err)
 	}
 }
 

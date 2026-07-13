@@ -93,9 +93,15 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	}
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}, &ApplyFailure{
+		result := ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}
+		failure := &ApplyFailure{
 			Stage: "lock", Recoverable: true, Cause: err.Error(), ChangedFiles: []string{},
 		}
+		if eventErr := recordGitAttempt(lockPath, plan, result, failure); eventErr != nil {
+			failure.Recoverable = false
+			failure.Cause = fmt.Sprintf("%s; recording lock attempt failed: %v", failure.Cause, eventErr)
+		}
+		return result, failure
 	}
 	_ = lock.Close()
 	defer os.Remove(lockPath)
@@ -172,6 +178,42 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 		return failedCommittedApply(root, plan, "postcondition", changed, fmt.Errorf("invalid managed contract: %v", problems))
 	}
 	return result, nil
+}
+
+func recordGitAttempt(lockPath string, plan Plan, result ApplyResult, applyErr error) error {
+	directory := filepath.Join(filepath.Dir(lockPath), "starter-kit-attempts")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	filename := strings.TrimPrefix(plan.ID, "sha256:") + ".json"
+	target := filepath.Join(directory, filename)
+	content := []byte(plannedEventFile(plan, result, applyErr).Content)
+	if existing, err := os.ReadFile(target); err == nil {
+		if string(existing) == string(content) {
+			return nil
+		}
+		return errors.New("Git attempt path already contains different evidence")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	temporary, err := os.CreateTemp(directory, ".attempt-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, target)
 }
 
 func lifecycleLockPath(ctx context.Context, root string) (string, error) {

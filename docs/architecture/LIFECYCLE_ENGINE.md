@@ -47,6 +47,11 @@ not a claim of crash-safe atomicity; #29 owns interruption recovery. Go types ar
 durable authority: compatibility is defined by observable JSON fields and black-box
 behavior through the engine seam.
 
+Failure-only event directories do not by themselves assert that a managed contract is
+present, so correcting the precondition and replanning remains possible. A lock rejection
+cannot safely mutate the lock-protected repository surface; it is recorded instead in the
+Git-local `starter-kit-attempts` ledger and returned as structured failure JSON.
+
 Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
 `docs/` and are never silently replaced. Generated views identify their role through the
 managed-file manifest.
@@ -60,6 +65,7 @@ managed-file manifest.
 | `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
 | `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
+| Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts recorded outside the unavailable repository lock |
 | `AGENTS.md` | generated | Concise repository orientation and routes |
 | `docs/product/BRIEF.md` | human-owned | Approved seed project brief |
 | `docs/product/PERSONAS.md` | human-owned | Confirmed seed persona registry |

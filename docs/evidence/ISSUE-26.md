@@ -17,6 +17,9 @@ structured result. Accepted successful, failed, and no-change apply results are 
 as self-describing machine evidence under the plan-declared `.starter-kit/events/` path;
 successful event evidence is staged and committed before authoritative state. Only a valid
 unchanged managed repository with the same approved inputs produces `no_change`.
+Failure-only events do not assert contract presence and therefore do not prevent a
+corrected/replanned create. Lock-rejected attempts use a Git-local attempt ledger because
+the repository mutation surface was not acquired.
 
 The created repository separates managed machine state, generated projections, and
 human-owned records. It includes stable routes, ownership/provenance digests, a concise
