@@ -19,8 +19,10 @@
    live roadmap authority.
 10. `evidence/ISSUE-20-32.md` — change and verification record for the amended v1
     sensitive-data boundary and native issue hierarchy rule.
-11. `research/ENGINE_TOOLCHAIN_EVALUATION.md` — bounded toolchain comparison and
-    recommendation awaiting the issue #25 owner decision.
+11. `research/ENGINE_TOOLCHAIN_EVALUATION.md` — approved bounded toolchain comparison and
+    provenance for DEC-0015.
+12. `evidence/ISSUE-25.md` — change and verification record for the lifecycle-engine
+    toolchain decision.
 
 ## Document lifecycle
 

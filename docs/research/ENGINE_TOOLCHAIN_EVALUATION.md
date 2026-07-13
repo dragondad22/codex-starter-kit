@@ -136,6 +136,21 @@ Approved implementation contract:
 
 ## Downstream impact
 
+| Engine operation | Toolchain effect and Phase 1 disposition |
+|---|---|
+| `create` | #26 exposes the approved empty-repository orchestration through the Go binary and JSON seam |
+| `inspect` | #26 implements read-only filesystem/Git fact collection using native Go APIs and structured Git execution |
+| `plan` | #26 emits immutable schema-versioned JSON plans without shell programs or Go-specific public types |
+| `apply` | #26 implements the first local mutation path; #28 and #29 harden its path, transaction, locking, and recovery semantics |
+| `verify` | #27 evaluates seed controls and emits language-neutral evidence/results through the same binary seam |
+| `status` | #26 reports initial lifecycle state; #29 extends it with truthful incomplete and recoverable-failure states |
+| `retrofit` | Interface compatibility is reserved now; implementation remains Phase 4 and must reuse the same binary/JSON contract |
+| `upgrade` | Interface compatibility is reserved now; implementation remains Phase 5 and must preserve schema/evidence migration semantics |
+
+Phase 1 exercises `create`, `inspect`, `plan`, `apply`, `verify`, and `status` end to end.
+It reserves `retrofit` and `upgrade` at the public seam without claiming their deferred
+behavior exists.
+
 | Consumer | Dependency on this selection |
 |---|---|
 | #26 create walking skeleton | Establishes module/CLI layout, JSON contracts, native binary, and stdlib-only baseline |
