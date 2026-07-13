@@ -49,7 +49,7 @@ func TestVerifyCreatedRepositoryEmitsTruthfulSeedResults(t *testing.T) {
 		"CORE-SECRETS-001":   engine.ControlNotConfigured,
 		"CORE-OWNERSHIP-001": engine.ControlPass,
 		"CORE-COVERAGE-001":  engine.ControlPass,
-		"CORE-RECOVERY-001":  engine.ControlNotConfigured,
+		"CORE-RECOVERY-001":  engine.ControlPass,
 		"CORE-ROUTES-001":    engine.ControlPass,
 	}
 	if len(result.Controls) != len(wantStates) {

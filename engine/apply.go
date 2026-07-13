@@ -2,11 +2,16 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 // ApplyStatus is the explicit outcome of applying a plan.
@@ -28,6 +33,8 @@ const (
 	LifecycleUnmanaged = "unmanaged"
 	// LifecycleManagedDegraded indicates a present but invalid local contract.
 	LifecycleManagedDegraded = "managed_degraded"
+	// LifecycleSetupIncomplete indicates a recoverable create transaction did not finish.
+	LifecycleSetupIncomplete = "setup_incomplete"
 )
 
 // ApplyResult records the observable result of applying a plan.
@@ -36,14 +43,19 @@ type ApplyResult struct {
 	PlanID        string      `json:"plan_id"`
 	Status        ApplyStatus `json:"status"`
 	ChangedFiles  []string    `json:"changed_files"`
+	Recovery      []string    `json:"recovery"`
+	Evidence      []string    `json:"evidence"`
 }
 
 // ApplyFailure describes an explicit recoverable or non-recoverable apply failure.
 type ApplyFailure struct {
-	Stage        string   `json:"stage"`
-	Recoverable  bool     `json:"recoverable"`
-	ChangedFiles []string `json:"changed_files"`
-	Cause        string   `json:"cause"`
+	Stage        string                   `json:"stage"`
+	Recoverable  bool                     `json:"recoverable"`
+	ChangedFiles []string                 `json:"changed_files"`
+	Conflicts    []ReconciliationConflict `json:"conflicts"`
+	Recovery     []string                 `json:"recovery"`
+	Evidence     []string                 `json:"evidence"`
+	Cause        string                   `json:"cause"`
 }
 
 func (f *ApplyFailure) Error() string {
@@ -56,6 +68,8 @@ type RepositoryStatus struct {
 	Repository    string   `json:"repository"`
 	Lifecycle     string   `json:"lifecycle"`
 	Problems      []string `json:"problems"`
+	Recovery      []string `json:"recovery"`
+	Evidence      []string `json:"evidence"`
 }
 
 // Apply rechecks plan identity and preconditions, performs local mutations, and verifies
@@ -99,93 +113,293 @@ func (e *Engine) Apply(ctx context.Context, planID string, plan Plan) (ApplyResu
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	leaseContent, recovery, evidence, err := acquireLifecycleLock(lockPath, plan.ID, e.clock.Now().UTC())
 	if err != nil {
-		result := ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}
+		result := ApplyResult{
+			SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusFailed,
+			ChangedFiles: []string{}, Recovery: []string{}, Evidence: []string{},
+		}
 		failure := &ApplyFailure{
 			Stage: "lock", Recoverable: true, Cause: err.Error(), ChangedFiles: []string{},
+			Conflicts: []ReconciliationConflict{},
+			Recovery: []string{
+				"wait for the active lifecycle operation to finish and retry the same immutable plan",
+				"if the recorded process is no longer active, preserve the lease and retry for automatic stale recovery",
+			},
+			Evidence: []string{},
 		}
+		attemptReference := "git:starter-kit-attempts/" + strings.TrimPrefix(plan.ID, "sha256:") + ".json"
+		failure.Evidence = []string{attemptReference}
+		result.Evidence = []string{attemptReference}
 		if eventErr := recordGitAttempt(lockPath, plan, result, failure); eventErr != nil {
+			failure.Evidence = []string{}
+			result.Evidence = []string{}
 			failure.Recoverable = false
 			failure.Cause = fmt.Sprintf("%s; recording lock attempt failed: %v", failure.Cause, eventErr)
 		}
 		return result, failure
 	}
-	_ = lock.Close()
-	defer os.Remove(lockPath)
+	defer releaseLifecycleLock(lockPath, leaseContent)
+	fail := func(stage string, changed []string, recoverable bool, err error) (ApplyResult, error) {
+		return failAndRecord(root, plan, stage, changed, recoverable, recovery, evidence, err)
+	}
+	stageRecovery, stageEvidence, err := recoverAbandonedStages(root, lockPath, plan.ID, evidence, e.clock.Now().UTC())
+	recovery = append(recovery, stageRecovery...)
+	evidence = append(evidence, stageEvidence...)
+	if err != nil {
+		return fail("recover-stage", []string{}, false, err)
+	}
 
 	inspection, err := e.Inspect(ctx, plan.Repository)
 	if err != nil {
-		return failAndRecord(root, plan, "precondition", []string{}, true, err)
+		return fail("precondition", []string{}, true, err)
 	}
 	if inspection.PreconditionDigest != plan.RepositoryDigest {
-		return failAndRecord(root, plan, "precondition", []string{}, true, errors.New("repository changed after the plan was created"))
+		if result, applied := stableAppliedCreateResult(root, inspection, plan); applied {
+			result.Recovery = append([]string{}, recovery...)
+			result.Evidence = append([]string{}, evidence...)
+			return result, nil
+		}
+		if resumable, conflicts := interruptedCreateMatchesPlan(root, plan); resumable {
+			recovery = append(recovery, "resumed the same immutable create plan without replacing its matching committed prefix")
+		} else {
+			if len(conflicts) != 0 {
+				return reconcileApplyFailure(root, plan, recovery, evidence, conflicts)
+			}
+			return fail("precondition", []string{}, true, errors.New("repository changed after the plan was created"))
+		}
 	}
 	if plan.NoChange {
 		if !inspection.Managed || len(plan.Files) != 0 {
-			return failAndRecord(root, plan, "precondition", []string{}, true, errors.New("no-change plan requires a valid unchanged managed repository"))
+			return fail("precondition", []string{}, true, errors.New("no-change plan requires a valid unchanged managed repository"))
 		}
-		result := ApplyResult{1, plan.ID, ApplyStatusNoChange, []string{plan.Result.Path}}
+		result := ApplyResult{
+			SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusNoChange,
+			ChangedFiles: []string{plan.Result.Path}, Recovery: recovery, Evidence: evidence,
+		}
 		if err := recordApplyEvent(root, plan, result, nil); err != nil {
-			return failAndRecord(root, plan, "record-result", []string{}, true, err)
+			return fail("record-result", []string{}, true, err)
 		}
 		return result, nil
 	}
-	stageRoot, err := os.MkdirTemp(root, ".starter-kit-stage-")
-	if err != nil {
-		return failAndRecord(root, plan, "stage", []string{}, true, err)
+	var currentLease lifecycleLease
+	if err := json.Unmarshal(leaseContent, &currentLease); err != nil {
+		return fail("stage", []string{}, false, errors.New("active lifecycle lease is unreadable"))
+	}
+	stageRoot := filepath.Join(root, ".starter-kit-stage-"+currentLease.Token)
+	if err := os.Mkdir(stageRoot, 0o700); err != nil {
+		return fail("stage", []string{}, true, err)
+	}
+	marker := stageTransactionMarker{
+		SchemaVersion: 1, Ownership: "machine-state", Source: "engine:apply:v1",
+		LeaseToken: currentLease.Token, PlanID: plan.ID, CreatedAt: e.clock.Now().UTC(),
+	}
+	if err := os.WriteFile(filepath.Join(stageRoot, ".starter-kit-transaction.json"), []byte(jsonDocument(marker)), 0o600); err != nil {
+		_ = os.RemoveAll(stageRoot)
+		return fail("stage", []string{}, true, err)
 	}
 	defer os.RemoveAll(stageRoot)
 	for _, planned := range plan.Files {
 		staged := filepath.Join(stageRoot, filepath.FromSlash(planned.Path))
 		if err := os.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
-			return failAndRecord(root, plan, "stage", []string{}, true, err)
+			return fail("stage", []string{}, true, err)
 		}
 		if err := os.WriteFile(staged, []byte(planned.Content), 0o644); err != nil {
-			return failAndRecord(root, plan, "stage", []string{}, true, err)
+			return fail("stage", []string{}, true, err)
 		}
 		content, err := os.ReadFile(staged)
 		if err != nil || digestBytes(content) != planned.Digest {
 			if err == nil {
 				err = errors.New("staged content digest mismatch")
 			}
-			return failAndRecord(root, plan, "stage-verify", []string{}, true, err)
+			return fail("stage-verify", []string{}, true, err)
 		}
 	}
 
-	result := ApplyResult{1, plan.ID, ApplyStatusApplied, commitPaths(plan)}
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusApplied,
+		ChangedFiles: commitPaths(plan), Recovery: recovery, Evidence: evidence,
+	}
 	eventFile := plannedEventFile(plan, result, nil)
 	stagedEvent := filepath.Join(stageRoot, filepath.FromSlash(eventFile.Path))
 	if err := os.MkdirAll(filepath.Dir(stagedEvent), 0o755); err != nil {
-		return failAndRecord(root, plan, "stage-result", []string{}, true, err)
+		return fail("stage-result", []string{}, true, err)
 	}
 	if err := os.WriteFile(stagedEvent, []byte(eventFile.Content), 0o644); err != nil {
-		return failAndRecord(root, plan, "stage-result", []string{}, true, err)
+		return fail("stage-result", []string{}, true, err)
 	}
 
 	changed := make([]string, 0, len(result.ChangedFiles))
 	for _, planned := range commitFiles(plan.Files, eventFile) {
 		if err := ensureNoSymlinkParents(root, planned.Path); err != nil {
-			return failedCommittedApply(root, plan, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, recovery, evidence, err)
 		}
 		target := filepath.Join(root, filepath.FromSlash(planned.Path))
 		if fileExists(target) {
-			return failedCommittedApply(root, plan, "commit", changed, fmt.Errorf("refusing to overwrite existing file: %s", planned.Path))
+			if existingPlannedFileMatches(target, planned, plan) {
+				continue
+			}
+			return failedCommittedApply(root, plan, "commit", changed, recovery, evidence, fmt.Errorf("refusing to overwrite existing file: %s", planned.Path))
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return failedCommittedApply(root, plan, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, recovery, evidence, err)
 		}
 		staged := filepath.Join(stageRoot, filepath.FromSlash(planned.Path))
 		if err := os.Rename(staged, target); err != nil {
-			return failedCommittedApply(root, plan, "commit", changed, err)
+			return failedCommittedApply(root, plan, "commit", changed, recovery, evidence, err)
 		}
 		changed = append(changed, planned.Path)
 	}
 	contractPresent, problems := validateManagedContract(root)
 	if !contractPresent || len(problems) != 0 {
-		return failedCommittedApply(root, plan, "postcondition", changed, fmt.Errorf("invalid managed contract: %v", problems))
+		return failedCommittedApply(root, plan, "postcondition", changed, recovery, evidence, fmt.Errorf("invalid managed contract: %v", problems))
 	}
 	return result, nil
+}
+
+func interruptedCreateMatchesPlan(root string, plan Plan) (bool, []ReconciliationConflict) {
+	if plan.NoChange || fileExists(filepath.Join(root, ".starter-kit", "state.json")) {
+		return false, nil
+	}
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusApplied,
+		ChangedFiles: commitPaths(plan), Recovery: []string{}, Evidence: []string{},
+	}
+	event := plannedEventFile(plan, result, nil)
+	allowed := make(map[string]PlannedFile, len(plan.Files)+1)
+	for _, file := range plan.Files {
+		allowed[file.Path] = file
+	}
+	allowed[event.Path] = event
+	matched := 0
+	conflicts := []ReconciliationConflict{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && relative == ".git" {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() && strings.HasPrefix(relative, ".starter-kit-stage-") {
+			return filepath.SkipDir
+		}
+		slashPath := filepath.ToSlash(relative)
+		if entry.IsDir() {
+			if approvedDirectoryPrefix(slashPath, allowed) {
+				return nil
+			}
+			conflicts = append(conflicts, reconciliationConflict(slashPath, "directory", "unplanned directory appeared after planning"))
+			return filepath.SkipDir
+		}
+		planned, approved := allowed[slashPath]
+		kind := "file"
+		if entry.Type()&os.ModeSymlink != 0 {
+			kind = "symlink"
+		}
+		if !approved || kind == "symlink" || !existingPlannedFileMatches(path, planned, plan) {
+			conflicts = append(conflicts, reconciliationConflict(slashPath, kind, "content does not match the immutable create plan"))
+			return nil
+		}
+		matched++
+		return nil
+	})
+	if err != nil {
+		return false, []ReconciliationConflict{reconciliationConflict(".", "repository", "repository progress could not be inspected safely")}
+	}
+	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Path < conflicts[j].Path })
+	return matched != 0 && len(conflicts) == 0, conflicts
+}
+
+func approvedDirectoryPrefix(directory string, allowed map[string]PlannedFile) bool {
+	prefix := directory + "/"
+	for path := range allowed {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func existingPlannedFileMatches(target string, planned PlannedFile, plan Plan) bool {
+	if planned.Path == plan.Result.Path {
+		content, err := os.ReadFile(target)
+		if err != nil {
+			return false
+		}
+		var event operationEvent
+		recordedDigest := ""
+		if json.Unmarshal(content, &event) != nil {
+			return false
+		}
+		recordedDigest = event.EventDigest
+		event.EventDigest = ""
+		return event.SchemaVersion == 1 && event.PlanID == plan.ID && event.Operation == plan.Operation && event.Status == ApplyStatusApplied && recordedDigest != "" && digestJSON(event) == recordedDigest
+	}
+	content, err := os.ReadFile(target)
+	return err == nil && digestBytes(content) == planned.Digest
+}
+
+func reconciliationConflict(path, kind, reason string) ReconciliationConflict {
+	return ReconciliationConflict{Path: reviewableConflictPath(path), Kind: kind, Ownership: "user-owned", Reason: reason}
+}
+
+func reconcileApplyFailure(root string, plan Plan, recovery, evidence []string, conflicts []ReconciliationConflict) (ApplyResult, error) {
+	recovery = append(recovery,
+		"review and preserve every listed conflict",
+		"replan only after the repository facts or explicit reconciliation authority change",
+	)
+	originalEvidence := append([]string{}, evidence...)
+	evidence = append(evidence, plan.Result.Path)
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusFailed,
+		ChangedFiles: []string{plan.Result.Path}, Recovery: recovery, Evidence: evidence,
+	}
+	failure := &ApplyFailure{
+		Stage: "reconcile", Recoverable: true, ChangedFiles: []string{plan.Result.Path},
+		Conflicts: conflicts, Recovery: recovery, Evidence: evidence,
+		Cause: "repository content conflicts with the immutable create plan",
+	}
+	if err := recordApplyEvent(root, plan, result, failure); err != nil {
+		result.ChangedFiles = []string{}
+		result.Evidence = originalEvidence
+		failure.ChangedFiles = []string{}
+		failure.Evidence = originalEvidence
+		failure.Recoverable = false
+		failure.Cause += "; recording reconciliation evidence failed: " + err.Error()
+	}
+	return result, failure
+}
+
+func stableAppliedCreateResult(root string, inspection Inspection, plan Plan) (ApplyResult, bool) {
+	if !inspection.Managed {
+		return ApplyResult{}, false
+	}
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusNoChange,
+		ChangedFiles: []string{plan.Result.Path}, Recovery: []string{}, Evidence: []string{},
+	}
+	if !plan.NoChange {
+		if !plannedFilesMatch(root, plan.Files) {
+			return ApplyResult{}, false
+		}
+		result.Status = ApplyStatusApplied
+		result.ChangedFiles = commitPaths(plan)
+	} else if len(plan.Files) != 0 {
+		return ApplyResult{}, false
+	}
+	event := plannedEventFile(plan, result, nil)
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(event.Path)))
+	if err != nil || string(content) != event.Content {
+		return ApplyResult{}, false
+	}
+	return result, true
 }
 
 func rejectPlanBeforeTransaction(ctx context.Context, root string, plan Plan, validationErr error) (ApplyResult, error) {
@@ -193,7 +407,10 @@ func rejectPlanBeforeTransaction(ctx context.Context, root string, plan Plan, va
 	failure := &ApplyFailure{
 		Stage: "validate-plan", Recoverable: true, ChangedFiles: []string{}, Cause: diagnostics[0],
 	}
-	result := ApplyResult{1, plan.ID, ApplyStatusFailed, []string{}}
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusFailed,
+		ChangedFiles: []string{}, Recovery: []string{}, Evidence: []string{},
+	}
 	lockPath, err := lifecycleLockPath(ctx, root)
 	if err != nil {
 		failure.Recoverable = false
@@ -276,21 +493,24 @@ func lifecycleLockPath(ctx context.Context, root string) (string, error) {
 }
 
 type operationEvent struct {
-	SchemaVersion    int         `json:"schema_version"`
-	Ownership        string      `json:"ownership"`
-	Source           string      `json:"source"`
-	PlanID           string      `json:"plan_id"`
-	Operation        Operation   `json:"operation"`
-	Status           ApplyStatus `json:"status"`
-	Actor            string      `json:"actor"`
-	Authority        string      `json:"authority"`
-	RepositoryDigest string      `json:"repository_digest"`
-	ChangedFiles     []string    `json:"changed_files"`
-	ExternalEffects  []string    `json:"external_effects"`
-	Diagnostics      []string    `json:"diagnostics"`
-	Error            string      `json:"error,omitempty"`
-	Recoverable      bool        `json:"recoverable"`
-	EventDigest      string      `json:"event_digest"`
+	SchemaVersion    int                      `json:"schema_version"`
+	Ownership        string                   `json:"ownership"`
+	Source           string                   `json:"source"`
+	PlanID           string                   `json:"plan_id"`
+	Operation        Operation                `json:"operation"`
+	Status           ApplyStatus              `json:"status"`
+	Actor            string                   `json:"actor"`
+	Authority        string                   `json:"authority"`
+	RepositoryDigest string                   `json:"repository_digest"`
+	ChangedFiles     []string                 `json:"changed_files"`
+	ExternalEffects  []string                 `json:"external_effects"`
+	Diagnostics      []string                 `json:"diagnostics"`
+	Conflicts        []ReconciliationConflict `json:"conflicts"`
+	Recovery         []string                 `json:"recovery"`
+	Evidence         []string                 `json:"evidence"`
+	Error            string                   `json:"error,omitempty"`
+	Recoverable      bool                     `json:"recoverable"`
+	EventDigest      string                   `json:"event_digest"`
 }
 
 func plannedEventFile(plan Plan, result ApplyResult, applyErr error) PlannedFile {
@@ -300,11 +520,16 @@ func plannedEventFile(plan Plan, result ApplyResult, applyErr error) PlannedFile
 		Actor: "not-configured", Authority: "not-configured",
 		RepositoryDigest: plan.RepositoryDigest, ChangedFiles: result.ChangedFiles,
 		ExternalEffects: []string{}, Diagnostics: []string{},
+		Conflicts: []ReconciliationConflict{},
+		Recovery:  append([]string{}, result.Recovery...), Evidence: append([]string{}, result.Evidence...),
 	}
 	var failure *ApplyFailure
 	if errors.As(applyErr, &failure) {
 		event.Error = failure.Cause
 		event.Recoverable = failure.Recoverable
+		event.Conflicts = append([]ReconciliationConflict{}, failure.Conflicts...)
+		event.Recovery = append([]string{}, failure.Recovery...)
+		event.Evidence = append([]string{}, failure.Evidence...)
 	} else if applyErr != nil {
 		event.Error = applyErr.Error()
 	}
@@ -314,6 +539,245 @@ func plannedEventFile(plan Plan, result ApplyResult, applyErr error) PlannedFile
 		Path: plan.Result.Path, Ownership: plan.Result.Ownership, Source: plan.Result.Source,
 		Digest: digestBytes([]byte(content)), Content: content,
 	}
+}
+
+type lifecycleLease struct {
+	SchemaVersion int       `json:"schema_version"`
+	Token         string    `json:"token"`
+	PlanID        string    `json:"plan_id"`
+	PID           int       `json:"pid"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func acquireLifecycleLock(lockPath, planID string, now time.Time) ([]byte, []string, []string, error) {
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, nil, nil, fmt.Errorf("generate lifecycle lease token: %w", err)
+	}
+	lease := lifecycleLease{
+		SchemaVersion: 1, Token: hex.EncodeToString(tokenBytes), PlanID: planID,
+		PID: os.Getpid(), CreatedAt: now,
+	}
+	content := []byte(jsonDocument(lease))
+	recovery := []string{}
+	evidence := []string{}
+	for attempt := 0; attempt < 2; attempt++ {
+		lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			if _, writeErr := lock.Write(content); writeErr != nil {
+				_ = lock.Close()
+				_ = os.Remove(lockPath)
+				return nil, nil, nil, fmt.Errorf("write lifecycle lease: %w", writeErr)
+			}
+			if syncErr := lock.Sync(); syncErr != nil {
+				_ = lock.Close()
+				_ = os.Remove(lockPath)
+				return nil, nil, nil, fmt.Errorf("sync lifecycle lease: %w", syncErr)
+			}
+			if closeErr := lock.Close(); closeErr != nil {
+				_ = os.Remove(lockPath)
+				return nil, nil, nil, fmt.Errorf("close lifecycle lease: %w", closeErr)
+			}
+			return content, recovery, evidence, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, nil, nil, fmt.Errorf("acquire lifecycle lease: %w", err)
+		}
+		existing, readErr := os.ReadFile(lockPath)
+		if readErr != nil {
+			return nil, nil, nil, fmt.Errorf("read existing lifecycle lease: %w", readErr)
+		}
+		var stale lifecycleLease
+		if json.Unmarshal(existing, &stale) != nil || stale.SchemaVersion != 1 || !validLeaseToken(stale.Token) || stale.PlanID == "" || stale.PID <= 0 || stale.CreatedAt.IsZero() {
+			return nil, nil, nil, errors.New("lifecycle lease is active or malformed and requires review")
+		}
+		if processAlive(stale.PID) || now.Before(stale.CreatedAt.Add(5*time.Minute)) {
+			return nil, nil, nil, errors.New("lifecycle lease is held by an active or recently started process")
+		}
+		directory := filepath.Join(filepath.Dir(lockPath), "starter-kit-attempts")
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return nil, nil, nil, fmt.Errorf("create stale-lease evidence directory: %w", err)
+		}
+		filename := "stale-lock-" + stale.Token + ".json"
+		archive := filepath.Join(directory, filename)
+		if err := os.Rename(lockPath, archive); err != nil {
+			return nil, nil, nil, fmt.Errorf("archive stale lifecycle lease: %w", err)
+		}
+		recovery = append(recovery, "recovered a stale lifecycle lease after confirming its recorded process was not active")
+		evidence = append(evidence, "git:starter-kit-attempts/"+filename)
+	}
+	return nil, nil, nil, errors.New("lifecycle lease changed during stale recovery")
+}
+
+func validLeaseToken(token string) bool {
+	decoded, err := hex.DecodeString(token)
+	return err == nil && len(decoded) == 16 && token == strings.ToLower(token)
+}
+
+func releaseLifecycleLock(lockPath string, leaseContent []byte) {
+	current, err := os.ReadFile(lockPath)
+	if err == nil && string(current) == string(leaseContent) {
+		_ = os.Remove(lockPath)
+	}
+}
+
+type abandonedStageEvidence struct {
+	SchemaVersion  int       `json:"schema_version"`
+	Ownership      string    `json:"ownership"`
+	Source         string    `json:"source"`
+	StageDigest    string    `json:"stage_digest"`
+	RecoveredAt    time.Time `json:"recovered_at"`
+	EvidenceDigest string    `json:"evidence_digest"`
+}
+
+type stageTransactionMarker struct {
+	SchemaVersion int       `json:"schema_version"`
+	Ownership     string    `json:"ownership"`
+	Source        string    `json:"source"`
+	LeaseToken    string    `json:"lease_token"`
+	PlanID        string    `json:"plan_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+func recoverAbandonedStages(root, lockPath, planID string, leaseEvidence []string, now time.Time) ([]string, []string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	recovery := []string{}
+	evidence := []string{}
+	staleTokens := map[string]struct{}{}
+	for _, reference := range leaseEvidence {
+		const prefix = "git:starter-kit-attempts/stale-lock-"
+		if strings.HasPrefix(reference, prefix) && strings.HasSuffix(reference, ".json") {
+			token := strings.TrimSuffix(strings.TrimPrefix(reference, prefix), ".json")
+			if validLeaseToken(token) {
+				staleTokens[token] = struct{}{}
+			}
+		}
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), ".starter-kit-stage-") {
+			continue
+		}
+		stagePath := filepath.Join(root, entry.Name())
+		token := strings.TrimPrefix(entry.Name(), ".starter-kit-stage-")
+		if _, authorized := staleTokens[token]; !authorized {
+			return recovery, evidence, errors.New("unrecognized staging tree is preserved and requires reconciliation")
+		}
+		markerContent, err := os.ReadFile(filepath.Join(stagePath, ".starter-kit-transaction.json"))
+		if err != nil {
+			return recovery, evidence, errors.New("staging tree lacks a readable engine transaction marker")
+		}
+		var marker stageTransactionMarker
+		if json.Unmarshal(markerContent, &marker) != nil || marker.SchemaVersion != 1 || marker.Ownership != "machine-state" || marker.Source != "engine:apply:v1" || marker.LeaseToken != token || marker.PlanID != planID || marker.CreatedAt.IsZero() {
+			return recovery, evidence, errors.New("staging tree transaction marker does not match the stale lease and plan")
+		}
+		stageDigest, err := pathTreeDigest(stagePath)
+		if err != nil {
+			return recovery, evidence, fmt.Errorf("digest abandoned stage: %w", err)
+		}
+		record := abandonedStageEvidence{
+			SchemaVersion: 1, Ownership: "machine-evidence", Source: "engine:apply:v1",
+			StageDigest: stageDigest, RecoveredAt: now,
+		}
+		record.EvidenceDigest = digestJSON(record)
+		nameDigest := strings.TrimPrefix(record.EvidenceDigest, "sha256:")
+		if len(nameDigest) > 32 {
+			nameDigest = nameDigest[:32]
+		}
+		filename := "abandoned-stage-" + nameDigest + ".json"
+		directory := filepath.Join(filepath.Dir(lockPath), "starter-kit-attempts")
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return recovery, evidence, err
+		}
+		if err := writeEvidenceOnce(filepath.Join(directory, filename), []byte(jsonDocument(record))); err != nil {
+			return recovery, evidence, err
+		}
+		if err := os.RemoveAll(stagePath); err != nil {
+			return recovery, evidence, fmt.Errorf("remove abandoned stage: %w", err)
+		}
+		recovery = append(recovery, "removed an abandoned staging tree after preserving its content digest")
+		evidence = append(evidence, "git:starter-kit-attempts/"+filename)
+	}
+	return recovery, evidence, nil
+}
+
+func pathTreeDigest(root string) (string, error) {
+	type entryDigest struct {
+		Path   string `json:"path"`
+		Kind   string `json:"kind"`
+		Digest string `json:"digest"`
+	}
+	entries := []entryDigest{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		if entry.IsDir() {
+			entries = append(entries, entryDigest{Path: filepath.ToSlash(relative), Kind: "directory"})
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, entryDigest{Path: filepath.ToSlash(relative), Kind: "symlink", Digest: digestBytes([]byte(target))})
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entryDigest{Path: filepath.ToSlash(relative), Kind: "file", Digest: digestBytes(content)})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	return digestJSON(entries), nil
+}
+
+func writeEvidenceOnce(target string, content []byte) error {
+	if existing, err := os.ReadFile(target); err == nil {
+		if string(existing) == string(content) {
+			return nil
+		}
+		return errors.New("recovery evidence path already contains different content")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".recovery-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, target)
 }
 
 func recordApplyEvent(root string, plan Plan, result ApplyResult, applyErr error) error {
@@ -465,13 +929,17 @@ func removeEmptyParents(root, directory string) {
 	}
 }
 
-func failAndRecord(root string, plan Plan, stage string, changed []string, recoverable bool, err error) (ApplyResult, error) {
+func failAndRecord(root string, plan Plan, stage string, changed []string, recoverable bool, recovery, evidence []string, err error) (ApplyResult, error) {
 	retained := append([]string{}, changed...)
 	retained = append(retained, plan.Result.Path)
-	result := ApplyResult{1, plan.ID, ApplyStatusFailed, retained}
+	result := ApplyResult{
+		SchemaVersion: 1, PlanID: plan.ID, Status: ApplyStatusFailed,
+		ChangedFiles: retained, Recovery: append([]string{}, recovery...), Evidence: append([]string{}, evidence...),
+	}
 	failure := &ApplyFailure{
 		Stage: stage, Recoverable: recoverable, Cause: err.Error(),
-		ChangedFiles: append([]string{}, retained...),
+		ChangedFiles: append([]string{}, retained...), Conflicts: []ReconciliationConflict{},
+		Recovery: append([]string{}, recovery...), Evidence: append([]string{}, evidence...),
 	}
 	if eventErr := recordApplyEvent(root, plan, result, failure); eventErr != nil {
 		result.ChangedFiles = append([]string{}, changed...)
@@ -482,11 +950,11 @@ func failAndRecord(root string, plan Plan, stage string, changed []string, recov
 	return result, failure
 }
 
-func failedCommittedApply(root string, plan Plan, stage string, changed []string, err error) (ApplyResult, error) {
+func failedCommittedApply(root string, plan Plan, stage string, changed, recovery, evidence []string, err error) (ApplyResult, error) {
 	if rollbackErr := rollbackFiles(root, changed); rollbackErr != nil {
-		return failAndRecord(root, plan, stage, changed, false, fmt.Errorf("%v; rollback failed: %v", err, rollbackErr))
+		return failAndRecord(root, plan, stage, changed, false, recovery, evidence, fmt.Errorf("%v; rollback failed: %v", err, rollbackErr))
 	}
-	return failAndRecord(root, plan, stage, []string{}, true, err)
+	return failAndRecord(root, plan, stage, []string{}, true, recovery, evidence, err)
 }
 
 // Status reports lifecycle state from the authoritative local state document.
@@ -496,12 +964,89 @@ func (e *Engine) Status(ctx context.Context, repository string) (RepositoryStatu
 		return RepositoryStatus{}, err
 	}
 	if inspection.Managed {
-		return RepositoryStatus{1, inspection.Repository, LifecycleManaged, []string{}}, nil
+		return RepositoryStatus{
+			SchemaVersion: 1, Repository: inspection.Repository, Lifecycle: LifecycleManaged,
+			Problems: []string{}, Recovery: []string{}, Evidence: []string{},
+		}, nil
+	}
+	if incompleteCreateState(inspection.Repository) {
+		problems := append([]string{}, inspection.Problems...)
+		problems = append(problems, "create transaction is incomplete and does not establish managed conformance")
+		sort.Strings(problems)
+		return RepositoryStatus{
+			SchemaVersion: 1, Repository: inspection.Repository, Lifecycle: LifecycleSetupIncomplete,
+			Problems: problems,
+			Recovery: []string{
+				"retry the same immutable create plan so matching committed artifacts are preserved and missing artifacts are completed",
+				"if the original plan is unavailable, preserve the repository and use an explicitly authorized reconciliation workflow",
+			},
+			Evidence: recoveryEvidenceReferences(inspection.Repository),
+		}, nil
 	}
 	if inspection.ContractPresent {
-		return RepositoryStatus{1, inspection.Repository, LifecycleManagedDegraded, inspection.Problems}, nil
+		return RepositoryStatus{
+			SchemaVersion: 1, Repository: inspection.Repository, Lifecycle: LifecycleManagedDegraded,
+			Problems: inspection.Problems, Recovery: []string{}, Evidence: recoveryEvidenceReferences(inspection.Repository),
+		}, nil
 	}
-	return RepositoryStatus{1, inspection.Repository, LifecycleUnmanaged, []string{}}, nil
+	return RepositoryStatus{
+		SchemaVersion: 1, Repository: inspection.Repository, Lifecycle: LifecycleUnmanaged,
+		Problems: []string{}, Recovery: []string{}, Evidence: recoveryEvidenceReferences(inspection.Repository),
+	}, nil
+}
+
+func incompleteCreateState(root string) bool {
+	if fileExists(filepath.Join(root, ".starter-kit", "state.json")) {
+		return false
+	}
+	for _, marker := range []string{
+		".starter-kit/managed-files.json", ".starter-kit/layout.json", ".starter-kit/project.json",
+	} {
+		if fileExists(filepath.Join(root, filepath.FromSlash(marker))) {
+			return true
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".starter-kit-stage-") {
+			return true
+		}
+	}
+	return false
+}
+
+func recoveryEvidenceReferences(root string) []string {
+	directory := filepath.Join(root, ".git", "starter-kit-attempts")
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return []string{}
+	}
+	references := []string{}
+	for _, entry := range entries {
+		if !entry.IsDir() && validRecoveryEvidenceFilename(entry.Name()) {
+			references = append(references, "git:starter-kit-attempts/"+entry.Name())
+		}
+	}
+	sort.Strings(references)
+	return references
+}
+
+func validRecoveryEvidenceFilename(name string) bool {
+	stem := strings.TrimSuffix(name, ".json")
+	if stem == name {
+		return false
+	}
+	for _, prefix := range []string{"stale-lock-", "abandoned-stage-"} {
+		if strings.HasPrefix(stem, prefix) {
+			stem = strings.TrimPrefix(stem, prefix)
+			break
+		}
+	}
+	decoded, err := hex.DecodeString(stem)
+	return err == nil && (len(decoded) == 16 || len(decoded) == 32)
 }
 
 func planWithBlankID(plan Plan) Plan {

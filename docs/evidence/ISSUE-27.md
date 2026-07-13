@@ -8,8 +8,10 @@
 
 The lifecycle-engine and CLI prepare/execute `verify` transaction evaluates six stable seed controls for an
 explicit repository scope and lifecycle gate. Results preserve explicit states and
-aggregate to `pass` only when every result passes. Missing secret-scanning and complete
-recovery capabilities remain `not-configured` rather than becoming false green.
+aggregate to `pass` only when every result passes. Secret scanning remains
+`not-configured` rather than becoming false green. Issue #29 now supplies a bounded,
+evidence-backed create-v1 recovery protocol, so the recovery control passes with an
+explicit engine-capability reference.
 
 Verification writes content-digested, self-describing machine evidence under
 `.starter-kit/evidence/`, regenerates the human conformance summary, updates its managed
@@ -29,7 +31,7 @@ recorded in the Git-local attempt ledger when repository evidence cannot be comm
 | Issue #27 requirement | Evidence | Disposition |
 |---|---|---|
 | `verify` operates on #26-created repository through engine seam | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults`, `TestCLIVerifyCreatedRepository` | Covered |
-| Truth, secrets, ownership, coverage, recovery, breadcrumb controls | Six stable `CORE-*` results | Covered; secrets/recovery truthfully `not-configured` |
+| Truth, secrets, ownership, coverage, recovery, breadcrumb controls | Six stable `CORE-*` results | Covered; secrets truthfully `not-configured`; bounded create recovery passes |
 | Stable identity and one explicit state with evidence/rationale | Result schema plus contract validation | Covered |
 | Scope, source revision, engine/schema/policy versions, time, redacted diagnostics | `VerificationResult`, injected clock, redaction | Covered; policy explicitly `not-configured` |
 | Reproducible human summary from authoritative result | Rendered `CONFORMANCE.md` and updated managed digest | Covered |
@@ -45,7 +47,7 @@ recorded in the Git-local attempt ledger when repository evidence cannot be comm
 | `CORE-SECRETS-001` | Secrets and sensitive diagnostics are not exposed | `TestDiagnosticsAreRedactedBeforeEvidence` | #28 expands leakage attacks; later policy work selects a scanner |
 | `CORE-OWNERSHIP-001` | Human, generated, and machine ownership remain distinct | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults` | #29 reconciliation and upgrades preserve ownership/history |
 | `CORE-COVERAGE-001` | Claims disclose scope and unsupported coverage | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults` | Plugin, release, and assurance views consume disclosure |
-| `CORE-RECOVERY-001` | Incomplete recovery evidence cannot pass | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults` | #29 supplies interruption, stale-lock, rollback, and recovery evidence |
+| `CORE-RECOVERY-001` | Bounded create recovery passes only with named capability evidence | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults`; Issue #29 recovery fixtures | #30 validates released native semantic equivalence; later adapters must add external-effect recovery |
 | `CORE-ROUTES-001` | Stable breadcrumb IDs resolve to governed artifacts | `TestRequiredBreadcrumbCannotPassWhenMissing` | Plugin and governed breadcrumb routing consume stable IDs |
 
 ## Verification commands
@@ -63,8 +65,9 @@ Final local results and native CI evidence are retained in the completing pull r
 ## Limitations
 
 - No approved secret scanner exists; secret coverage cannot pass.
-- Recovery cannot pass until #29's native interruption and stale-lock fixtures exist.
 - #28 owns complete malicious-path/input and secret-leakage coverage.
 - #30 owns exact released platform support and cross-platform semantic closure.
+- Create-v1 recovery does not claim crash-atomic multi-file mutation or recovery for future
+  external adapters; it uses state-last commit, conservative replay, and compensation.
 - Human attestation, risk acceptance authorization, qualified review, signed policy packs,
   release gates, and remote evidence stores remain later vertical slices.

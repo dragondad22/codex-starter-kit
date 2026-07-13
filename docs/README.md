@@ -35,6 +35,8 @@
     evidence.
 18. `evidence/ISSUE-28.md` — hostile-input threat coverage, native fixture limits, and
     downstream security dependencies.
+19. `evidence/ISSUE-29.md` — create replay, interruption, lease, reconciliation, rollback,
+    and recovery evidence with the explicit failure-mode matrix.
 
 ## Document lifecycle
 

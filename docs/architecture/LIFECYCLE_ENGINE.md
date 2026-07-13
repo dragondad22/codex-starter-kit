@@ -2,7 +2,7 @@
 
 **Status:** Implemented development slice
 **Decision:** [DEC-0015](../decisions/DEC-0015-lifecycle-engine-toolchain.md)
-**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#28](https://github.com/dragondad22/codex-starter-kit/issues/28)
+**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#29](https://github.com/dragondad22/codex-starter-kit/issues/29)
 
 ## Interface
 
@@ -25,10 +25,14 @@ planning rather than inventing human authority. `plan --operation create` produc
 same immutable result for unchanged inputs. The caller reviews and stores that JSON plan,
 then supplies both the plan document and its separately retained identifier to `apply`.
 Apply re-hashes the plan, re-inspects content/Git preconditions, constrains every path to
-the repository, stages and verifies content, acquires the lifecycle lock, refuses existing
-targets, commits state last, validates the complete managed contract, rolls back a failed
-commit where possible, and returns a structured result. Repeating create produces
-`no_change` only when the manifest, state, and every managed artifact remain valid.
+the repository, stages and verifies content, acquires a uniquely owned lifecycle lease,
+commits state last, validates the complete managed contract, rolls back a failed commit
+where possible, and returns a structured result. Replaying the exact immutable plan after
+`applied` or `no_change` returns the same stable outcome without mutation. Repeating create
+produces `no_change` only when the manifest, state, and every managed artifact remain valid.
+Changed approved input, new human content, or an unknown staging artifact produces a
+structured reconciliation stop; content is preserved and the result names conflicts,
+recovery actions, and available evidence.
 
 The current seam implements `create`, `inspect`, `plan`, `apply`, `status`, and seed
 `verify`. `retrofit` and `upgrade` remain later phases. A missing operation must not be
@@ -50,7 +54,7 @@ state. Aggregate `pass` is possible only when every evaluated control passes.
 | `CORE-SECRETS-001` | `not-configured` until an approved scanner provides defensible coverage |
 | `CORE-OWNERSHIP-001` | Passes only for a complete valid managed-file ownership/provenance contract |
 | `CORE-COVERAGE-001` | Passes when evaluated controls and coverage limits are disclosed |
-| `CORE-RECOVERY-001` | `not-configured` until #29 supplies interruption and stale-lock evidence |
+| `CORE-RECOVERY-001` | Passes for the bounded create-v1 recovery protocol and cites `create-recovery:v1` capability evidence |
 | `CORE-ROUTES-001` | Passes only when stable seed routes parse and resolve |
 
 The engine injects a clock so controlled runs can reproduce timestamps and semantics.
@@ -70,10 +74,11 @@ contain content-based repository and Git precondition digests, proposed paths, o
 provenance source, content, content digest, and the approved-input digests/confirmations.
 Plans also declare the reserved `.starter-kit/events/` machine-evidence path with
 ownership and source. A successful mutation stages its plan ID, operation, status,
-repository digest, and changed paths with the other files and commits that event before
-authoritative state. Failed accepted applies record the same structured failure evidence;
-no-change applies record their evaluation event. This is a state-last recoverable baseline,
-not a claim of crash-safe atomicity; #29 owns interruption recovery. Go types are not
+repository digest, changed paths, recovery actions, and evidence references with the other
+files and commits that event before authoritative state. Failed accepted applies record the
+same structured failure evidence; no-change applies record their evaluation event. This is
+a state-last, compensating recovery protocol, not a claim that a multi-file filesystem
+transaction or external effect is crash-atomically committed. Go types are not
 durable authority: compatibility is defined by observable JSON fields and black-box
 behavior through the engine seam.
 
@@ -89,7 +94,8 @@ established are rejected inputs rather than accepted operations. They return red
 caller diagnostics and deliberately cause no repository or Git effects: rejected input
 cannot supply the authority or evidence destination used to record its own rejection.
 After this boundary, validation failures are operation results and emit structured,
-redacted evidence. #29 owns the complete failure and recovery transition matrix.
+redacted evidence. The complete create-v1 transition and recovery matrix is retained in
+[Issue #29 evidence](../evidence/ISSUE-29.md).
 
 Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
 `docs/` and are never silently replaced. Generated views identify their role through the
@@ -142,21 +148,45 @@ lifecycle/engine state, project approvals, policy state, ownership, provenance, 
 digests. Self-consistent but semantically malicious state therefore reports
 `managed_degraded` rather than managed.
 
+## Replay, interruption, and reconciliation
+
+Apply serializes local mutation with a JSON lifecycle lease containing a random token,
+plan ID, process ID, and creation time. A lease is recoverable only when it is older than
+the bounded stale interval and native process-liveness inspection says its owner is gone.
+Active, recent, or malformed leases are never stolen. Stale lease content is first archived
+under the Git-local attempt ledger, and lease release removes only the token owned by the
+current process.
+
+The staging directory is named for that lease token and carries a transaction marker bound
+to the same token and immutable plan. Automatic cleanup is authorized only when an archived
+stale lease, directory name, and marker all agree. Before removal, the complete staging tree
+is digested into durable Git-local evidence without following symlinks. An unrecognized or
+mismatched staging tree is preserved and reported for reconciliation.
+
+If interruption happens after some planned files are committed but before authoritative
+state, replaying the same plan verifies every existing planned artifact byte-for-byte,
+preserves that matching prefix, and completes only the missing artifacts. Any differing,
+unplanned, linked, or user-owned material stops as structured reconciliation. `status`
+reports this recoverable state as `setup_incomplete` with recovery instructions and evidence
+references; it never reports the repository as successfully managed. Ordinary commit or
+postcondition failures roll back files created by the current attempt where possible. A
+rollback failure remains an explicit non-recoverable failure rather than successful state.
+
 ## Current limits
 
 - Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
 - Phase 1 uses the Go standard library and the structured `git`
   executable/argument/environment seam.
-- Staging, exclusive locking, state-last commit, postcondition validation, and best-effort
-  rollback are present. #29 owns interruption fixtures, stale-lock recovery, durable
-  recovery evidence, stronger atomicity, and deeper conflict/reconciliation behavior.
+- Create-v1 supplies stable replay, owned lifecycle leases, conservative stale recovery,
+  lease-bound staging evidence, same-plan committed-prefix resume, structured reconciliation,
+  state-last commit, postcondition validation, and compensating rollback. It does not claim
+  atomicity across multiple filesystem paths or future external systems.
 - Portable path, ownership, secret, malformed-state, malicious-plan, and structured Git
   defenses are implemented. Symlink fixtures execute where native creation is available;
   Windows CI adds a native directory-junction fixture, and the case-collision fixture records
   the runner's filesystem behavior. #30 owns broader reparse-point capability evidence,
   exact filesystem support claims, and released native support closure.
-- Seed verification is implemented, but secrets and recovery remain `not-configured`.
-  #28–#30 own hostile-input, interruption/recovery, and native support closure; no current
-  aggregate verification result is expected to pass.
+- Seed verification is implemented, and bounded create recovery passes. Secrets remain
+  `not-configured`, so no current aggregate verification result is expected to pass.
 - Runtime support is not published until #30 proves native semantic equivalence and exact
   OS/architecture/filesystem assumptions.
