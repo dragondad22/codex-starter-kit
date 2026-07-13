@@ -107,9 +107,19 @@ The destination and issue retain reciprocal references.
 ### Readiness
 
 Executability on the GitHub Project: `Intake`, `Needs refinement`, `Ready`, or `Blocked`.
-Readiness answers whether authorized work can start now. When the final unresolved blocker
-completes, the dependent becomes Ready, but remains in its current execution Status until
-it is deliberately selected or started.
+Readiness answers whether authorized work can start now. Its states are:
+
+- **Intake:** The item has been captured but has not passed refinement. It is not
+  executable.
+- **Needs refinement:** The item has been promoted for clarification, but its objective,
+  scope, authority, decisions, references, acceptance, evidence, or dependencies are not
+  yet sufficient for execution.
+- **Ready:** The item satisfies its subtype-specific execution contract, has the required
+  authority, and has no unresolved blocker. Ready work may remain Status `Backlog` until
+  deliberately selected.
+- **Blocked:** A known unresolved dependency, control, or required human action prevents
+  otherwise planned work from starting or continuing. When the final blocker resolves,
+  re-evaluate the item and move it to Ready if no other readiness gap remains.
 
 ### Question work item
 
@@ -126,18 +136,25 @@ evidence that the route provides suitable handling guarantees.
 ### Horizon
 
 Feature roadmap intent in the GitHub Project: `Now`, `Next`, `Later`, or blank. It is not
-execution Status or release membership.
+execution Status or release membership. Its values are:
+
+- **Now:** The feature is part of committed current product direction. It may span
+  releases and does not join a release until assigned to that release's approved
+  Milestone.
+- **Next:** The feature is an intentional candidate adjacent to or after current
+  commitments. It is not yet committed to a release. Do not confuse Horizon `Next` with
+  Status `Next`, which means a work item is selected as the immediate execution queue.
+- **Later:** The feature is plausible future direction without a release commitment. It
+  remains visible for direction and refinement but must not be presented as promised
+  scope.
+- **Blank:** The item is not independently placed on the feature roadmap. Tasks normally
+  inherit roadmap context from their parent and leave Horizon blank.
 
 ### Issue
 
 A GitHub work record describing an outcome, question, research effort, defect, or task.
 An issue coordinates work and preserves history; only promoted decisions, specifications,
 policy, human-owned records, or structured state become authoritative for their domains.
-
-### Later (Horizon)
-
-A plausible future feature without a release commitment. It remains visible for direction
-and refinement but must not be presented as promised scope.
 
 ### Lifecycle engine
 
@@ -160,17 +177,6 @@ passes.
 The single finite GitHub manifest for one named release. It identifies approved release
 membership but does not by itself prove aggregate release readiness. Epics and Horizon
 express different concepts and are not milestones.
-
-### Next (Horizon)
-
-An intentional feature candidate adjacent to or after current commitments. It is not yet
-committed to a release. Do not confuse it with `Next` in execution Status, which means a
-work item is queued to start.
-
-### Now (Horizon)
-
-A feature that is part of committed current product direction. It may span releases and
-does not join a release until assigned to that release's approved Milestone.
 
 ### Persona
 
@@ -199,11 +205,6 @@ what the product must achieve, not every implementation detail.
 A proposed set of repository changes submitted for checks, review, and merge. The PR links
 the work item, governing records, changed artifacts, verification, evidence, deviations,
 and follow-up work.
-
-### Ready
-
-The work-item readiness state indicating that objective, scope, decisions, references,
-acceptance, evidence, dependencies, and authority satisfy the applicable subtype contract.
 
 ### Research record
 
@@ -281,9 +282,17 @@ coverage limits; no answer grants handling authority or establishes conformance.
 ### Status
 
 Execution lifecycle on the GitHub Project: `Backlog`, `Next`, `In progress`, or `Done`.
-`Backlog` means tracked but not selected for immediate execution; it does not mean Horizon
-`Later` and may contain Ready work. `Next` means explicitly selected as the immediate
-queue. Do not use Status to express roadmap intent or readiness.
+Do not use Status to express roadmap intent or readiness. Its states are:
+
+- **Backlog:** The item is tracked but not selected for immediate execution. Backlog does
+  not mean Horizon `Later` and may contain Ready work.
+- **Next:** The item is deliberately selected as the immediate execution queue but has not
+  started. Starting it still requires Readiness `Ready`.
+- **In progress:** Execution has started. An incomplete parent also remains In progress
+  once any child delivery starts or completes.
+- **Done:** The completion contract is satisfied and the item is closed. A parent becomes
+  Done when every child is complete unless genuinely outstanding acceptance work is
+  represented by a concrete attached child.
 
 ### Task
 
