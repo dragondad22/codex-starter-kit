@@ -13,7 +13,9 @@ and design; the approved product contract lives in `docs/`.
   dependency: update the item, its parent, and directly dependent issues. Completing a
   blocker promotes each fully unblocked dependent to `Ready`; it becomes `Next` only when
   explicitly selected as immediate work. An incomplete parent with started or completed
-  child delivery is `In progress`, never `Backlog`.
+  child delivery is `In progress`, never `Backlog`. When every child is complete, close
+  the parent and set it to `Done`; if work remains, attach the concrete outstanding task
+  before leaving the parent open.
 - Do not invent unresolved product, architecture, policy, regulatory, or risk decisions
   while implementing. Return the issue to `Needs refinement`.
 - Use the lifecycle-engine interface as the highest test seam: `create`, `retrofit`,

@@ -39,6 +39,10 @@ Apply these standing rules:
 - Starting execution requires Readiness `Ready` and moves Status to `In progress`.
 - An incomplete parent moves to `In progress` once any child delivery starts or completes;
   it must not return to `Backlog` merely because no child is currently running.
+- When every native child is complete, close the parent and move it to `Done`. If the
+  parent's acceptance contract is not actually satisfied, create or attach the concrete
+  outstanding child task before leaving the parent open; do not use an unexplained open
+  epic as a placeholder for unknown work.
 - Completing a blocker immediately re-evaluates each dependent. When no unresolved
   blockers remain, change Readiness from `Blocked` to `Ready`.
 - Becoming Ready does not automatically move Status to `Next`. Use `Next` only for work

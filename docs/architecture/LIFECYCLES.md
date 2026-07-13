@@ -141,7 +141,9 @@ whether execution may start, Status records selection and progress, and Horizon 
 feature intent. Dependency completion is a transition trigger: every direct dependent is
 re-evaluated and becomes Ready when its last blocker resolves. Readiness alone does not
 select it as Status Next. An incomplete parent is In progress after any child delivery
-starts or completes, even when its remaining Ready children are still Backlog.
+starts or completes, even when its remaining Ready children are still Backlog. Completion
+of every native child closes the parent as Done unless an unsatisfied parent criterion is
+represented by a concrete outstanding child.
 
 ## Control Evaluation Lifecycle
 
