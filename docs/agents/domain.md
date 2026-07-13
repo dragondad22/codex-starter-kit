@@ -7,6 +7,9 @@ canonical terms in issues, specifications, policy, interfaces, tests, and docume
 If a needed concept is absent, resolve it through domain modeling and update the glossary
 rather than introducing an untracked synonym.
 
+Keep all `###` glossary terms in case-insensitive alphabetical order. Documentation
+validation enforces this ordering so canonical terms remain predictable to locate.
+
 Read relevant records under `docs/decisions/` before reopening a settled tradeoff. If work
 would contradict a decision, surface the conflict and propose an explicit superseding
 decision; do not silently override it.

@@ -50,6 +50,7 @@ DECISION_MARKERS = (
 )
 HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 PINNED_ACTION = re.compile(r"^\s*uses:\s*[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$", re.MULTILINE)
+GLOSSARY_TERM = re.compile(r"^### (.+)$", re.MULTILINE)
 SENSITIVE_BOUNDARY_MARKERS = {
     "docs/decisions/DEC-0001-first-release-scope.md": (
         "content classification",
@@ -246,6 +247,25 @@ def validate_sensitive_data_boundary(root: Path) -> list[str]:
     return failures
 
 
+def validate_glossary_order(root: Path) -> list[str]:
+    """Require canonical glossary terms to remain alphabetically ordered."""
+
+    path = root / "docs/product/GLOSSARY.md"
+    if not path.is_file():
+        return ["docs/product/GLOSSARY.md: missing glossary"]
+    terms = GLOSSARY_TERM.findall(path.read_text(encoding="utf-8"))
+    expected = sorted(terms, key=str.casefold)
+    if terms == expected:
+        return []
+    for index, (actual, wanted) in enumerate(zip(terms, expected), start=1):
+        if actual != wanted:
+            return [
+                "docs/product/GLOSSARY.md: terms are not alphabetically ordered: "
+                f"position {index} is {actual!r}, expected {wanted!r}"
+            ]
+    return ["docs/product/GLOSSARY.md: terms are not alphabetically ordered"]
+
+
 def validate_decision_routes(root: Path) -> list[str]:
     """Return failures for the D1-D15 durable decision routes."""
 
@@ -350,6 +370,7 @@ def main() -> int:
     failures.extend(validate_issue_templates(ROOT))
     failures.extend(validate_workflow(ROOT))
     failures.extend(validate_sensitive_data_boundary(ROOT))
+    failures.extend(validate_glossary_order(ROOT))
 
     if failures:
         print("Documentation validation failed:", file=sys.stderr)
