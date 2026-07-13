@@ -27,20 +27,22 @@ shell, WSL, container, Codex client, or network effect.
 | `phase1-native-windows-latest` | Resolved image/runner/Go/Git facts, Windows capabilities, portable semantics, semantic and evidence digests | One completing-PR Windows run |
 | `phase1-native-summary` | Owned/sourced/self-digested comparison with three content-bound report references, one tested source revision, resolved platform/architecture set, shared semantic digest, `equivalent: true` | Aggregate comparison, not a substitute for individual capability facts |
 
-The completing pull request is the durable link to the exact 30-day CI artifacts. The
-pre-review run identified evidence-contract hardening that is now implemented: every
-report is bound to `GITHUB_SHA`, downloaded reports are fully contract-validated, and the
-aggregate digest covers each platform/report evidence identity. The completing review
-rerun replaces the pending values below before this draft becomes ready:
+The completing pull request is the durable link to the exact 30-day CI artifacts. Run
+[`29269143082`](https://github.com/dragondad22/codex-starter-kit/actions/runs/29269143082)
+tested head commit `9e587a772d8a1bcf511ddb1ba8e0f36d028100fe`. Every report binds GitHub's tested merge
+revision `33788da588088f26f1fc23d84812759b8021d7d3`; downloaded reports are fully
+contract-validated, and the aggregate digest covers each platform/report evidence identity.
 
 | Target | Resolved image | Architecture | Go / Git | Report evidence digest |
 |---|---|---|---|---|
-| Linux | Pending | `linux/amd64` | Go 1.26.5 / native Git | Pending |
-| macOS | Pending | `darwin/arm64` | Go 1.26.5 / native Git | Pending |
-| Windows | Pending | `windows/amd64` | Go 1.26.5 / native Git | Pending |
+| Linux | `ubuntu24` `20260705.232.1` | runner `X64`; `linux/amd64` | Go 1.26.5 / Git 2.54.0 | `sha256:5609c3347db2f56fb85214bae4b3270cd4c5e829fe97d852c466ebb6575569f2` |
+| macOS | `macos26` `20260630.0213.1` | runner `ARM64`; `darwin/arm64` | Go 1.26.5 / Git 2.55.0 | `sha256:2d0c5da45195246af20d3c2e6ec85336859162eaaa518ee9c2c04a4f1e44fd42` |
+| Windows | `win25-vs2026` `20260628.158.1` | runner `X64`; `windows/amd64` | Go 1.26.5 / Git 2.54.0.windows.1 | `sha256:3e65caed4a062a996266d4db046d970e76a2188c19b09fa47e834954b38da0c8` |
 
-Shared semantic digest: pending completing review rerun. Aggregate evidence digest: pending
-completing review rerun.
+All three reports produced semantic digest
+`sha256:38d2405d313853059f4faae8424a0a302775f8e3ddc70fddb81f0d319b7329ad`.
+The aggregate reported `equivalent: true` and evidence digest
+`sha256:8acf1cb4cddd618186696416f5ad4e42da985fd09d603c22b3d297fefb9a2b7c`.
 
 ## Phase 1 roadmap coverage
 

@@ -14,13 +14,17 @@ regulatory coverage. Explicit non-pass control states remain part of supported b
 
 | Native target | Resolved completing-PR image | Architecture | Tested tools | Evidence identity |
 |---|---|---|---|---|
-| Linux | Completing review rerun pending | `linux/amd64` | Go 1.26.5; native Git | Completing review rerun pending |
-| macOS | Completing review rerun pending | `darwin/arm64` | Go 1.26.5; native Git | Completing review rerun pending |
-| Windows | Completing review rerun pending | `windows/amd64` | Go 1.26.5; native Git | Completing review rerun pending |
+| Linux | `ubuntu24` `20260705.232.1` from `ubuntu-latest` | runner `X64`; `linux/amd64` | Go 1.26.5; Git 2.54.0 | `sha256:5609c3347db2f56fb85214bae4b3270cd4c5e829fe97d852c466ebb6575569f2` |
+| macOS | `macos26` `20260630.0213.1` from `macos-latest` | runner `ARM64`; `darwin/arm64` | Go 1.26.5; Git 2.55.0 | `sha256:2d0c5da45195246af20d3c2e6ec85336859162eaaa518ee9c2c04a4f1e44fd42` |
+| Windows | `win25-vs2026` `20260628.158.1` from `windows-latest` | runner `X64`; `windows/amd64` | Go 1.26.5; Git 2.54.0.windows.1 | `sha256:3e65caed4a062a996266d4db046d970e76a2188c19b09fa47e834954b38da0c8` |
 
-The final completing-review rerun replaces these pending cells with the resolved image,
-runner architecture, Git version, tested source revision, report evidence identities,
-shared semantic digest, and aggregate evidence identity before this draft becomes ready.
+These values come from PR #44 run `29269143082` for head commit
+`9e587a772d8a1bcf511ddb1ba8e0f36d028100fe`. GitHub tested merge revision
+`33788da588088f26f1fc23d84812759b8021d7d3` is bound into all three reports. They share
+semantic digest
+`sha256:38d2405d313853059f4faae8424a0a302775f8e3ddc70fddb81f0d319b7329ad`;
+the content-bound aggregate evidence digest is
+`sha256:8acf1cb4cddd618186696416f5ad4e42da985fd09d603c22b3d297fefb9a2b7c`.
 
 `latest` is a moving CI selector, not an evergreen OS-version claim. Every native report records
 `ImageOS`, `ImageVersion`, `RUNNER_OS`, `RUNNER_ARCH`, Go version, Git version, and
