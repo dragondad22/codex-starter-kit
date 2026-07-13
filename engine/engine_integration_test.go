@@ -24,8 +24,12 @@ func TestInspectEmptyGitRepository(t *testing.T) {
 		t.Fatalf("inspect empty Git repository: %v", err)
 	}
 
-	if result.Repository != filepath.Clean(repository) {
-		t.Fatalf("repository = %q, want %q", result.Repository, filepath.Clean(repository))
+	canonicalRepository, err := filepath.EvalSymlinks(repository)
+	if err != nil {
+		t.Fatalf("canonicalize repository fixture: %v", err)
+	}
+	if result.Repository != filepath.Clean(canonicalRepository) {
+		t.Fatalf("repository = %q, want canonical %q", result.Repository, filepath.Clean(canonicalRepository))
 	}
 	if !result.Git {
 		t.Fatal("expected repository to be detected as Git")
