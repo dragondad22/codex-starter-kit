@@ -3,12 +3,14 @@
 package nativeevidence
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,6 +83,7 @@ type Report struct {
 	SchemaVersion  int          `json:"schema_version"`
 	Ownership      string       `json:"ownership"`
 	Source         string       `json:"source"`
+	SourceRevision string       `json:"source_revision"`
 	Platform       Platform     `json:"platform"`
 	Capabilities   []Capability `json:"capabilities"`
 	Semantics      Semantics    `json:"semantics"`
@@ -88,15 +91,23 @@ type Report struct {
 	EvidenceDigest string       `json:"evidence_digest"`
 }
 
+type ReportReference struct {
+	Platform       string `json:"platform"`
+	SourceRevision string `json:"source_revision"`
+	SemanticDigest string `json:"semantic_digest"`
+	EvidenceDigest string `json:"evidence_digest"`
+}
+
 type Comparison struct {
-	SchemaVersion  int      `json:"schema_version"`
-	Ownership      string   `json:"ownership"`
-	Source         string   `json:"source"`
-	Equivalent     bool     `json:"equivalent"`
-	Platforms      []string `json:"platforms"`
-	SemanticDigest string   `json:"semantic_digest"`
-	EvidenceFiles  []string `json:"evidence_files"`
-	EvidenceDigest string   `json:"evidence_digest"`
+	SchemaVersion    int               `json:"schema_version"`
+	Ownership        string            `json:"ownership"`
+	Source           string            `json:"source"`
+	SourceRevision   string            `json:"source_revision"`
+	Equivalent       bool              `json:"equivalent"`
+	Platforms        []string          `json:"platforms"`
+	SemanticDigest   string            `json:"semantic_digest"`
+	ReportReferences []ReportReference `json:"report_references"`
+	EvidenceDigest   string            `json:"evidence_digest"`
 }
 
 type fixedClock struct{ value time.Time }
@@ -104,6 +115,10 @@ type fixedClock struct{ value time.Time }
 func (clock fixedClock) Now() time.Time { return clock.value }
 
 func Capture(ctx context.Context) (Report, error) {
+	sourceRevision, err := testedSourceRevision(ctx)
+	if err != nil {
+		return Report{}, err
+	}
 	root, err := os.MkdirTemp("", "starter-kit-phase1-evidence-")
 	if err != nil {
 		return Report{}, err
@@ -213,7 +228,7 @@ func Capture(ctx context.Context) (Report, error) {
 		CoverageLimitations: append([]string{}, verification.CoverageLimitations...),
 	}
 	report := Report{
-		SchemaVersion: 1, Ownership: "machine-evidence", Source: "phase1-evidence:capture:v1",
+		SchemaVersion: 1, Ownership: "machine-evidence", Source: "phase1-evidence:capture:v1", SourceRevision: sourceRevision,
 		Platform: Platform{
 			GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, GoVersion: runtime.Version(),
 			GitVersion: strings.TrimSpace(string(gitVersion)), RunnerOS: os.Getenv("RUNNER_OS"),
@@ -228,6 +243,9 @@ func Capture(ctx context.Context) (Report, error) {
 	}
 	report.SemanticDigest = semanticDigest(report.Semantics)
 	report.EvidenceDigest = evidenceDigest(report)
+	if err := validateReport(report, false); err != nil {
+		return Report{}, fmt.Errorf("captured native evidence is invalid: %w", err)
+	}
 	return report, nil
 }
 
@@ -246,18 +264,136 @@ func Read(path string) (Report, error) {
 		return Report{}, err
 	}
 	var report Report
-	if err := json.Unmarshal(content, &report); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&report); err != nil {
 		return Report{}, err
 	}
-	if !Valid(report) {
-		return Report{}, errors.New("native evidence report digest or schema is invalid")
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return Report{}, errors.New("native evidence report contains trailing JSON")
+	}
+	if err := validateReport(report, true); err != nil {
+		return Report{}, fmt.Errorf("native evidence report is invalid: %w", err)
 	}
 	return report, nil
 }
 
 func Valid(report Report) bool {
-	return report.SchemaVersion == 1 && report.Ownership == "machine-evidence" && report.Source == "phase1-evidence:capture:v1" &&
-		report.SemanticDigest == semanticDigest(report.Semantics) && report.EvidenceDigest == evidenceDigest(report)
+	return validateReport(report, false) == nil
+}
+
+func validateReport(report Report, requireHostedProvenance bool) error {
+	if report.SchemaVersion != 1 || report.Ownership != "machine-evidence" || report.Source != "phase1-evidence:capture:v1" {
+		return errors.New("report envelope does not match the native evidence schema")
+	}
+	if !validSourceRevision(report.SourceRevision) {
+		return errors.New("tested source revision is missing or invalid")
+	}
+	expectedArchitectures := map[string]string{"darwin": "arm64", "linux": "amd64", "windows": "amd64"}
+	if expectedArchitectures[report.Platform.GOOS] != report.Platform.GOARCH {
+		return fmt.Errorf("unsupported native platform %s/%s", report.Platform.GOOS, report.Platform.GOARCH)
+	}
+	if report.Platform.GoVersion == "" || report.Platform.GitVersion == "" || report.Platform.FilesystemAssumption == "" {
+		return errors.New("tool or filesystem provenance is incomplete")
+	}
+	if requireHostedProvenance && (report.Platform.RunnerOS == "" || report.Platform.RunnerArch == "" || report.Platform.ImageOS == "" || report.Platform.ImageVersion == "") {
+		return errors.New("hosted runner image or architecture provenance is incomplete")
+	}
+	if err := validateCapabilities(report.Capabilities); err != nil {
+		return err
+	}
+	if err := validateSemantics(report.Semantics); err != nil {
+		return err
+	}
+	if report.SemanticDigest != semanticDigest(report.Semantics) {
+		return errors.New("semantic digest does not match the semantic contract")
+	}
+	if report.EvidenceDigest != evidenceDigest(report) {
+		return errors.New("evidence digest does not match the complete report")
+	}
+	return nil
+}
+
+func validateCapabilities(capabilities []Capability) error {
+	required := map[string]bool{
+		"case-behavior": true, "directory-junction": true, "file-symlink": true,
+		"native-path-separator": true, "owner-only-mode": true,
+		"portable-lf-managed-content": true, "same-directory-atomic-replacement": true,
+	}
+	allowedStates := map[string]bool{
+		"supported": true, "not-configured": true, "not-applicable": true,
+		"needs-review": true, "degraded": true, "unsupported": true,
+	}
+	seen := map[string]bool{}
+	for _, capability := range capabilities {
+		if !required[capability.ID] || seen[capability.ID] {
+			return fmt.Errorf("unexpected or duplicate native capability %q", capability.ID)
+		}
+		if !allowedStates[capability.State] || capability.Details == "" {
+			return fmt.Errorf("native capability %s has an invalid state or empty details", capability.ID)
+		}
+		seen[capability.ID] = true
+	}
+	if len(seen) != len(required) {
+		return fmt.Errorf("native capability set is incomplete: found %d, want %d", len(seen), len(required))
+	}
+	return nil
+}
+
+func validateSemantics(semantics Semantics) error {
+	if !equalStrings(semantics.Operations, []string{"inspect", "create", "plan", "apply", "status", "verify"}) ||
+		semantics.PlanSchemaVersion < 1 || semantics.PlanOperation != "create" || !semantics.PlanStable ||
+		semantics.ApplyStatus != "applied" || semantics.ReplayStatus != "applied" || semantics.NoChangeStatus != "no_change" ||
+		semantics.Lifecycle != "managed" || !semantics.Managed || semantics.LineEndings != "lf" {
+		return errors.New("lifecycle operation or state semantics are incomplete")
+	}
+	if semantics.EvidenceSchema < 1 || semantics.EvidenceOwnership != "machine-evidence" || semantics.EvidenceSource == "" ||
+		semantics.EngineVersion == "" || semantics.RepositorySchema < 1 || semantics.PolicyVersion == "" ||
+		semantics.SourceRevisionKind == "missing" || semantics.OverallControlState != "needs-review" || len(semantics.CoverageLimitations) == 0 {
+		return errors.New("verification evidence semantics are incomplete")
+	}
+	seenArtifacts := map[string]bool{}
+	for _, artifact := range semantics.Artifacts {
+		if artifact.Path == "" || artifact.Ownership == "" || artifact.Source == "" || seenArtifacts[artifact.Path] {
+			return errors.New("managed artifact contract is incomplete or duplicated")
+		}
+		seenArtifacts[artifact.Path] = true
+	}
+	if len(seenArtifacts) == 0 {
+		return errors.New("managed artifact contract is empty")
+	}
+	expectedStates := map[string]string{
+		"CORE-COVERAGE-001": "pass", "CORE-OWNERSHIP-001": "pass",
+		"CORE-RECOVERY-001": "needs-review", "CORE-ROUTES-001": "pass",
+		"CORE-SECRETS-001": "not-configured", "CORE-TRUTH-001": "pass",
+	}
+	seenControls := map[string]bool{}
+	for _, control := range semantics.Controls {
+		if expectedStates[control.ID] == "" || seenControls[control.ID] || control.State != expectedStates[control.ID] {
+			return fmt.Errorf("control %s is unexpected, duplicated, or has the wrong state", control.ID)
+		}
+		if control.UnderlyingState != "" {
+			return fmt.Errorf("control %s has an unexpected underlying state", control.ID)
+		}
+		if control.State == "pass" && len(control.Evidence) == 0 {
+			return fmt.Errorf("passing control %s lacks evidence", control.ID)
+		}
+		for _, reference := range control.Evidence {
+			if reference.Kind == "" || reference.Target == "" {
+				return fmt.Errorf("control %s has an incomplete evidence reference", control.ID)
+			}
+		}
+		seenControls[control.ID] = true
+	}
+	if len(seenControls) != len(expectedStates) {
+		return fmt.Errorf("seed control set is incomplete: found %d, want %d", len(seenControls), len(expectedStates))
+	}
+	for _, limitation := range semantics.CoverageLimitations {
+		if limitation == "" {
+			return errors.New("coverage limitations contain an empty entry")
+		}
+	}
+	return nil
 }
 
 func Compare(directory string) (Comparison, error) {
@@ -279,8 +415,10 @@ func Compare(directory string) (Comparison, error) {
 		return Comparison{}, fmt.Errorf("expected three native evidence reports, found %d", len(paths))
 	}
 	platforms := []string{}
+	references := []ReportReference{}
 	seen := map[string]bool{}
 	semanticDigest := ""
+	sourceRevision := ""
 	for _, path := range paths {
 		report, err := Read(path)
 		if err != nil {
@@ -290,7 +428,17 @@ func Compare(directory string) (Comparison, error) {
 			return Comparison{}, fmt.Errorf("duplicate native evidence for %s", report.Platform.GOOS)
 		}
 		seen[report.Platform.GOOS] = true
-		platforms = append(platforms, report.Platform.GOOS+"/"+report.Platform.GOARCH)
+		platform := report.Platform.GOOS + "/" + report.Platform.GOARCH
+		platforms = append(platforms, platform)
+		references = append(references, ReportReference{
+			Platform: platform, SourceRevision: report.SourceRevision,
+			SemanticDigest: report.SemanticDigest, EvidenceDigest: report.EvidenceDigest,
+		})
+		if sourceRevision == "" {
+			sourceRevision = report.SourceRevision
+		} else if report.SourceRevision != sourceRevision {
+			return Comparison{}, fmt.Errorf("native source revision drift: %s has %s, expected %s", report.Platform.GOOS, report.SourceRevision, sourceRevision)
+		}
 		if semanticDigest == "" {
 			semanticDigest = report.SemanticDigest
 		} else if report.SemanticDigest != semanticDigest {
@@ -303,9 +451,11 @@ func Compare(directory string) (Comparison, error) {
 		}
 	}
 	sort.Strings(platforms)
+	sort.Slice(references, func(i, j int) bool { return references[i].Platform < references[j].Platform })
 	summary := Comparison{
 		SchemaVersion: 1, Ownership: "machine-evidence", Source: "phase1-evidence:compare:v1",
-		Equivalent: true, Platforms: platforms, SemanticDigest: semanticDigest, EvidenceFiles: paths,
+		SourceRevision: sourceRevision, Equivalent: true, Platforms: platforms,
+		SemanticDigest: semanticDigest, ReportReferences: references,
 	}
 	summary.EvidenceDigest = comparisonDigest(summary)
 	return summary, nil
@@ -316,7 +466,7 @@ func nativeCapabilities(root string) []Capability {
 		probeCaseBehavior(root),
 		probeSymlink(root),
 		probeOwnerOnlyMode(root),
-		probeRename(root),
+		probeAtomicReplacement(root),
 		{ID: "native-path-separator", State: "supported", Details: fmt.Sprintf("separator byte %d", os.PathSeparator)},
 		{ID: "portable-lf-managed-content", State: "supported", Details: "managed text is emitted with LF and semantic readers do not translate it"},
 		probeJunction(root),
@@ -371,18 +521,28 @@ func probeOwnerOnlyMode(root string) Capability {
 	return Capability{ID: "owner-only-mode", State: "supported", Details: "requested 0600 mode remained owner-only"}
 }
 
-func probeRename(root string) Capability {
-	directory := filepath.Join(root, ".git", "phase1-rename-probe")
+func probeAtomicReplacement(root string) Capability {
+	directory := filepath.Join(root, ".git", "phase1-replacement-probe")
 	_ = os.MkdirAll(directory, 0o700)
 	source := filepath.Join(directory, "source")
 	target := filepath.Join(directory, "target")
-	if err := os.WriteFile(source, []byte("probe"), 0o600); err != nil {
-		return Capability{ID: "same-directory-rename", State: "needs-review", Details: "rename source could not be created"}
+	if err := os.WriteFile(source, []byte("replacement"), 0o600); err != nil {
+		return Capability{ID: "same-directory-atomic-replacement", State: "needs-review", Details: "replacement source could not be created"}
+	}
+	if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+		return Capability{ID: "same-directory-atomic-replacement", State: "needs-review", Details: "existing replacement target could not be created"}
 	}
 	if err := os.Rename(source, target); err != nil {
-		return Capability{ID: "same-directory-rename", State: "unsupported", Details: "same-directory staged rename failed"}
+		return Capability{ID: "same-directory-atomic-replacement", State: "unsupported", Details: "native rename could not replace an existing same-directory destination"}
 	}
-	return Capability{ID: "same-directory-rename", State: "supported", Details: "same-directory staged rename succeeded"}
+	content, err := os.ReadFile(target)
+	if err != nil || string(content) != "replacement" {
+		return Capability{ID: "same-directory-atomic-replacement", State: "degraded", Details: "existing destination replacement did not expose the complete staged content"}
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		return Capability{ID: "same-directory-atomic-replacement", State: "degraded", Details: "replacement left the staged source visible"}
+	}
+	return Capability{ID: "same-directory-atomic-replacement", State: "supported", Details: "native rename replaced an existing same-directory destination with complete staged content"}
 }
 
 func semanticDigest(semantics Semantics) string { return digestJSON(semantics) }
@@ -395,6 +555,39 @@ func sourceRevisionKind(revision string) string {
 		return "git-revision"
 	}
 	return "missing"
+}
+
+func testedSourceRevision(ctx context.Context) (string, error) {
+	if revision := strings.TrimSpace(os.Getenv("GITHUB_SHA")); revision != "" {
+		if !validSourceRevision(revision) {
+			return "", errors.New("GITHUB_SHA is not a complete hexadecimal source revision")
+		}
+		return strings.ToLower(revision), nil
+	}
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		return "", errors.New("GitHub-hosted native evidence lacks GITHUB_SHA source provenance")
+	}
+	revision, err := exec.CommandContext(ctx, "git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve tested source revision: %w", err)
+	}
+	value := strings.TrimSpace(string(revision))
+	if !validSourceRevision(value) {
+		return "", errors.New("resolved tested source revision is not a complete hexadecimal revision")
+	}
+	return strings.ToLower(value), nil
+}
+
+func validSourceRevision(revision string) bool {
+	if len(revision) != 40 && len(revision) != 64 {
+		return false
+	}
+	for _, character := range revision {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func evidenceDigest(report Report) string {

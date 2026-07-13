@@ -14,15 +14,13 @@ regulatory coverage. Explicit non-pass control states remain part of supported b
 
 | Native target | Resolved completing-PR image | Architecture | Tested tools | Evidence identity |
 |---|---|---|---|---|
-| Linux | `ubuntu24` `20260705.232.1` from `ubuntu-latest` | runner `X64`; `linux/amd64` | Go 1.26.5; Git 2.54.0 | `sha256:fe0736bc2ecd27d9507adc5edc90e7296b457cbfc0b889c54d57ad7a1a6212c8` |
-| macOS | `macos26` `20260630.0213.1` from `macos-latest` | runner `ARM64`; `darwin/arm64` | Go 1.26.5; Git 2.55.0 | `sha256:2aebcbd1783732c39aaa1789fe6e6c15d802772d279bbf95f26f33893a3cb54d` |
-| Windows | `win25-vs2026` `20260628.158.1` from `windows-latest` | runner `X64`; `windows/amd64` | Go 1.26.5; Git 2.54.0.windows.1 | `sha256:242fe43b9c6a7699e30047fed0b6d63f717a17b3eb7c0fda0204cbc7c1606d8a` |
+| Linux | Completing review rerun pending | `linux/amd64` | Go 1.26.5; native Git | Completing review rerun pending |
+| macOS | Completing review rerun pending | `darwin/arm64` | Go 1.26.5; native Git | Completing review rerun pending |
+| Windows | Completing review rerun pending | `windows/amd64` | Go 1.26.5; native Git | Completing review rerun pending |
 
-These values come from PR #44 run `29268327253` at source revision
-`c29eaf3441c6adfaf5c849c262988a0c7d45d4b3`. The three reports share semantic digest
-`sha256:38d2405d313853059f4faae8424a0a302775f8e3ddc70fddb81f0d319b7329ad`;
-the aggregate comparison evidence digest is
-`sha256:dd3d8d84821010f355673d60de170caecec3936fd92def60f0c67970e0f0c81e`.
+The final completing-review rerun replaces these pending cells with the resolved image,
+runner architecture, Git version, tested source revision, report evidence identities,
+shared semantic digest, and aggregate evidence identity before this draft becomes ready.
 
 `latest` is a moving CI selector, not an evergreen OS-version claim. Every native report records
 `ImageOS`, `ImageVersion`, `RUNNER_OS`, `RUNNER_ARCH`, Go version, Git version, and
@@ -32,11 +30,10 @@ tested architecture/image families is `needs-review`, not inferred from Go's bro
 compilation targets.
 
 The filesystem brand is deliberately not guessed. Support assumes only the behaviors
-proven in the same native run: same-directory staged rename, observed case behavior,
-portable LF-managed text, native path separators, and the reported symlink/junction and
-permission capabilities. Network filesystems, removable media, unusual mount options,
-and filesystems that do not provide those behaviors are unsupported until separately
-tested.
+proven in the same native run: observed case behavior, portable LF-managed text, native
+path separators, and the reported existing-target replacement, symlink/junction, and
+permission capabilities. Network filesystems, removable media, unusual mount options, and
+filesystems that do not provide those behaviors are unsupported until separately tested.
 
 ## Required software and distribution
 
@@ -73,6 +70,11 @@ semantic digest before its aggregate gate can pass:
 go run ./cmd/phase1-evidence compare --directory phase1-native-evidence
 ```
 
+Each report is bound to the tested GitHub source revision. The aggregate rejects missing
+runner/tool provenance, incomplete or duplicate capabilities and controls, invalid explicit
+states, source-revision drift, and semantic drift. Its own digest covers sorted references
+to all three source revisions and report evidence digests.
+
 The compared semantics include schema/operation identity, stable planning, artifact paths,
 ownership and provenance, applied/replay/no-change states, managed lifecycle status, LF
 content semantics, every seed control state, aggregate state, and coverage limitations.
@@ -89,8 +91,10 @@ authority, ownership, evidence meaning, or conformance state.
   pass.
 - Structured Git execution removes hostile inherited overrides, disables interactive and
   repository-local executable configuration, and never interpolates content into a shell.
-- Owned leases, exclusive evidence creation, staged same-directory rename, state-last
-  commit, rollback, replay, and incomplete-status behavior are exercised on every runner.
+- Owned leases, exclusive evidence creation, staged same-directory rename, existing-target
+  replacement capability, state-last commit, rollback, replay, and incomplete-status
+  behavior are exercised on every runner. Unsupported replacement is an explicit non-pass
+  capability, not silently treated as atomic support.
 - POSIX owner-only mode evidence applies only where POSIX mode bits are meaningful. It is
   `not-applicable` to Windows ACL assurance; no ACL-hardening claim is made.
 - Supported platform differences may change capability details and diagnostics, but the
