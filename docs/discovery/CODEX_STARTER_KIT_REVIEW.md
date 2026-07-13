@@ -1420,7 +1420,7 @@ documents:
   investigation issues.
 
 These are derived artifacts while this discovery record remains the discussion and source
-history. Approved D1–D14 are promoted into `docs/decisions/INDEX.md` and its linked
+history. Approved D1–D15 are promoted into `docs/decisions/INDEX.md` and its linked
 records, which are the normal authority surface. If a record and its source D-item
 conflict, stop and reconcile them through an explicit superseding decision.
 
@@ -1464,6 +1464,23 @@ removals, and deferrals remain auditable and cannot conceal a failed required ga
 actual 1.0.0 outcome and membership require a separate human decision before creating its
 Milestone.
 
+<a id="d15"></a>
+## D15 decision — lifecycle-engine toolchain
+
+**Status:** **Agreed (Chris, 2026-07-12)**
+
+The standalone lifecycle engine and CLI use Go, initially pinned to Go 1.26.5 for
+contributor and CI builds. Phase 1 remains standard-library-only, builds and tests native
+Linux/macOS/Windows binaries, uses JSON and structured process arguments, and keeps Go
+types behind the language-neutral lifecycle operation/schema/evidence seam.
+
+Released binaries use SHA-256 manifests and GitHub artifact attestations with retained
+offline verification material. Those attestations establish provenance rather than
+platform code-signing reputation or artifact safety. Rust is the preferred fallback if
+measured native, safety, performance, embedding, cryptographic, signing, sandbox, or
+distribution requirements invalidate Go. Exact schemas, CLI syntax, package layout,
+installers, support targets, and release membership remain separate decisions.
+
 ## Decisions to work through
 
 | ID | Question | Starting recommendation | Status |
@@ -1482,6 +1499,7 @@ Milestone.
 | [D12](#d12) | What does “managed by the kit” guarantee? | Versioned, evidence-backed conformance with explicit coverage, applicability, and risk states; no false-green results | **Agreed (2026-07-11)** |
 | [D13](#d13) | How are consequential questions and research governed? | Sparse question work; bounded executable research; reciprocal promotion links; issues coordinate but do not become authority | **Agreed (2026-07-12)** |
 | [D14](#d14) | How does rolling roadmap intent become a finite releasable scope? | Separate Horizon from release Milestones; aggregate release issue; S.M.A.R.T. scope, evidence, approval, and trigger contract | **Agreed (2026-07-12)** |
+| [D15](#d15) | Which toolchain implements the deterministic lifecycle engine? | Go 1.26.5, standard-library-only Phase 1, native builds, language-neutral contract, Rust fallback | **Agreed (2026-07-12)** |
 
 ## Suggested first discussion
 

@@ -35,10 +35,10 @@ REQUIRED = (
 )
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 DECISION_ROUTE = re.compile(
-    r"^\|\s*(D(?:[1-9]|1[0-4]))\s*\|\s*\[(DEC-\d{4})\]\(([^)]+\.md)\)\s*\|",
+    r"^\|\s*(D(?:[1-9]|1[0-5]))\s*\|\s*\[(DEC-\d{4})\]\(([^)]+\.md)\)\s*\|",
     re.MULTILINE,
 )
-APPROVED_DECISIONS = tuple(f"D{number}" for number in range(1, 15))
+APPROVED_DECISIONS = tuple(f"D{number}" for number in range(1, 16))
 DECISION_MARKERS = (
     "**Status:** Accepted",
     "**Owner:**",
@@ -246,7 +246,7 @@ def validate_sensitive_data_boundary(root: Path) -> list[str]:
 
 
 def validate_decision_routes(root: Path) -> list[str]:
-    """Return failures for the D1-D14 durable decision routes."""
+    """Return failures for the D1-D15 durable decision routes."""
 
     index = root / "docs/decisions/INDEX.md"
     if not index.is_file():

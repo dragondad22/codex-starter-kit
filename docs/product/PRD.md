@@ -182,9 +182,10 @@ The product ships as three layers from its first usable release:
 
 ## Further Notes
 
-This PRD intentionally specifies outcomes and interfaces before an implementation
-language. Engine packaging, signing infrastructure, registry hosting, minimum OS/client
-versions, verified sensitive-data routes, and regulatory packs require architecture
+This PRD specifies outcomes and interfaces independently of the selected implementation
+language. DEC-0015 selects Go for the engine behind the language-neutral lifecycle seam;
+engine packaging details, signing infrastructure, registry hosting, minimum OS/client
+versions, verified sensitive-data routes, and regulatory packs still require architecture
 issues with evidence-backed tool selection and qualified review. The detailed
 sensitive-data and AI/tool execution boundary is tracked as Later work in
 [issue #21](https://github.com/dragondad22/codex-starter-kit/issues/21).
