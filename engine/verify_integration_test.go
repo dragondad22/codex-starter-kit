@@ -41,15 +41,15 @@ func TestVerifyCreatedRepositoryEmitsTruthfulSeedResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify repository: %v", err)
 	}
-	if result.OverallState != engine.ControlNotConfigured {
-		t.Fatalf("overall state = %q, want not-configured", result.OverallState)
+	if result.OverallState != engine.ControlNeedsReview {
+		t.Fatalf("overall state = %q, want needs-review", result.OverallState)
 	}
 	wantStates := map[string]engine.ControlState{
 		"CORE-TRUTH-001":     engine.ControlPass,
 		"CORE-SECRETS-001":   engine.ControlNotConfigured,
 		"CORE-OWNERSHIP-001": engine.ControlPass,
 		"CORE-COVERAGE-001":  engine.ControlPass,
-		"CORE-RECOVERY-001":  engine.ControlNotConfigured,
+		"CORE-RECOVERY-001":  engine.ControlNeedsReview,
 		"CORE-ROUTES-001":    engine.ControlPass,
 	}
 	if len(result.Controls) != len(wantStates) {

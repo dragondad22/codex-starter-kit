@@ -72,6 +72,27 @@ type PlannedFile struct {
 	Content   string `json:"content"`
 }
 
+// ReconciliationConflict identifies existing material that create cannot replace.
+type ReconciliationConflict struct {
+	Path      string `json:"path"`
+	Kind      string `json:"kind"`
+	Ownership string `json:"ownership"`
+	Reason    string `json:"reason"`
+}
+
+// ReconciliationRequired is a reviewable stop result for preserved repository content.
+type ReconciliationRequired struct {
+	SchemaVersion int                      `json:"schema_version"`
+	Repository    string                   `json:"repository"`
+	Conflicts     []ReconciliationConflict `json:"conflicts"`
+	Problems      []string                 `json:"problems"`
+	Recovery      []string                 `json:"recovery"`
+}
+
+func (r *ReconciliationRequired) Error() string {
+	return fmt.Sprintf("create requires reconciliation for %d existing conflicts", len(r.Conflicts))
+}
+
 var createFileOwnershipV1 = map[string]string{
 	".starter-kit/layout.json":        "managed",
 	".starter-kit/managed-files.json": "managed",
@@ -112,15 +133,32 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	}
 	if inspection.Managed {
 		if !plannedFilesMatch(inspection.Repository, files) {
-			return Plan{}, errors.New("managed repository differs from the requested create inputs")
+			return Plan{}, plannedReconciliation(
+				inspection.Repository, files,
+				[]string{"managed repository content differs from the newly approved create inputs"},
+			)
 		}
 		return noChangePlan(inspection, request)
 	}
 	if inspection.ContractPresent {
-		return Plan{}, fmt.Errorf("managed-repository contract is invalid: %v", inspection.Problems)
+		return Plan{}, plannedReconciliation(inspection.Repository, files, inspection.Problems)
 	}
 	if inspection.UserFileCount != 0 || inspection.UserDirectoryCount != 0 {
-		return Plan{}, fmt.Errorf("create requires an empty repository; found %d user files and %d user directories", inspection.UserFileCount, inspection.UserDirectoryCount)
+		conflicts, conflictErr := userOwnedConflicts(inspection.Repository)
+		if conflictErr != nil {
+			return Plan{}, conflictErr
+		}
+		return Plan{}, &ReconciliationRequired{
+			SchemaVersion: 1,
+			Repository:    inspection.Repository,
+			Conflicts:     conflicts,
+			Problems:      []string{"create has no authority to replace existing repository content"},
+			Recovery: []string{
+				"review and preserve each listed user-owned path",
+				"use a future authorized retrofit/reconciliation operation or select an empty repository",
+				"re-run create only after the repository facts intentionally change",
+			},
+		}
 	}
 
 	plan := Plan{
@@ -142,6 +180,102 @@ func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
+}
+
+func plannedReconciliation(root string, files []PlannedFile, problems []string) *ReconciliationRequired {
+	conflicts := []ReconciliationConflict{}
+	for _, file := range files {
+		target := filepath.Join(root, filepath.FromSlash(file.Path))
+		info, err := os.Lstat(target)
+		if errors.Is(err, os.ErrNotExist) {
+			conflicts = append(conflicts, ReconciliationConflict{
+				Path: file.Path, Kind: "missing", Ownership: file.Ownership,
+				Reason: "approved create input expects an artifact that is not present",
+			})
+			continue
+		}
+		if err != nil {
+			conflicts = append(conflicts, ReconciliationConflict{
+				Path: file.Path, Kind: "unavailable", Ownership: file.Ownership,
+				Reason: "existing artifact could not be inspected safely",
+			})
+			continue
+		}
+		kind := "file"
+		if info.Mode()&os.ModeSymlink != 0 {
+			kind = "symlink"
+		}
+		content, readErr := os.ReadFile(target)
+		if kind != "file" || readErr != nil || digestBytes(content) != file.Digest {
+			conflicts = append(conflicts, ReconciliationConflict{
+				Path: file.Path, Kind: kind, Ownership: file.Ownership,
+				Reason: "existing artifact differs from the newly approved create input",
+			})
+		}
+	}
+	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Path < conflicts[j].Path })
+	return &ReconciliationRequired{
+		SchemaVersion: 1, Repository: root, Conflicts: conflicts,
+		Problems: append([]string{}, problems...),
+		Recovery: []string{
+			"review every changed, missing, or unavailable artifact without overwriting human-owned content",
+			"use a future authorized retrofit/reconciliation operation for accepted changes",
+			"re-run create only when the approved inputs and repository facts intentionally agree",
+		},
+	}
+}
+
+func userOwnedConflicts(root string) ([]ReconciliationConflict, error) {
+	conflicts := []ReconciliationConflict{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && relative == ".git" {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() && strings.HasPrefix(relative, ".starter-kit-stage-") {
+			return filepath.SkipDir
+		}
+		kind := "file"
+		if entry.IsDir() {
+			children, err := os.ReadDir(path)
+			if err != nil {
+				return err
+			}
+			if len(children) != 0 {
+				return nil
+			}
+			kind = "directory"
+		} else if entry.Type()&os.ModeSymlink != 0 {
+			kind = "symlink"
+		}
+		conflicts = append(conflicts, ReconciliationConflict{
+			Path: reviewableConflictPath(filepath.ToSlash(relative)), Kind: kind, Ownership: "user-owned",
+			Reason: "existing content cannot be replaced without explicit reconciliation authority",
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("enumerate reconciliation conflicts: %w", err)
+	}
+	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Path < conflicts[j].Path })
+	return conflicts, nil
+}
+
+func reviewableConflictPath(path string) string {
+	if !containsSensitiveText(path) {
+		return path
+	}
+	digest := strings.TrimPrefix(digestBytes([]byte(path)), "sha256:")
+	return "[REDACTED]-sha256:" + digest[:16]
 }
 
 func plannedFilesMatch(root string, files []PlannedFile) bool {

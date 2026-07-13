@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
 )
@@ -292,6 +294,93 @@ func TestCreateAfterApplyReturnsExplicitNoChange(t *testing.T) {
 	if result.Status != engine.ApplyStatusNoChange || len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != unchanged.Result.Path {
 		t.Fatalf("unexpected no-change result: %#v", result)
 	}
+	replayed, err := lifecycle.Apply(context.Background(), unchanged.ID, unchanged)
+	if err != nil {
+		t.Fatalf("replay identical no-change plan: %v", err)
+	}
+	if replayed.Status != result.Status || !reflect.DeepEqual(replayed.ChangedFiles, result.ChangedFiles) || !reflect.DeepEqual(replayed.Recovery, result.Recovery) {
+		t.Fatalf("replayed no-change result changed operation semantics:\nfirst:  %#v\nsecond: %#v", result, replayed)
+	}
+	if len(replayed.Evidence) != len(result.Evidence)+1 || !strings.HasPrefix(replayed.Evidence[len(replayed.Evidence)-1], "git:starter-kit-attempts/replay-") {
+		t.Fatalf("no-change replay did not emit distinct attempt evidence: %#v", replayed)
+	}
+}
+
+func TestIdenticalAppliedCreatePlanReturnsStableIdempotentResult(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	first, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	if err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	beforeReplay, err := lifecycle.Inspect(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("inspect before replay: %v", err)
+	}
+
+	second, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	if err != nil {
+		t.Fatalf("replay identical applied plan: %v", err)
+	}
+	if second.Status != first.Status || !reflect.DeepEqual(second.ChangedFiles, first.ChangedFiles) || !reflect.DeepEqual(second.Recovery, first.Recovery) {
+		t.Fatalf("replayed result changed operation semantics:\nfirst:  %#v\nsecond: %#v", first, second)
+	}
+	if len(second.Evidence) != len(first.Evidence)+1 || !strings.HasPrefix(second.Evidence[len(second.Evidence)-1], "git:starter-kit-attempts/replay-") {
+		t.Fatalf("replay did not emit distinct attempt evidence: %#v", second)
+	}
+	afterReplay, err := lifecycle.Inspect(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("inspect after replay: %v", err)
+	}
+	if afterReplay.PreconditionDigest != beforeReplay.PreconditionDigest {
+		t.Fatalf("idempotent replay mutated repository: before %s, after %s", beforeReplay.PreconditionDigest, afterReplay.PreconditionDigest)
+	}
+}
+
+func TestRecoveryBearingCreateAndNoChangePlansRemainIdempotent(t *testing.T) {
+	now := time.Date(2026, 7, 13, 19, 0, 0, 0, time.UTC)
+	for _, noChange := range []bool{false, true} {
+		t.Run(fmt.Sprintf("no_change_%t", noChange), func(t *testing.T) {
+			repository := newGitRepository(t)
+			lifecycle := engine.New(engine.WithClock(fixedClock{now}))
+			plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			if noChange {
+				if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+					t.Fatalf("seed managed repository: %v", err)
+				}
+				plan, err = lifecycle.Create(t.Context(), approvedCreate(repository))
+				if err != nil || !plan.NoChange {
+					t.Fatalf("create no-change plan: %#v, %v", plan, err)
+				}
+			}
+			token := "22222222222222222222222222222222"
+			lease := fmt.Sprintf("{\"schema_version\":1,\"token\":%q,\"plan_id\":%q,\"pid\":2147483647,\"created_at\":%q}\n", token, plan.ID, now.Add(-time.Hour).Format(time.RFC3339Nano))
+			if err := os.WriteFile(filepath.Join(repository, ".git", "starter-kit.lock"), []byte(lease), 0o600); err != nil {
+				t.Fatalf("write stale lease: %v", err)
+			}
+			first, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+			if err != nil || len(first.Recovery) == 0 || len(first.Evidence) == 0 {
+				t.Fatalf("apply with recovery: %#v, %v", first, err)
+			}
+			second, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+			if err != nil {
+				t.Fatalf("replay recovery-bearing plan: %v", err)
+			}
+			if second.Status != first.Status || !reflect.DeepEqual(second.ChangedFiles, first.ChangedFiles) || !reflect.DeepEqual(second.Recovery, first.Recovery) {
+				t.Fatalf("replay lost recovery-bearing semantics:\nfirst:  %#v\nsecond: %#v", first, second)
+			}
+			if len(second.Evidence) != len(first.Evidence)+1 {
+				t.Fatalf("replay attempt evidence missing: first %#v, second %#v", first.Evidence, second.Evidence)
+			}
+		})
+	}
 }
 
 func TestCreateDoesNotReportNoChangeForDifferentApprovedBrief(t *testing.T) {
@@ -307,8 +396,66 @@ func TestCreateDoesNotReportNoChangeForDifferentApprovedBrief(t *testing.T) {
 	}
 	request.Brief = "A different approved project outcome."
 
-	if _, err := lifecycle.Create(t.Context(), request); err == nil {
+	_, err = lifecycle.Create(t.Context(), request)
+	if err == nil {
 		t.Fatal("different create inputs must require reconciliation, not no-change")
+	}
+	var reconciliation *engine.ReconciliationRequired
+	if !errors.As(err, &reconciliation) || len(reconciliation.Conflicts) == 0 {
+		t.Fatalf("different approved inputs lack reviewable reconciliation: %#v, %v", reconciliation, err)
+	}
+	foundBrief := false
+	for _, conflict := range reconciliation.Conflicts {
+		foundBrief = foundBrief || conflict.Path == "docs/product/BRIEF.md"
+	}
+	if !foundBrief {
+		t.Fatalf("reconciliation did not identify the changed human-owned brief: %#v", reconciliation.Conflicts)
+	}
+}
+
+func TestCreateReturnsReviewableReconciliationForExistingUserContent(t *testing.T) {
+	repository := newGitRepository(t)
+	path := filepath.Join(repository, "README.md")
+	original := []byte("human work\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatalf("write human-owned conflict: %v", err)
+	}
+
+	_, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	var reconciliation *engine.ReconciliationRequired
+	if !errors.As(err, &reconciliation) {
+		t.Fatalf("create did not return reviewable reconciliation: %v", err)
+	}
+	if len(reconciliation.Conflicts) != 1 || reconciliation.Conflicts[0].Path != "README.md" || reconciliation.Conflicts[0].Ownership != "user-owned" {
+		t.Fatalf("unexpected reconciliation conflicts: %#v", reconciliation.Conflicts)
+	}
+	if len(reconciliation.Recovery) == 0 {
+		t.Fatalf("reconciliation omitted safe next actions: %#v", reconciliation)
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil || !reflect.DeepEqual(content, original) {
+		t.Fatalf("reconciliation did not preserve human work: %q, %v", content, readErr)
+	}
+}
+
+func TestReconciliationRedactsSecretBearingConflictPaths(t *testing.T) {
+	repository := newGitRepository(t)
+	secret := "ghp_12345678901234567890"
+	if err := os.WriteFile(filepath.Join(repository, "conflict-"+secret), []byte("human work\n"), 0o644); err != nil {
+		t.Fatalf("write secret-bearing conflict: %v", err)
+	}
+
+	_, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	var reconciliation *engine.ReconciliationRequired
+	if !errors.As(err, &reconciliation) {
+		t.Fatalf("create did not return reconciliation: %v", err)
+	}
+	document, marshalErr := json.Marshal(reconciliation)
+	if marshalErr != nil {
+		t.Fatalf("encode reconciliation: %v", marshalErr)
+	}
+	if strings.Contains(string(document), secret) || !strings.Contains(string(document), "[REDACTED]-sha256:") {
+		t.Fatalf("reconciliation exposed secret-bearing conflict path: %s", document)
 	}
 }
 
@@ -543,6 +690,40 @@ func TestApplyRejectsRepositoryChangedAfterPlanning(t *testing.T) {
 	}
 }
 
+func TestApplyPersistsReviewableReconciliationWithoutReplacingNewHumanWork(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	path := filepath.Join(repository, "README.md")
+	original := []byte("new human work\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatalf("write post-plan human work: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "reconcile" || !failure.Recoverable {
+		t.Fatalf("apply did not return reviewable reconciliation: %#v, %v", failure, err)
+	}
+	if len(failure.Conflicts) != 1 || failure.Conflicts[0].Path != "README.md" || len(failure.Recovery) == 0 {
+		t.Fatalf("reconciliation omitted conflict facts or recovery: %#v", failure)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != plan.Result.Path {
+		t.Fatalf("reconciliation result did not report its evidence effect: %#v", result)
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil || !reflect.DeepEqual(content, original) {
+		t.Fatalf("reconciliation replaced human work: %q, %v", content, readErr)
+	}
+	event, readErr := os.ReadFile(filepath.Join(repository, filepath.FromSlash(plan.Result.Path)))
+	if readErr != nil || !strings.Contains(string(event), `"path": "README.md"`) {
+		t.Fatalf("reconciliation evidence omitted conflict: %s, %v", event, readErr)
+	}
+}
+
 func TestFailureEvidenceDoesNotPreventARecoveredCreateRetry(t *testing.T) {
 	repository := newGitRepository(t)
 	lifecycle := engine.New()
@@ -621,6 +802,252 @@ func TestApplyAcquiresLifecycleLockBeforePreconditionRecheck(t *testing.T) {
 	attemptPath := filepath.Join(repository, ".git", "starter-kit-attempts", strings.TrimPrefix(plan.ID, "sha256:")+".json")
 	if _, err := os.Stat(attemptPath); err != nil {
 		t.Fatalf("lock failure attempt evidence missing: %v", err)
+	}
+}
+
+func TestApplyRecoversDeadStaleLifecycleLeaseWithEvidence(t *testing.T) {
+	repository := newGitRepository(t)
+	now := time.Date(2026, 7, 13, 17, 0, 0, 0, time.UTC)
+	lifecycle := engine.New(engine.WithClock(fixedClock{now}))
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	token := "0123456789abcdef0123456789abcdef"
+	lease := fmt.Sprintf("{\"schema_version\":1,\"token\":%q,\"plan_id\":%q,\"pid\":2147483647,\"created_at\":%q}\n", token, plan.ID, now.Add(-time.Hour).Format(time.RFC3339Nano))
+	lockPath := filepath.Join(repository, ".git", "starter-kit.lock")
+	if err := os.WriteFile(lockPath, []byte(lease), 0o600); err != nil {
+		t.Fatalf("write stale lifecycle lease: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	if err != nil {
+		t.Fatalf("recover stale lease and apply: %v", err)
+	}
+	if result.Status != engine.ApplyStatusApplied || len(result.Recovery) == 0 || len(result.Evidence) == 0 {
+		t.Fatalf("stale lease recovery was not disclosed: %#v", result)
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("recovered lease remained at lock path: %v", err)
+	}
+	reference := result.Evidence[0]
+	if !strings.HasPrefix(reference, "git:starter-kit-attempts/stale-lock-") {
+		t.Fatalf("stale lease evidence is not content-addressed: %q", reference)
+	}
+	archive := filepath.Join(repository, ".git", strings.TrimPrefix(reference, "git:"))
+	content, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatalf("stale lease evidence missing: %v", err)
+	}
+	var evidence map[string]any
+	if json.Unmarshal(content, &evidence) != nil || evidence["ownership"] != "machine-evidence" || evidence["source"] != "engine:apply:v1" || evidence["lease_digest"] == "" || evidence["evidence_digest"] == "" {
+		t.Fatalf("stale lease evidence lacks provenance or digests: %s", content)
+	}
+}
+
+func TestApplyDoesNotStealLiveLifecycleLease(t *testing.T) {
+	repository := newGitRepository(t)
+	now := time.Date(2026, 7, 13, 17, 30, 0, 0, time.UTC)
+	lifecycle := engine.New(engine.WithClock(fixedClock{now}))
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	token := "11111111111111111111111111111111"
+	lease := fmt.Sprintf("{\"schema_version\":1,\"token\":%q,\"plan_id\":%q,\"pid\":%d,\"created_at\":%q}\n", token, plan.ID, os.Getpid(), now.Add(-time.Hour).Format(time.RFC3339Nano))
+	lockPath := filepath.Join(repository, ".git", "starter-kit.lock")
+	if err := os.WriteFile(lockPath, []byte(lease), 0o600); err != nil {
+		t.Fatalf("write live lifecycle lease: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "lock" || !failure.Recoverable || len(failure.Recovery) == 0 {
+		t.Fatalf("live lease did not block with recovery guidance: %#v, %v", failure, err)
+	}
+	if result.Status != engine.ApplyStatusFailed {
+		t.Fatalf("live lease result is not failed: %#v", result)
+	}
+	content, readErr := os.ReadFile(lockPath)
+	if readErr != nil || string(content) != lease {
+		t.Fatalf("apply stole or changed a live lease: %q, %v", content, readErr)
+	}
+	archives, err := filepath.Glob(filepath.Join(repository, ".git", "starter-kit-attempts", "stale-lock-*.json"))
+	if err != nil || len(archives) != 0 {
+		t.Fatalf("live lease was archived as stale: %#v, %v", archives, err)
+	}
+}
+
+func TestApplyResumesInterruptedMatchingCreateWithoutReplacingCommittedPrefix(t *testing.T) {
+	repository := newGitRepository(t)
+	now := time.Date(2026, 7, 13, 18, 0, 0, 0, time.UTC)
+	lifecycle := engine.New(engine.WithClock(fixedClock{now}))
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	committed := plan.Files[:4]
+	for _, file := range committed {
+		target := filepath.Join(repository, filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("create interrupted parent: %v", err)
+		}
+		if err := os.WriteFile(target, []byte(file.Content), 0o644); err != nil {
+			t.Fatalf("write interrupted committed prefix: %v", err)
+		}
+	}
+	preservedPath := filepath.Join(repository, filepath.FromSlash(committed[0].Path))
+	preservedInfo, err := os.Stat(preservedPath)
+	if err != nil {
+		t.Fatalf("stat committed prefix: %v", err)
+	}
+	token := "abcdef0123456789abcdef0123456789"
+	stagePath := filepath.Join(repository, ".starter-kit-stage-"+token)
+	if err := os.Mkdir(stagePath, 0o700); err != nil {
+		t.Fatalf("create abandoned stage: %v", err)
+	}
+	marker := fmt.Sprintf("{\"schema_version\":1,\"ownership\":\"machine-state\",\"source\":\"engine:apply:v1\",\"lease_token\":%q,\"plan_id\":%q,\"created_at\":%q}\n", token, plan.ID, now.Add(-time.Hour).Format(time.RFC3339Nano))
+	if err := os.WriteFile(filepath.Join(stagePath, ".starter-kit-transaction.json"), []byte(marker), 0o600); err != nil {
+		t.Fatalf("write abandoned stage marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stagePath, "partial"), []byte("staged\n"), 0o600); err != nil {
+		t.Fatalf("write abandoned stage: %v", err)
+	}
+	lease := fmt.Sprintf("{\"schema_version\":1,\"token\":%q,\"plan_id\":%q,\"pid\":2147483647,\"created_at\":%q}\n", token, plan.ID, now.Add(-time.Hour).Format(time.RFC3339Nano))
+	if err := os.WriteFile(filepath.Join(repository, ".git", "starter-kit.lock"), []byte(lease), 0o600); err != nil {
+		t.Fatalf("write interrupted lifecycle lease: %v", err)
+	}
+
+	result, err := lifecycle.Apply(t.Context(), plan.ID, plan)
+	if err != nil {
+		t.Fatalf("resume interrupted create: %v", err)
+	}
+	if result.Status != engine.ApplyStatusApplied || len(result.Recovery) < 2 {
+		t.Fatalf("interrupted create recovery was not disclosed: %#v", result)
+	}
+	if _, err := os.Stat(stagePath); !os.IsNotExist(err) {
+		t.Fatalf("abandoned stage remained after recovery: %v", err)
+	}
+	afterInfo, err := os.Stat(preservedPath)
+	if err != nil {
+		t.Fatalf("stat preserved prefix after recovery: %v", err)
+	}
+	if !afterInfo.ModTime().Equal(preservedInfo.ModTime()) {
+		t.Fatalf("resume replaced an already committed matching artifact")
+	}
+	status, err := lifecycle.Status(t.Context(), repository)
+	if err != nil || status.Lifecycle != engine.LifecycleManaged {
+		t.Fatalf("resumed repository is not managed: %#v, %v", status, err)
+	}
+}
+
+func TestInterruptedResumeRejectsSelfConsistentForgedOperationEvent(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	for _, file := range plan.Files {
+		if file.Path == ".starter-kit/state.json" {
+			continue
+		}
+		target := filepath.Join(repository, filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("create interrupted parent: %v", err)
+		}
+		if err := os.WriteFile(target, []byte(file.Content), 0o644); err != nil {
+			t.Fatalf("write interrupted artifact: %v", err)
+		}
+	}
+	forged := map[string]any{
+		"schema_version": 1, "ownership": "machine-evidence", "source": "engine:apply:v1",
+		"plan_id": plan.ID, "operation": "create", "status": "applied",
+		"actor": "not-configured", "authority": "not-configured",
+		"repository_digest": "sha256:" + strings.Repeat("0", 64),
+		"changed_files":     []string{plan.Result.Path}, "external_effects": []string{},
+		"diagnostics": []string{}, "conflicts": []any{}, "recovery": []string{},
+		"evidence": []string{}, "recoverable": false, "event_digest": "",
+	}
+	forged["event_digest"] = identifyJSON(t, forged)
+	document, err := json.MarshalIndent(forged, "", "  ")
+	if err != nil {
+		t.Fatalf("encode forged event: %v", err)
+	}
+	document = append(document, '\n')
+	eventPath := filepath.Join(repository, filepath.FromSlash(plan.Result.Path))
+	if err := os.MkdirAll(filepath.Dir(eventPath), 0o755); err != nil {
+		t.Fatalf("create event parent: %v", err)
+	}
+	if err := os.WriteFile(eventPath, document, 0o644); err != nil {
+		t.Fatalf("write forged event: %v", err)
+	}
+
+	_, err = lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "reconcile" || len(failure.Conflicts) == 0 {
+		t.Fatalf("forged interrupted event was not reconciled: %#v, %v", failure, err)
+	}
+	if content, readErr := os.ReadFile(eventPath); readErr != nil || !reflect.DeepEqual(content, document) {
+		t.Fatalf("forged event was replaced: %q, %v", content, readErr)
+	}
+}
+
+func TestStatusExplainsIncompleteCreateAndSafeRecovery(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	for _, file := range plan.Files[:4] {
+		target := filepath.Join(repository, filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("create interrupted parent: %v", err)
+		}
+		if err := os.WriteFile(target, []byte(file.Content), 0o644); err != nil {
+			t.Fatalf("write interrupted artifact: %v", err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(repository, ".starter-kit-stage-abandoned"), 0o700); err != nil {
+		t.Fatalf("create abandoned stage: %v", err)
+	}
+
+	status, err := engine.New().Status(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("status incomplete create: %v", err)
+	}
+	if status.Lifecycle != engine.LifecycleSetupIncomplete || len(status.Problems) == 0 || len(status.Recovery) == 0 {
+		t.Fatalf("status did not explain incomplete recoverable setup: %#v", status)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".starter-kit-stage-abandoned")); err != nil {
+		t.Fatalf("read-only status mutated abandoned stage: %v", err)
+	}
+}
+
+func TestApplyPreservesUnrecognizedStagingLookalikeForReconciliation(t *testing.T) {
+	repository := newGitRepository(t)
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	stagePath := filepath.Join(repository, ".starter-kit-stage-user-content")
+	if err := os.Mkdir(stagePath, 0o700); err != nil {
+		t.Fatalf("create staging lookalike: %v", err)
+	}
+	original := []byte("preserve me\n")
+	if err := os.WriteFile(filepath.Join(stagePath, "human.txt"), original, 0o600); err != nil {
+		t.Fatalf("write staging lookalike content: %v", err)
+	}
+
+	_, err = lifecycle.Apply(t.Context(), plan.ID, plan)
+	var failure *engine.ApplyFailure
+	if !errors.As(err, &failure) || failure.Stage != "recover-stage" || !failure.Recoverable || len(failure.Recovery) == 0 {
+		t.Fatalf("unrecognized stage did not stop safely: %#v, %v", failure, err)
+	}
+	content, readErr := os.ReadFile(filepath.Join(stagePath, "human.txt"))
+	if readErr != nil || !reflect.DeepEqual(content, original) {
+		t.Fatalf("unrecognized stage content was removed: %q, %v", content, readErr)
 	}
 }
 
@@ -1031,6 +1458,16 @@ func identifyPlan(t *testing.T, plan engine.Plan) string {
 	content, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatalf("encode plan identity fixture: %v", err)
+	}
+	digest := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func identifyJSON(t *testing.T, value any) string {
+	t.Helper()
+	content, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode JSON identity fixture: %v", err)
 	}
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])

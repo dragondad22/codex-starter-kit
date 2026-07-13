@@ -34,6 +34,31 @@ func TestCreateCommandEmitsLanguageNeutralPlan(t *testing.T) {
 	}
 }
 
+func TestCreateCommandEmitsStructuredReconciliation(t *testing.T) {
+	repository := t.TempDir()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize Git repository: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "README.md"), []byte("human work\n"), 0o644); err != nil {
+		t.Fatalf("write human-owned conflict: %v", err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.Run(createArguments("create", repository), &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var reconciliation engine.ReconciliationRequired
+	if err := json.Unmarshal(stderr.Bytes(), &reconciliation); err != nil {
+		t.Fatalf("decode reconciliation JSON: %v: %s", err, stderr.String())
+	}
+	if len(reconciliation.Conflicts) != 1 || reconciliation.Conflicts[0].Path != "README.md" || len(reconciliation.Recovery) == 0 {
+		t.Fatalf("unexpected reconciliation result: %#v", reconciliation)
+	}
+}
+
 func TestApplyAndStatusCommandsUsePlanIdentifier(t *testing.T) {
 	repository := t.TempDir()
 	command := exec.Command("git", "init", "--quiet", repository)
@@ -81,6 +106,46 @@ func TestApplyAndStatusCommandsUsePlanIdentifier(t *testing.T) {
 	}
 	if status.Lifecycle != engine.LifecycleManaged {
 		t.Fatalf("lifecycle = %q, want managed", status.Lifecycle)
+	}
+}
+
+func TestApplyCommandPreservesStructuredConflictAndRecoveryDetails(t *testing.T) {
+	repository := t.TempDir()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize Git repository: %v: %s", err, output)
+	}
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	document, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("encode plan: %v", err)
+	}
+	planPath := filepath.Join(t.TempDir(), "plan.json")
+	if err := os.WriteFile(planPath, document, 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "README.md"), []byte("new human work\n"), 0o644); err != nil {
+		t.Fatalf("write post-plan conflict: %v", err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.Run([]string{"apply", "--plan", planPath, "--plan-id", plan.ID}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var envelope struct {
+		Result  engine.ApplyResult   `json:"result"`
+		Failure *engine.ApplyFailure `json:"failure"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode apply failure JSON: %v: %s", err, stderr.String())
+	}
+	if envelope.Failure == nil || envelope.Failure.Stage != "reconcile" || len(envelope.Failure.Conflicts) != 1 || len(envelope.Failure.Recovery) == 0 {
+		t.Fatalf("structured apply failure lost reconciliation facts: %#v", envelope)
 	}
 }
 

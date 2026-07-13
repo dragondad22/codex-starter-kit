@@ -50,7 +50,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			OwnerPersonaConfirmed: *ownerConfirmed,
 		})
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			writeEngineError(stderr, err)
 			return 1
 		}
 		return writeJSON(stdout, stderr, plan)
@@ -75,7 +75,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			},
 		})
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			writeEngineError(stderr, err)
 			return 1
 		}
 		return writeJSON(stdout, stderr, plan)
@@ -167,18 +167,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 func writeApplyFailure(stderr io.Writer, result engine.ApplyResult, err error) {
 	failure := struct {
-		SchemaVersion int                `json:"schema_version"`
-		Result        engine.ApplyResult `json:"result"`
-		Error         string             `json:"error"`
-		Recoverable   bool               `json:"recoverable"`
+		SchemaVersion int                  `json:"schema_version"`
+		Result        engine.ApplyResult   `json:"result"`
+		Failure       *engine.ApplyFailure `json:"failure,omitempty"`
+		Error         string               `json:"error"`
+		Recoverable   bool                 `json:"recoverable"`
 	}{SchemaVersion: 1, Result: result, Error: err.Error()}
 	var applyFailure *engine.ApplyFailure
 	if errors.As(err, &applyFailure) {
 		failure.Recoverable = applyFailure.Recoverable
+		failure.Failure = applyFailure
 	}
 	encoder := json.NewEncoder(stderr)
 	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(failure)
+}
+
+func writeEngineError(stderr io.Writer, err error) {
+	var reconciliation *engine.ReconciliationRequired
+	if errors.As(err, &reconciliation) {
+		encoder := json.NewEncoder(stderr)
+		encoder.SetIndent("", "  ")
+		_ = encoder.Encode(reconciliation)
+		return
+	}
+	fmt.Fprintln(stderr, err)
 }
 
 func writeJSON(stdout, stderr io.Writer, value interface{}) int {

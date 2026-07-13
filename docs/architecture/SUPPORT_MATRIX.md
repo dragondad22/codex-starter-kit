@@ -49,6 +49,11 @@ unpinned package installation.
   suppresses executable repository-local fsmonitor configuration, fixture-secret rejection
   and redaction across repository paths/create/apply/verification, and self-consistent
   malicious state/layout/route/ownership data.
+- Recovery tests exercise exact applied/no-change replay, changed-input and human-content
+  reconciliation, active and dead-stale lifecycle leases, lease-owned release, abandoned
+  stage evidence, unknown staging-content preservation, same-plan committed-prefix resume,
+  stale repository/Git preconditions, rollback, failed postconditions, and truthful
+  `setup_incomplete` status.
 
 ## Deferred support decisions
 

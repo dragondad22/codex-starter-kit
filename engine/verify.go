@@ -172,8 +172,8 @@ func (e *Engine) Verify(ctx context.Context, expectedPlanID string, plan VerifyP
 		Controls: controls, OverallState: OverallControlState(controls),
 		CoverageLimitations: []string{
 			"No approved secret-scanning capability is configured.",
-			"Crash interruption and stale-lock recovery evidence remain issue #29.",
-			"Hostile path and platform equivalence coverage remain issues #28 and #30.",
+			"Create recovery compensates multi-path interruption; it does not claim atomic external effects.",
+			"Published platform equivalence and runtime support remain issue #30.",
 		},
 	}
 	identity := struct {
@@ -198,7 +198,8 @@ func recordVerificationFailure(lockPath string, plan VerifyPlan, failure error) 
 		PlanID: plan.ID, Operation: VerifyOperation, Status: ApplyStatusFailed,
 		Actor: plan.Actor, Authority: plan.Authority, RepositoryDigest: plan.RepositoryDigest,
 		ChangedFiles: []string{}, ExternalEffects: []string{},
-		Diagnostics: redactDiagnostics([]string{failure.Error()}), Recoverable: true,
+		Diagnostics: redactDiagnostics([]string{failure.Error()}),
+		Conflicts:   []ReconciliationConflict{}, Recovery: []string{}, Evidence: []string{}, Recoverable: true,
 	}
 	event.EventDigest = digestJSON(event)
 	directory := filepath.Join(filepath.Dir(lockPath), "starter-kit-attempts")
@@ -271,9 +272,10 @@ func evaluateSeedControls(root string, inspection Inspection) []ControlResult {
 			Evidence: []EvidenceReference{{Kind: "inline", Target: "coverage_limitations"}}, Diagnostics: []string{},
 		},
 		{
-			ID: "CORE-RECOVERY-001", State: ControlNotConfigured,
-			Summary:   "Recovery readiness is not fully configured until interruption evidence exists.",
-			Rationale: "Issue #29 owns interruption, stale-lock, and durable recovery verification.",
+			ID: "CORE-RECOVERY-001", State: ControlNeedsReview,
+			Summary: "The create-v1 recovery protocol is implemented, but this verification run cannot bind " +
+				"the executing binary to retained native test provenance.",
+			Rationale: "Issue #30 must publish current, versioned build and native-equivalence evidence before recovery can pass.",
 			Evidence:  []EvidenceReference{}, Diagnostics: []string{},
 		},
 		evaluateRoutes(root),
@@ -415,6 +417,7 @@ func persistVerification(root, planID string, result VerificationResult) error {
 		Actor: result.Actor, Authority: result.Authority, RepositoryDigest: result.SourceSnapshotDigest,
 		ChangedFiles:    []string{result.EvidencePath, "docs/evidence/CONFORMANCE.md", ".starter-kit/managed-files.json"},
 		ExternalEffects: []string{}, Diagnostics: []string{},
+		Conflicts: []ReconciliationConflict{}, Recovery: []string{}, Evidence: []string{},
 	}
 	event.EventDigest = digestJSON(event)
 	eventContent := jsonDocument(event)
