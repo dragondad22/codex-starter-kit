@@ -827,16 +827,31 @@ func TestCreateRejectsSymlinkRepositoryRoot(t *testing.T) {
 	}
 }
 
-func TestCreateRejectsRepositoryRootBelowSymlinkedAncestor(t *testing.T) {
+func TestCreateCanonicalizesRepositoryRootBelowSymlinkedAncestor(t *testing.T) {
 	actual := newGitRepository(t)
 	parentLink := filepath.Join(t.TempDir(), "parent-link")
 	if err := os.Symlink(filepath.Dir(actual), parentLink); err != nil {
 		t.Skipf("native filesystem cannot create symlink fixture: %v", err)
 	}
 	linkedRoot := filepath.Join(parentLink, filepath.Base(actual))
+	canonicalRoot, err := filepath.EvalSymlinks(actual)
+	if err != nil {
+		t.Fatalf("canonicalize actual repository: %v", err)
+	}
 
-	if _, err := engine.New().Create(t.Context(), approvedCreate(linkedRoot)); err == nil {
-		t.Fatal("create accepted a repository root below a symlinked ancestor")
+	lifecycle := engine.New()
+	plan, err := lifecycle.Create(t.Context(), approvedCreate(linkedRoot))
+	if err != nil {
+		t.Fatalf("create through canonicalizable ancestor alias: %v", err)
+	}
+	if plan.Repository != canonicalRoot {
+		t.Fatalf("plan repository = %q, want canonical root %q", plan.Repository, canonicalRoot)
+	}
+	if _, err := lifecycle.Apply(t.Context(), plan.ID, plan); err != nil {
+		t.Fatalf("apply canonical plan: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonicalRoot, ".starter-kit", "state.json")); err != nil {
+		t.Fatalf("canonical repository did not receive managed state: %v", err)
 	}
 }
 

@@ -124,8 +124,9 @@ to infer reconciliation authority. Apply accepts only the exact seed create arti
 ownership classes, and provenance sources, refuses existing targets, and rejects symlinked
 managed artifacts even when linked content has the expected digest. Repository-root and
 reserved-directory symlinks or junctions are rejected rather than silently followed;
-repository authorization also rejects a symlinked ancestor rather than accepting only the
-final path component.
+ancestor aliases are resolved before planning, and the reviewable plan records the
+canonical target used for every later effect. This supports native aliases such as macOS
+`/var` to `/private/var` without allowing an unresolved path to remain authoritative.
 
 All Git effects use a structured executable plus argument vector. The engine supplies an
 allowlisted native process environment, removes inherited Git override variables, disables

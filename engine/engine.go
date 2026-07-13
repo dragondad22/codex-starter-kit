@@ -189,52 +189,37 @@ func cleanRepositoryRoot(repository string) (string, error) {
 	if containsSensitiveText(repository) {
 		return "", errors.New("repository path contains sensitive-looking material")
 	}
-	root, err := filepath.Abs(repository)
+	requestedRoot, err := filepath.Abs(repository)
 	if err != nil {
 		return "", fmt.Errorf("resolve repository path: %w", err)
 	}
-	root = filepath.Clean(root)
-	if containsSensitiveText(root) {
+	requestedRoot = filepath.Clean(requestedRoot)
+	if containsSensitiveText(requestedRoot) {
 		return "", errors.New("resolved repository path contains sensitive-looking material")
 	}
-	if err := ensurePathHasNoSymlinkComponents(root); err != nil {
-		return "", err
-	}
-	info, err := os.Lstat(root)
+	requestedInfo, err := os.Lstat(requestedRoot)
 	if err != nil {
 		return "", fmt.Errorf("stat repository: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("repository root must not be a symlink")
+	if requestedInfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("repository root must not be a symlink or junction")
+	}
+	root, err := filepath.EvalSymlinks(requestedRoot)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize repository path: %w", err)
+	}
+	root = filepath.Clean(root)
+	if containsSensitiveText(root) {
+		return "", errors.New("canonical repository path contains sensitive-looking material")
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return "", fmt.Errorf("stat canonical repository: %w", err)
 	}
 	if !info.IsDir() {
 		return "", fmt.Errorf("repository is not a directory: %s", root)
 	}
 	return root, nil
-}
-
-func ensurePathHasNoSymlinkComponents(path string) error {
-	volume := filepath.VolumeName(path)
-	current := volume
-	remainder := strings.TrimPrefix(path, volume)
-	if filepath.IsAbs(path) {
-		current += string(filepath.Separator)
-		remainder = strings.TrimLeft(remainder, string(filepath.Separator))
-	}
-	for _, component := range strings.Split(remainder, string(filepath.Separator)) {
-		if component == "" {
-			continue
-		}
-		current = filepath.Join(current, component)
-		info, err := os.Lstat(current)
-		if err != nil {
-			return fmt.Errorf("inspect repository path component: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("repository path must not traverse a symlink or junction")
-		}
-	}
-	return nil
 }
 
 func fileExists(path string) bool {

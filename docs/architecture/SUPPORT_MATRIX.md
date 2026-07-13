@@ -44,8 +44,8 @@ unpinned package installation.
   regeneration, and post-verification managed-contract validity.
 - Hostile-input tests exercise traversal and absolute paths, portable reserved names,
   unsafe normalization, case-fold collisions, user-owned directory preservation,
-  symlink roots/ancestors/parents/artifacts where supported, a native Windows directory
-  junction, exact create ownership/provenance, sanitized structured Git execution that
+  symlink roots/parents/artifacts and canonicalized ancestor aliases where supported, a
+  native Windows directory junction, exact create ownership/provenance, sanitized Git execution that
   suppresses executable repository-local fsmonitor configuration, fixture-secret rejection
   and redaction across repository paths/create/apply/verification, and self-consistent
   malicious state/layout/route/ownership data.
