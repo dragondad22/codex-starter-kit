@@ -259,6 +259,7 @@ class FoundationManifestValidationTests(unittest.TestCase):
                     "uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
                     "run: python scripts/validate_docs.py",
                     "run: python -m unittest discover -s tests",
+                    "run: go test ./...",
                 )
             ),
             encoding="utf-8",

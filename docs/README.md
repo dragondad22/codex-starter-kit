@@ -15,14 +15,18 @@
    and Later regulatory-pack method.
 8. `architecture/SUPPORT_MATRIX.md` — current native foundation validation and explicit
    product-runtime limitations.
-9. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the
+9. `architecture/LIFECYCLE_ENGINE.md` — implemented Phase 1 create interface, artifacts,
+   ownership, and current limits.
+10. `roadmap/IMPLEMENTATION_ROADMAP.md` — implementation sequence until GitHub becomes the
    live roadmap authority.
-10. `evidence/ISSUE-20-32.md` — change and verification record for the amended v1
+11. `evidence/ISSUE-20-32.md` — change and verification record for the amended v1
     sensitive-data boundary and native issue hierarchy rule.
-11. `research/ENGINE_TOOLCHAIN_EVALUATION.md` — approved bounded toolchain comparison and
+12. `research/ENGINE_TOOLCHAIN_EVALUATION.md` — approved bounded toolchain comparison and
     provenance for DEC-0015.
-12. `evidence/ISSUE-25.md` — change and verification record for the lifecycle-engine
+13. `evidence/ISSUE-25.md` — change and verification record for the lifecycle-engine
     toolchain decision.
+14. `evidence/ISSUE-26.md` — coverage, evidence, exclusions, and downstream impact for the
+    create walking skeleton.
 
 ## Document lifecycle
 

@@ -8,9 +8,10 @@ development feel coherent: standards, testing, security, compliance, documentati
 decisions, GitHub work, stakeholder communication, releases, and upgrades are coordinated
 behind a guided workflow and backed by evidence.
 
-> **Project status: design and foundation.** The product architecture and requirements
-> are documented, but the lifecycle engine and plugin are not implemented yet. Do not use
-> this repository as a production compliance control today.
+> **Project status: Phase 1 implementation.** The initial lifecycle-engine create seam is
+> implemented for development, while verification, security hardening, recovery, runtime
+> support, and the plugin remain incomplete. Do not use this repository as a production
+> compliance control today.
 
 ## What it will provide
 
@@ -38,6 +39,10 @@ Managed repository
 
 The lifecycle engine is the primary test and enforcement seam. The plugin is the
 preferred Codex experience; it is not the sole conformance authority.
+
+The current development CLI implements `inspect`, `create`, `plan`, `apply`, and `status`.
+See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
+contract, ownership model, and explicit limitations.
 
 ## Start here
 
