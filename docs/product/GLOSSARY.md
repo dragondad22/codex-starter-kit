@@ -104,6 +104,13 @@ The explicit transfer of a material issue result into the authoritative decision
 specification, policy, human-owned record, or structured state that governs its meaning.
 The destination and issue retain reciprocal references.
 
+### Readiness
+
+Executability on the GitHub Project: `Intake`, `Needs refinement`, `Ready`, or `Blocked`.
+Readiness answers whether authorized work can start now. When the final unresolved blocker
+completes, the dependent becomes Ready, but remains in its current execution Status until
+it is deliberately selected or started.
+
 ### Question work item
 
 A `type:question` issue for a consequential unresolved question whose answer must outlive
@@ -274,7 +281,9 @@ coverage limits; no answer grants handling authority or establishes conformance.
 ### Status
 
 Execution lifecycle on the GitHub Project: `Backlog`, `Next`, `In progress`, or `Done`.
-Do not use Status to express roadmap intent or readiness.
+`Backlog` means tracked but not selected for immediate execution; it does not mean Horizon
+`Later` and may contain Ready work. `Next` means explicitly selected as the immediate
+queue. Do not use Status to express roadmap intent or readiness.
 
 ### Task
 

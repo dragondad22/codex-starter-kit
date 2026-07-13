@@ -8,8 +8,8 @@ and [architecture](docs/architecture/ARCHITECTURE.md).
 
 1. Search open and closed GitHub issues for related work.
 2. Open an issue, or ask to take an existing one.
-3. Wait until the issue is refined and marked `Ready`/`ready-for-agent` before substantial
-   implementation.
+3. Wait until the issue's Project Readiness is `Ready` before substantial implementation.
+   Executor-routing labels such as `ready-for-agent` do not override a `Blocked` gate.
 4. Create a branch named `<type>/<issue-number>-<short-slug>`.
 
 Ready issues include a short human summary and a complete execution brief. If the issue
