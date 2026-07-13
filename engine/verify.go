@@ -94,6 +94,9 @@ func (e *Engine) PrepareVerify(ctx context.Context, request VerifyRequest) (Veri
 	if request.Repository == "" || request.Scope == "" || request.Gate == "" || request.Actor == "" || request.Authority == "" {
 		return VerifyPlan{}, errors.New("verify requires repository, scope, gate, actor, and authority")
 	}
+	if containsSensitiveText(strings.Join([]string{request.Scope, request.Gate, request.Actor, request.Authority}, "\n")) {
+		return VerifyPlan{}, errors.New("verification metadata contains sensitive-looking material")
+	}
 	root, err := cleanRepositoryRoot(request.Repository)
 	if err != nil {
 		return VerifyPlan{}, err
@@ -116,7 +119,19 @@ func (e *Engine) Verify(ctx context.Context, expectedPlanID string, plan VerifyP
 		return VerificationResult{}, errors.New("verification plan identity is invalid")
 	}
 	plan.ID = recordedID
-	root := plan.Repository
+	if !validSHA256Digest(plan.RepositoryDigest) {
+		return VerificationResult{}, errors.New("verification repository digest is invalid")
+	}
+	if containsSensitiveText(strings.Join([]string{plan.Scope, plan.Gate, plan.Actor, plan.Authority}, "\n")) {
+		return VerificationResult{}, errors.New("verification plan metadata contains sensitive-looking material")
+	}
+	root, err := cleanRepositoryRoot(plan.Repository)
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	if root != plan.Repository {
+		return VerificationResult{}, errors.New("verification repository path is not canonical")
+	}
 	lockPath, err := lifecycleLockPath(ctx, root)
 	if err != nil {
 		return VerificationResult{}, err
@@ -308,6 +323,15 @@ func redactDiagnostics(diagnostics []string) []string {
 		}
 	}
 	return redacted
+}
+
+func containsSensitiveText(value string) bool {
+	for _, pattern := range sensitiveDiagnosticPatterns {
+		if pattern.MatchString(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func evaluateRoutes(root string) ControlResult {

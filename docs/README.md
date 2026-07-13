@@ -33,6 +33,8 @@
     contract for parents, blockers, and dependents.
 17. `evidence/ISSUE-40.md` — canonical glossary ordering rule, validator, and regression
     evidence.
+18. `evidence/ISSUE-28.md` — hostile-input threat coverage, native fixture limits, and
+    downstream security dependencies.
 
 ## Document lifecycle
 

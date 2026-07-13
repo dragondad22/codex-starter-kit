@@ -2,7 +2,7 @@
 
 **Status:** Implemented development slice
 **Decision:** [DEC-0015](../decisions/DEC-0015-lifecycle-engine-toolchain.md)
-**Issue:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)
+**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#28](https://github.com/dragondad22/codex-starter-kit/issues/28)
 
 ## Interface
 
@@ -82,6 +82,15 @@ present, so correcting the precondition and replanning remains possible. A lock 
 cannot safely mutate the lock-protected repository surface; it is recorded instead in the
 Git-local `starter-kit-attempts` ledger and returned as structured failure JSON.
 
+The operation-acceptance boundary follows validation of the request or immutable plan and
+the authorized repository root. Malformed create input, a plan with invalid identity,
+schema, approvals, or digest fields, and a repository path whose authority cannot be
+established are rejected inputs rather than accepted operations. They return redacted
+caller diagnostics and deliberately cause no repository or Git effects: rejected input
+cannot supply the authority or evidence destination used to record its own rejection.
+After this boundary, validation failures are operation results and emit structured,
+redacted evidence. #29 owns the complete failure and recovery transition matrix.
+
 Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
 `docs/` and are never silently replaced. Generated views identify their role through the
 managed-file manifest.
@@ -102,16 +111,49 @@ managed-file manifest.
 | `docs/decisions/INDEX.md` | human-owned | Durable decision index |
 | `docs/evidence/CONFORMANCE.md` | generated | Truthful initial not-yet-verified summary |
 
+## Hostile-input safety
+
+Create and apply use one portable path policy before effects. Planned paths must be clean
+printable-ASCII relative paths with forward slashes; empty/relative segments, Windows
+absolute forms, reserved characters and device names, trailing-dot/space aliases, and
+case-fold collisions are rejected on every host. The conservative ASCII boundary avoids
+claiming Unicode normalization equivalence before a versioned normalization policy exists.
+
+Create treats existing files and directories as user-owned repository content and refuses
+to infer reconciliation authority. Apply accepts only the exact seed create artifact set,
+ownership classes, and provenance sources, refuses existing targets, and rejects symlinked
+managed artifacts even when linked content has the expected digest. Repository-root and
+reserved-directory symlinks or junctions are rejected rather than silently followed;
+repository authorization also rejects a symlinked ancestor rather than accepting only the
+final path component.
+
+All Git effects use a structured executable plus argument vector. The engine supplies an
+allowlisted native process environment, removes inherited Git override variables, disables
+interactive prompts and system/global configuration, disables repository-local filesystem
+monitor execution and hook discovery, and prevents optional read-command locks. Repository
+content is never interpolated into a shell command.
+
+Token-, credential-, and private-key-shaped content is rejected before entering repository
+paths, create or verification plans, apply staging, verification metadata, or evidence.
+Diagnostics from untrusted plans and managed state are redacted; invalid paths are not
+echoed during pre-transaction validation. The seed contract validates layout roles, routes,
+lifecycle/engine state, project approvals, policy state, ownership, provenance, and content
+digests. Self-consistent but semantically malicious state therefore reports
+`managed_degraded` rather than managed.
+
 ## Current limits
 
 - Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
-- Phase 1 uses the Go standard library and the structured `git` executable/argument seam.
+- Phase 1 uses the Go standard library and the structured `git`
+  executable/argument/environment seam.
 - Staging, exclusive locking, state-last commit, postcondition validation, and best-effort
   rollback are present. #29 owns interruption fixtures, stale-lock recovery, durable
   recovery evidence, stronger atomicity, and deeper conflict/reconciliation behavior.
-- Clean relative paths are root-constrained and symlink parents are rejected. #28 owns the
-  complete hostile path, junction, reserved-name, case-collision, malformed-state, secret,
-  and malicious-plan matrix.
+- Portable path, ownership, secret, malformed-state, malicious-plan, and structured Git
+  defenses are implemented. Symlink fixtures execute where native creation is available;
+  Windows CI adds a native directory-junction fixture, and the case-collision fixture records
+  the runner's filesystem behavior. #30 owns broader reparse-point capability evidence,
+  exact filesystem support claims, and released native support closure.
 - Seed verification is implemented, but secrets and recovery remain `not-configured`.
   #28–#30 own hostile-input, interruption/recovery, and native support closure; no current
   aggregate verification result is expected to pass.
