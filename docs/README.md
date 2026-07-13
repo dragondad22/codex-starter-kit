@@ -37,6 +37,8 @@
     downstream security dependencies.
 19. `evidence/ISSUE-29.md` — create replay, interruption, lease, reconciliation, rollback,
     and recovery evidence with the explicit failure-mode matrix.
+20. `evidence/ISSUE-30.md` — native semantic-equivalence evidence, complete Phase 1
+    coverage disposition, runtime boundary, and downstream assumptions.
 
 ## Document lifecycle
 

@@ -8,9 +8,10 @@ development feel coherent: standards, testing, security, compliance, documentati
 decisions, GitHub work, stakeholder communication, releases, and upgrades are coordinated
 behind a guided workflow and backed by evidence.
 
-> **Project status: Phase 1 implementation.** The initial lifecycle-engine create seam is
-> implemented for development, while verification, security hardening, recovery, runtime
-> support, and the plugin remain incomplete. Do not use this repository as a production
+> **Project status: Phase 1 engine slice.** Empty-repository create and seed verification
+> are implemented with initial source-runtime support on the tested native matrix. The
+> plugin, packaged releases, secret scanning, retrofit, upgrades, and broader policy and
+> release capabilities remain incomplete. Do not use this repository as a production
 > compliance control today.
 
 ## What it will provide
@@ -44,6 +45,48 @@ The current development CLI implements `inspect`, `create`, `plan`, `apply`, `st
 seed `verify`.
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
 contract, ownership model, and explicit limitations.
+
+## Build and use the Phase 1 engine
+
+The supported distribution is currently a source build. Install native Git and Go 1.26.5,
+clone the repository, and run this from the repository root:
+
+```text
+go build -o starter-kit ./cmd/starter-kit
+```
+
+Obtain Git and Go from publishers your environment trusts. Both are local executables with
+access to the repository; Go may contact its configured toolchain/module source during a
+build, while the built Phase 1 engine itself performs no network operation. Both are
+available without a product license fee, but organizational support or distribution costs
+may differ. Go 1.26.5 is the tested build version and native Git is a runtime requirement;
+there is no supported prebuilt or no-Git fallback yet.
+
+On Windows the output may be named `starter-kit.exe`. The executable and JSON contract are
+the same on Linux, macOS, and Windows; no WSL, Git Bash, Bash, PowerShell, container, or
+Codex client is required. A caller can also use `go run ./cmd/starter-kit` during source
+development.
+
+The minimal direct flow is:
+
+```text
+git init <repository>
+starter-kit inspect --repository <repository>
+starter-kit create --repository <repository> --brief <approved-text> --approve-brief --confirm-owner-persona
+starter-kit apply --plan <create-plan.json> --plan-id <sha256-plan-id>
+starter-kit status --repository <repository>
+starter-kit verify-plan --repository <repository> --scope repository --gate development --actor <actor> --authority <authority>
+starter-kit verify --plan <verify-plan.json> --plan-id <sha256-plan-id>
+```
+
+`create` and `verify-plan` emit reviewable JSON plans on standard output. Retain each exact
+document and separately retain its `plan_id` using the native process/file facilities of
+your environment, review it, then pass it to `apply` or `verify`. Results are JSON on
+standard output; structured apply/reconciliation failures are JSON on standard error.
+The engine never installs Git or Go, changes sandbox authority, or performs network effects.
+
+See the [support matrix](docs/architecture/SUPPORT_MATRIX.md) for the exact tested envelope,
+runtime requirements, capability gaps, and evidence model.
 
 ## Start here
 

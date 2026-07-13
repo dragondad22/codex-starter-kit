@@ -27,14 +27,14 @@ atomic transaction across multiple filesystem paths or future external effects.
 
 | Transition or failure | Detection and stop condition | Result and evidence | Recovery behavior | Excluded external/downstream impact |
 |---|---|---|---|---|
-| Exact replay after `applied` | Managed contract and prior event match the immutable plan | Stable `applied` semantics plus a distinct content-addressed replay event | Return prior outcome without repository mutation | #30 proves native equivalence of this observable behavior |
-| Exact replay after `no_change` | Managed contract and no-change event match the plan | Stable `no_change` semantics plus a distinct content-addressed replay event | Return prior outcome without repository mutation | Same #30 runtime-publication dependency |
+| Exact replay after `applied` | Managed contract and prior event match the immutable plan | Stable `applied` semantics plus a distinct content-addressed replay event | Return prior outcome without repository mutation | #30 native comparison includes this observable behavior |
+| Exact replay after `no_change` | Managed contract and no-change event match the plan | Stable `no_change` semantics plus a distinct content-addressed replay event | Return prior outcome without repository mutation | Same #30 native evidence boundary |
 | Repository or Git changed after planning | Recomputed content/Git precondition differs before mutation | Failed precondition event with redacted cause | Preserve content; inspect, resolve, and create a new reviewed plan | Remote state and future adapters are not modified |
 | Changed approved create input | Existing managed contract does not match newly approved inputs | `ReconciliationRequired` with conflicts, problems, and actions | Preserve repository; explicitly review a later reconciliation/upgrade operation | Upgrade authorization is outside create-v1 |
 | Existing user or new human content | Existing or newly introduced paths are not authorized by the plan | Structured reconciliation; conflicting paths are redacted when secret-shaped | Preserve every conflict; obtain explicit reconciliation authority | Retrofit remains a later lifecycle operation |
 | Active or recent lifecycle lease | Lease parses and is recent or native process remains alive | Recoverable lock failure; Git-local attempt evidence where writable | Wait and replay the same immutable plan | No distributed or remote lock is claimed |
 | Malformed lifecycle lease | Lease cannot be safely authenticated | Recoverable lock failure; lock remains untouched | Preserve lease for human inspection and authorized repair | No inference of ownership from malformed state |
-| Dead stale lifecycle lease | Lease age exceeds the bound and native liveness says owner is gone | Lease archived under Git-local attempt evidence | Acquire a new token-owned lease and continue same plan | #30 validates native liveness semantics on supported systems |
+| Dead stale lifecycle lease | Lease age exceeds the bound and native liveness says owner is gone | Lease archived under Git-local attempt evidence | Acquire a new token-owned lease and continue same plan | #30 runs the recovery suite natively and publishes the bounded support claim |
 | Abandoned matching stage | Stage name and marker match archived stale token and current plan | Full tree digest and recovery record written before removal | Remove only authenticated abandoned stage, then rebuild staging | External temporary stores are outside this local protocol |
 | Unknown or mismatched stage lookalike | Reserved-prefix tree lacks matching stale lease/marker/plan | Failed `recover-stage`; artifact preserved | Explicit reconciliation; never delete based on prefix alone | User content cannot be classified as engine-owned implicitly |
 | Partial matching committed prefix | State absent; each existing planned artifact exactly matches same plan | Recovery actions/evidence returned with final successful result | Preserve matching files and create only missing artifacts | File metadata atomicity beyond content is not claimed |
@@ -79,10 +79,11 @@ Final native Linux, macOS, and Windows results are retained in the completing pu
 
 ## Remaining limits and downstream impact
 
-- #30 owns native semantic-equivalence closure, released OS/architecture/filesystem claims,
-  and reparse-point capability evidence.
-- Secret scanning remains `not-configured`. Recovery remains `needs-review` until #30 binds
-  current native evidence to the executing build, so aggregate seed verification cannot pass.
+- #30 publishes native semantic-equivalence closure, source-runtime OS/architecture/
+  filesystem boundaries, and reparse-point capability evidence.
+- Secret scanning remains `not-configured`. Recovery remains `needs-review` for an
+  unversioned source build that cannot bind itself to retained native evidence, so aggregate
+  seed verification cannot pass.
 - Retrofit, upgrade, plugin, package, remote-service, and release operations must define
   their own reconciliation and external-effect compensation before claiming recovery.
 - Create-v1 recovery preserves content and reports safe actions; it does not infer human

@@ -34,7 +34,7 @@ truthful conformance summary that claims no verified controls.
 | Apply consumes plan identifier and rechecks preconditions | Plan hash verification, content/Git snapshot, same-count replacement test, changed-repository rejection | Covered for empty create; deeper conflict/reconciliation semantics are #29 |
 | Minimal authoritative state, provenance, routes, orientation, brief, decisions, personas, summary | Deterministic create plan and applied-content assertions | Covered |
 | Distinct human, generated, and managed ownership without silent overwrite | Explicit create approvals; self-classifying managed-file manifest; ownership/provenance assertions; existing-target refusal | Covered for initial create; reconciliation is #29 |
-| Platform-neutral paths and structured commands | Native Go path APIs, root-constrained clean paths, symlink-parent rejection, and `exec.CommandContext` Git arguments; native CI | Covered baseline; full adversarial platform cases are #28/#30 |
+| Platform-neutral paths and structured commands | Native Go path APIs, root-constrained clean paths, symlink-parent rejection, and `exec.CommandContext` Git arguments; native CI | Covered; #28 supplies adversarial cases and #30 compares native semantics/capabilities |
 | Stable rerun or explicit no change | Create-after-apply plus managed-drift/degraded-state tests | Covered |
 | Tests cross lifecycle-engine seam | Public `engine` methods and CLI JSON adapter tests | Covered |
 | Coverage and downstream effects explicit | This record and `LIFECYCLE_ENGINE.md` | Covered |
@@ -49,7 +49,7 @@ truthful conformance summary that claims no verified controls.
 | Seed `core-trust` controls | Not implemented | #27 owns truthful evaluation and evidence |
 | Minimal rendered orientation, brief, decisions, conformance | Implemented | #27 regenerates conformance from verification state |
 | Seed and confirm persona registry with stable IDs | Initial `PER-OWNER` confirmed and routed | Later inception/persona work expands evidence and audiences |
-| Idempotence, preconditions, conflicts, rollback, malicious paths, native equivalence | Valid-contract no-change, content/Git preconditions, root constraint, staging/lock/state-last commit, postcondition validation, and best-effort rollback baseline | #28 completes hostile inputs, #29 interruption/recovery/conflicts, #30 full native equivalence |
+| Idempotence, preconditions, conflicts, rollback, malicious paths, native equivalence | Valid-contract no-change, content/Git preconditions, root constraint, staging/lock/state-last commit, postcondition validation, and best-effort rollback baseline | #28 completes hostile inputs, #29 interruption/recovery/conflicts, and #30 native equivalence/support publication |
 
 ## Verification commands
 
@@ -69,7 +69,7 @@ Final local results and native CI evidence are recorded in the completing pull r
   stronger atomicity, and complete conflict/reconciliation semantics.
 - #28 still owns junctions, reserved names, case collisions, malformed state, secret
   leakage, command injection, and the complete malicious-plan matrix.
-- Exact released runtime support, installers, signing, and native semantic equivalence
-  remain #30 and the release workflow.
+- #30 publishes bounded source-runtime native semantic equivalence. Installers, signing,
+  packaged releases, and executable-to-CI provenance remain release-work obligations.
 - GitHub, policy registry, plugin, retrofit, upgrade, and release adapters remain later
   roadmap slices and consume the language-neutral JSON/operation seam.
