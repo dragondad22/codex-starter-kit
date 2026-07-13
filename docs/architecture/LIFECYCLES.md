@@ -136,6 +136,13 @@ issue and the issue's closing comment references the record. Research closes wit
 durable human-owned research record and any resulting question, decision, or delivery
 work; the record informs but does not silently establish authority.
 
+Project fields project this lifecycle along separate dimensions. Readiness answers
+whether execution may start, Status records selection and progress, and Horizon records
+feature intent. Dependency completion is a transition trigger: every direct dependent is
+re-evaluated and becomes Ready when its last blocker resolves. Readiness alone does not
+select it as Status Next. An incomplete parent is In progress after any child delivery
+starts or completes, even when its remaining Ready children are still Backlog.
+
 ## Control Evaluation Lifecycle
 
 ```mermaid

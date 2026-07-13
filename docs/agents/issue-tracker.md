@@ -5,6 +5,52 @@ Issues, PRDs, findings, epics, features, and executable tasks live in
 The linked [Codex Starter Kit Project](https://github.com/users/dragondad22/projects/8),
 with Status, Horizon, and Readiness fields, is operational authority.
 
+## Field semantics
+
+The three planning fields are independent. In particular, Project `Backlog` is not a
+synonym for a Scrum product backlog and does not mean Horizon `Later`.
+
+| Field | Question answered | Transition contract |
+|---|---|---|
+| Status | Where is this item in execution? | `Backlog` means tracked but not selected for immediate execution; `Next` means explicitly selected as the immediate queue; `In progress` means delivery has started; `Done` means completed. A Ready item may remain Backlog until selected. |
+| Readiness | Could authorized work start now? | `Intake` has not been refined; `Needs refinement` has unresolved specification or authority; `Ready` is executable; `Blocked` has an identified unresolved dependency or control. |
+| Horizon | Where does this feature sit in rolling product intent? | `Now`, `Next`, and `Later` apply to feature direction. Tasks normally inherit context from their parent and may leave Horizon blank. Horizon does not select work or assign release membership. |
+
+`Next` is intentionally overloaded by GitHub's field option names: Status `Next` is an
+execution queue, while Horizon `Next` is product direction. Always name the field when
+the distinction is not obvious.
+
+Triage labels route a complete item to the intended executor; they do not supersede the
+Project gate. For example, `ready-for-agent` plus Readiness `Blocked` means the brief is
+complete and intended for an agent after its blockers resolve, not that work may start.
+
+## Reconciliation checkpoints
+
+Project cleanliness is part of completing work, not optional board administration. After
+an issue starts, completes, reopens, gains or loses a dependency, or has a child change
+execution state, reconcile this set before handing off:
+
+1. the changed item;
+2. its native parent, if any; and
+3. every directly dependent issue named by its blocker relationship or executable brief.
+
+Apply these standing rules:
+
+- Starting execution requires Readiness `Ready` and moves Status to `In progress`.
+- An incomplete parent moves to `In progress` once any child delivery starts or completes;
+  it must not return to `Backlog` merely because no child is currently running.
+- Completing a blocker immediately re-evaluates each dependent. When no unresolved
+  blockers remain, change Readiness from `Blocked` to `Ready`.
+- Becoming Ready does not automatically move Status to `Next`. Use `Next` only for work
+  deliberately selected as the immediate queue; otherwise a Ready item may stay Backlog.
+- A dependent remains `Blocked` while any declared blocker is unresolved.
+- Closing completed work moves Status to `Done`; reopening restores the state justified
+  by its current readiness, selection, and execution facts.
+
+At session orientation and before final handoff, audit the touched slice for these
+invariants. If GitHub automation is absent or fails, make the corrections directly and
+record material drift in the governing issue rather than leaving the Project stale.
+
 Use `gh` or the connected GitHub adapter. Pass multiline bodies through files or safe
 structured calls; do not interpolate issue content into shell commands.
 
@@ -51,5 +97,7 @@ child's triage label, Readiness, and dependencies to determine whether it can st
   publication; milestone percentage alone is not evidence that a release is ready.
 - Do not implement until readiness passes.
 - Keep issue and Project fields synchronized through the lifecycle.
+- Treat dependency completion as a required reconciliation trigger: re-evaluate and
+  promote fully unblocked dependents to Readiness `Ready`.
 - Use `Closes #N` from the completing PR.
 - Preserve completion evidence and material deviations as work memory.

@@ -29,6 +29,8 @@
     create walking skeleton.
 15. `evidence/ISSUE-27.md` — seed control states, verification evidence, limitations, and
     downstream consumers.
+16. `evidence/ISSUE-15.md` — Project-state drift correction and standing reconciliation
+    contract for parents, blockers, and dependents.
 
 ## Document lifecycle
 

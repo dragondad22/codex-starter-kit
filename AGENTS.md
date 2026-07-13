@@ -9,6 +9,11 @@ and design; the approved product contract lives in `docs/`.
 - Read `docs/decisions/INDEX.md` for governing decisions. The discovery document preserves
   source history; stop and reconcile any conflict instead of choosing silently.
 - Do not start implementation without a GitHub issue whose Readiness is `Ready`.
+- Reconcile Project fields whenever touched work starts, completes, reopens, or changes a
+  dependency: update the item, its parent, and directly dependent issues. Completing a
+  blocker promotes each fully unblocked dependent to `Ready`; it becomes `Next` only when
+  explicitly selected as immediate work. An incomplete parent with started or completed
+  child delivery is `In progress`, never `Backlog`.
 - Do not invent unresolved product, architecture, policy, regulatory, or risk decisions
   while implementing. Return the issue to `Needs refinement`.
 - Use the lifecycle-engine interface as the highest test seam: `create`, `retrofit`,
