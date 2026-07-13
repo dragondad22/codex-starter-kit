@@ -132,12 +132,76 @@ func validateManagedContract(root string) (bool, []string) {
 		}
 		recordedDigest := event.EventDigest
 		event.EventDigest = ""
-		if event.SchemaVersion != 1 || event.Ownership != "machine-evidence" || event.Source == "" || event.PlanID == "" || event.Operation == "" || event.Status == "" || recordedDigest == "" || digestJSON(event) != recordedDigest {
+		if event.SchemaVersion != 1 || event.Ownership != "machine-evidence" || event.Source == "" || event.PlanID == "" || event.Operation == "" || event.Status == "" || event.Actor == "" || event.Authority == "" || event.ExternalEffects == nil || event.Diagnostics == nil || recordedDigest == "" || digestJSON(event) != recordedDigest {
 			problems = append(problems, fmt.Sprintf("operation event lacks required provenance: %s", filepath.Base(eventPath)))
+		}
+	}
+	evidencePaths, evidenceGlobErr := filepath.Glob(filepath.Join(starterPath, "evidence", "verify-*.json"))
+	if evidenceGlobErr != nil {
+		problems = append(problems, fmt.Sprintf("enumerate verification evidence: %v", evidenceGlobErr))
+	}
+	for _, evidencePath := range evidencePaths {
+		evidenceContent, readErr := os.ReadFile(evidencePath)
+		if readErr != nil {
+			problems = append(problems, fmt.Sprintf("read verification evidence: %v", readErr))
+			continue
+		}
+		var evidence VerificationResult
+		if err := json.Unmarshal(evidenceContent, &evidence); err != nil {
+			problems = append(problems, fmt.Sprintf("parse verification evidence: %v", err))
+			continue
+		}
+		if evidence.SchemaVersion != 1 || evidence.Ownership != "machine-evidence" || evidence.Source != "engine:verify:v1" || evidence.VerificationID == "" || evidence.EvidenceDigest == "" || verificationDigest(evidence) != evidence.EvidenceDigest {
+			problems = append(problems, fmt.Sprintf("verification evidence lacks valid provenance: %s", filepath.Base(evidencePath)))
+			continue
+		}
+		knownControls := map[string]bool{
+			"CORE-TRUTH-001": true, "CORE-SECRETS-001": true, "CORE-OWNERSHIP-001": true,
+			"CORE-COVERAGE-001": true, "CORE-RECOVERY-001": true, "CORE-ROUTES-001": true,
+		}
+		seenControls := map[string]bool{}
+		for _, control := range evidence.Controls {
+			if !knownControls[control.ID] || seenControls[control.ID] {
+				problems = append(problems, fmt.Sprintf("verification evidence has unknown or duplicate control identity: %s", control.ID))
+			}
+			seenControls[control.ID] = true
+			if !validControlState(control.State) {
+				problems = append(problems, fmt.Sprintf("verification evidence has invalid state for %s", control.ID))
+			}
+			if control.State == ControlPass && len(control.Evidence) == 0 {
+				problems = append(problems, fmt.Sprintf("passing control lacks evidence: %s", control.ID))
+			}
+			if control.State != ControlPass && control.Rationale == "" {
+				problems = append(problems, fmt.Sprintf("non-passing control lacks rationale: %s", control.ID))
+			}
+			if control.State == ControlAcceptedException && (control.UnderlyingState == "" || control.UnderlyingState == ControlPass || control.UnderlyingState == ControlAcceptedException) {
+				problems = append(problems, fmt.Sprintf("accepted exception lacks underlying state: %s", control.ID))
+			}
+			if control.State != ControlAcceptedException && control.UnderlyingState != "" {
+				problems = append(problems, fmt.Sprintf("ordinary control has an underlying state: %s", control.ID))
+			}
+			if control.State == ControlNotApplicable && len(control.Evidence) == 0 {
+				problems = append(problems, fmt.Sprintf("not-applicable control lacks supporting facts: %s", control.ID))
+			}
+		}
+		if len(seenControls) != len(knownControls) {
+			problems = append(problems, "verification evidence does not contain exactly the seed control set")
+		}
+		if !validControlState(evidence.OverallState) || evidence.OverallState != OverallControlState(evidence.Controls) {
+			problems = append(problems, "verification evidence overall state is invalid")
 		}
 	}
 	sort.Strings(problems)
 	return true, problems
+}
+
+func validControlState(state ControlState) bool {
+	switch state {
+	case ControlPass, ControlFail, ControlNotApplicable, ControlNotConfigured, ControlNeedsReview, ControlAcceptedException:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateRelativePath(root, slashPath string) error {

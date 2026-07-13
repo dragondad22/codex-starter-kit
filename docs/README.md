@@ -27,6 +27,8 @@
     toolchain decision.
 14. `evidence/ISSUE-26.md` — coverage, evidence, exclusions, and downstream impact for the
     create walking skeleton.
+15. `evidence/ISSUE-27.md` — seed control states, verification evidence, limitations, and
+    downstream consumers.
 
 ## Document lifecycle
 

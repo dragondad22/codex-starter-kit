@@ -116,6 +116,49 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return writeJSON(stdout, stderr, status)
+	case "verify":
+		flags := flag.NewFlagSet("verify", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		planPath := flags.String("plan", "", "path to verification plan JSON")
+		planID := flags.String("plan-id", "", "expected verification plan identifier")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		content, err := os.ReadFile(*planPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "read verification plan: %v\n", err)
+			return 1
+		}
+		var plan engine.VerifyPlan
+		if err := json.Unmarshal(content, &plan); err != nil {
+			fmt.Fprintf(stderr, "decode verification plan: %v\n", err)
+			return 1
+		}
+		result, err := engine.New().Verify(context.Background(), *planID, plan)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, result)
+	case "verify-plan":
+		flags := flag.NewFlagSet("verify-plan", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		repository := flags.String("repository", "", "repository root")
+		scope := flags.String("scope", "", "verification scope")
+		gate := flags.String("gate", "", "lifecycle gate")
+		actor := flags.String("actor", "", "requesting actor")
+		authority := flags.String("authority", "", "authority for evidence regeneration")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		plan, err := engine.New().PrepareVerify(context.Background(), engine.VerifyRequest{
+			Repository: *repository, Scope: *scope, Gate: *gate, Actor: *actor, Authority: *authority,
+		})
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, plan)
 	default:
 		fmt.Fprintf(stderr, "unsupported operation: %s\n", args[0])
 		return 2
