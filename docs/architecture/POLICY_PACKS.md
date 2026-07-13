@@ -73,6 +73,12 @@ Activated by personal/sensitive data or relevant jurisdictions/contracts. Owns p
 applicability, purpose/legal-basis records where required, notices/consent, rights,
 transfers, DPIA/qualified review triggers, breach obligations, and evidence retention.
 
+For v1, these pack boundaries provide applicability vocabulary and truthful
+`needs-review`/`unsupported` results only. They do not imply that Codex, a connected tool,
+or the development environment is an assured sensitive-data route. Detailed enforcement
+and route assurance are Later work in
+[issue #21](https://github.com/dragondad22/codex-starter-kit/issues/21).
+
 ### `user-experience-accessibility`
 
 Activated by human-facing interfaces or documents. Consumes the `audience-context`
@@ -134,10 +140,10 @@ Activated by public/open-source/customer/package/app-store distribution. Owns li
 and notices, SBOM/provenance, signing/attestation, release channels, vulnerability intake,
 support/security policy, and publication communication.
 
-## Regulatory Pack Strategy
+## Later Regulatory Pack Strategy
 
-The launch must support regulated projects, but pack names must follow verified scope,
-not a marketing checklist. Build regulatory packs through a controlled process:
+Regulatory pack names must follow verified scope, not a marketing checklist. Build them
+through a controlled process before making a support claim:
 
 1. identify jurisdiction/industry/contract and authoritative source versions;
 2. obtain qualified interpretation where needed;
@@ -148,8 +154,8 @@ not a marketing checklist. Build regulatory packs through a controlled process:
 6. sign and publish immutably;
 7. monitor source changes and publish semantic updates.
 
-Initial regulatory coverage should be selected as a release target with named expert
-review; “supports regulation” cannot mean an unverified generic questionnaire.
+Initial verified regulatory coverage is a Later release target requiring named expert
+review; detection, a notice, or an unverified questionnaire is not regulatory support.
 
 ## Control ID Convention
 

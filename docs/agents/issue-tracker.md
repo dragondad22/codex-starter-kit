@@ -16,9 +16,29 @@ collaborators are treated as in-progress team work.
 
 GitHub shares numbering across issues and PRs. Resolve an ambiguous `#N` before acting.
 
+## Decomposition hierarchy
+
+When an epic, feature, or other parent work item is decomposed, add each resulting issue
+through GitHub's native parent/sub-issue relationship. A `#N` reference in the child body
+is useful narrative context, but it is not a substitute for the native relationship: it
+does not populate GitHub's hierarchy or sub-issue progress.
+
+After publishing a decomposition:
+
+1. verify through GitHub that the parent reports the intended children;
+2. add every child to the operational Project and set its own Status and Readiness;
+3. reconcile the parent's triage label and Project Readiness; and
+4. preserve each child's dependency and execution state independently.
+
+An approved, complete decomposition removes `needs-triage` from the parent. If no
+parent-level refinement remains, the parent may be `Ready` as a delivery container even
+when some children are `Blocked`; that does not make those children executable. Use each
+child's triage label, Readiness, and dependencies to determine whether it can start.
+
 ## Required behavior
 
 - Search for duplicates before creation.
+- Preserve native parent/sub-issue hierarchy when decomposing work.
 - Use the two-layer executable issue template for planned implementation.
 - Reserve question issues for consequential uncertainties that need durable resolution;
   keep ordinary conversational clarification off the Project.

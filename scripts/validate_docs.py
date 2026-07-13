@@ -50,6 +50,31 @@ DECISION_MARKERS = (
 )
 HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 PINNED_ACTION = re.compile(r"^\s*uses:\s*[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$", re.MULTILINE)
+SENSITIVE_BOUNDARY_MARKERS = {
+    "docs/decisions/DEC-0001-first-release-scope.md": (
+        "content classification",
+        "handling authorization",
+        "product assurance",
+        "`No`, `Yes`, or `Unsure`",
+        "issue #21",
+    ),
+    "docs/architecture/LIFECYCLES.md": (
+        "Missing verified route outcome",
+        "`needs-review`",
+        "`unsupported`",
+    ),
+    "docs/product/PRD.md": (
+        "Acknowledgment never authorizes tool access or transmission",
+        "comprehensive highly sensitive or regulated-content",
+    ),
+}
+PROHIBITED_ACTIVE_ASSURANCE_CLAIMS = (
+    "genuinely supports regulated projects",
+    "regulated projects must be genuinely supported in the first release",
+    "regulated projects fully supported",
+    "launch must support regulated projects",
+    "regulatory policy and evidence supported at launch",
+)
 
 
 def _load_json_document(path: Path, root: Path) -> tuple[Any | None, list[str]]:
@@ -186,6 +211,40 @@ def validate_workflow(root: Path) -> list[str]:
     return failures
 
 
+def validate_sensitive_data_boundary(root: Path) -> list[str]:
+    """Validate durable routes for the amended v1 sensitive-data boundary."""
+
+    failures: list[str] = []
+    for relative, markers in SENSITIVE_BOUNDARY_MARKERS.items():
+        path = root / relative
+        if not path.is_file():
+            failures.append(f"{relative}: missing sensitive-data boundary document")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                failures.append(
+                    f"{relative}: missing sensitive-data boundary marker: {marker}"
+                )
+
+    for path in root.rglob("*.md"):
+        if ".git" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for claim in PROHIBITED_ACTIVE_ASSURANCE_CLAIMS:
+            start = lowered.find(claim)
+            while start >= 0:
+                historical_context = lowered[start : start + 1_000]
+                if "superseded" not in historical_context:
+                    failures.append(
+                        f"{path.relative_to(root)}: unqualified first-release assurance "
+                        f"claim: {claim}"
+                    )
+                start = lowered.find(claim, start + len(claim))
+    return failures
+
+
 def validate_decision_routes(root: Path) -> list[str]:
     """Return failures for the D1-D14 durable decision routes."""
 
@@ -289,6 +348,7 @@ def main() -> int:
     failures.extend(validate_label_manifest(ROOT))
     failures.extend(validate_issue_templates(ROOT))
     failures.extend(validate_workflow(ROOT))
+    failures.extend(validate_sensitive_data_boundary(ROOT))
 
     if failures:
         print("Documentation validation failed:", file=sys.stderr)
