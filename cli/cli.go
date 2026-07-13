@@ -4,6 +4,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -36,10 +37,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		flags := flag.NewFlagSet("create", flag.ContinueOnError)
 		flags.SetOutput(stderr)
 		repository := flags.String("repository", "", "repository root")
+		brief := flags.String("brief", "", "approved project brief")
+		briefApproved := flags.Bool("approve-brief", false, "confirm the supplied brief is approved")
+		ownerConfirmed := flags.Bool("confirm-owner-persona", false, "confirm the seed owner persona")
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
-		plan, err := engine.New().Create(context.Background(), *repository)
+		plan, err := engine.New().Create(context.Background(), engine.CreateRequest{
+			Repository:            *repository,
+			Brief:                 *brief,
+			BriefApproved:         *briefApproved,
+			OwnerPersonaConfirmed: *ownerConfirmed,
+		})
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -50,10 +59,21 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		flags.SetOutput(stderr)
 		repository := flags.String("repository", "", "repository root")
 		operation := flags.String("operation", "", "operation to plan")
+		brief := flags.String("brief", "", "approved project brief")
+		briefApproved := flags.Bool("approve-brief", false, "confirm the supplied brief is approved")
+		ownerConfirmed := flags.Bool("confirm-owner-persona", false, "confirm the seed owner persona")
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
-		plan, err := engine.New().Plan(context.Background(), *repository, engine.Operation(*operation))
+		plan, err := engine.New().Plan(context.Background(), engine.PlanRequest{
+			Operation: engine.Operation(*operation),
+			Create: engine.CreateRequest{
+				Repository:            *repository,
+				Brief:                 *brief,
+				BriefApproved:         *briefApproved,
+				OwnerPersonaConfirmed: *ownerConfirmed,
+			},
+		})
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -79,7 +99,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		result, err := engine.New().Apply(context.Background(), *planID, plan)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			writeApplyFailure(stderr, result, err)
 			return 1
 		}
 		return writeJSON(stdout, stderr, result)
@@ -100,6 +120,22 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported operation: %s\n", args[0])
 		return 2
 	}
+}
+
+func writeApplyFailure(stderr io.Writer, result engine.ApplyResult, err error) {
+	failure := struct {
+		SchemaVersion int                `json:"schema_version"`
+		Result        engine.ApplyResult `json:"result"`
+		Error         string             `json:"error"`
+		Recoverable   bool               `json:"recoverable"`
+	}{SchemaVersion: 1, Result: result, Error: err.Error()}
+	var applyFailure *engine.ApplyFailure
+	if errors.As(err, &applyFailure) {
+		failure.Recoverable = applyFailure.Recoverable
+	}
+	encoder := json.NewEncoder(stderr)
+	encoder.SetIndent("", "  ")
+	_ = encoder.Encode(failure)
 }
 
 func writeJSON(stdout, stderr io.Writer, value interface{}) int {

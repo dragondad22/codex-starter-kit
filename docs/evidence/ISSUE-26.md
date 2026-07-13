@@ -8,10 +8,12 @@
 
 The Go lifecycle engine and `starter-kit` CLI expose the first complete empty-repository
 path through `inspect`, `create`, `plan`, `apply`, and `status`. A caller reviews a
-schema-versioned JSON plan, retains its SHA-256 plan identifier, and supplies both to
-apply. Apply rechecks identity and repository preconditions, refuses existing targets,
-writes authoritative state last, verifies content digests, and returns a structured
-result. An unchanged managed repository produces explicit `no_change` semantics.
+schema-versioned JSON plan after explicitly approving the supplied brief and confirming
+the owner persona, retains its SHA-256 plan identifier, and supplies both to apply. Apply
+rechecks identity and content/Git preconditions, constrains paths, stages and verifies
+content, locks the lifecycle, refuses existing targets, writes authoritative state last,
+validates the complete contract, rolls back failed commits where possible, and returns a
+structured result. Only a valid unchanged managed repository produces `no_change`.
 
 The created repository separates managed machine state, generated projections, and
 human-owned records. It includes stable routes, ownership/provenance digests, a concise
@@ -23,11 +25,11 @@ truthful conformance summary that claims no verified controls.
 | Issue #26 requirement | Evidence | Disposition |
 |---|---|---|
 | Engine-seam `inspect`, `create`, `plan`, `apply`, `status` against temporary real Git | `engine/engine_integration_test.go`, `cli/cli_integration_test.go` | Covered |
-| Apply consumes plan identifier and rechecks preconditions | Plan hash verification plus changed-repository rejection test | Covered for empty create; deeper stale/conflict semantics are #29 |
+| Apply consumes plan identifier and rechecks preconditions | Plan hash verification, content/Git snapshot, same-count replacement test, changed-repository rejection | Covered for empty create; deeper conflict/reconciliation semantics are #29 |
 | Minimal authoritative state, provenance, routes, orientation, brief, decisions, personas, summary | Deterministic create plan and applied-content assertions | Covered |
-| Distinct human, generated, and managed ownership without silent overwrite | Managed-file manifest, ownership assertions, existing-target refusal | Covered for initial create; reconciliation is #29 |
-| Platform-neutral paths and structured commands | Native Go path APIs and `exec.CommandContext` Git arguments; native CI | Covered for happy path; adversarial platform cases are #28/#30 |
-| Stable rerun or explicit no change | Create-after-apply integration test | Covered |
+| Distinct human, generated, and managed ownership without silent overwrite | Explicit create approvals; self-classifying managed-file manifest; ownership/provenance assertions; existing-target refusal | Covered for initial create; reconciliation is #29 |
+| Platform-neutral paths and structured commands | Native Go path APIs, root-constrained clean paths, symlink-parent rejection, and `exec.CommandContext` Git arguments; native CI | Covered baseline; full adversarial platform cases are #28/#30 |
+| Stable rerun or explicit no change | Create-after-apply plus managed-drift/degraded-state tests | Covered |
 | Tests cross lifecycle-engine seam | Public `engine` methods and CLI JSON adapter tests | Covered |
 | Coverage and downstream effects explicit | This record and `LIFECYCLE_ENGINE.md` | Covered |
 
@@ -41,7 +43,7 @@ truthful conformance summary that claims no verified controls.
 | Seed `core-trust` controls | Not implemented | #27 owns truthful evaluation and evidence |
 | Minimal rendered orientation, brief, decisions, conformance | Implemented | #27 regenerates conformance from verification state |
 | Seed and confirm persona registry with stable IDs | Initial `PER-OWNER` confirmed and routed | Later inception/persona work expands evidence and audiences |
-| Idempotence, preconditions, conflicts, rollback, malicious paths, native equivalence | Stable no-change and basic precondition checks only | #28 hostile inputs, #29 recovery/conflicts, #30 full native equivalence |
+| Idempotence, preconditions, conflicts, rollback, malicious paths, native equivalence | Valid-contract no-change, content/Git preconditions, root constraint, staging/lock/state-last commit, postcondition validation, and best-effort rollback baseline | #28 completes hostile inputs, #29 interruption/recovery/conflicts, #30 full native equivalence |
 
 ## Verification commands
 
@@ -57,9 +59,10 @@ Final local results and native CI evidence are recorded in the completing pull r
 ## Explicit exclusions and limitations
 
 - No control is verified and no conformance pass is emitted; #27 owns that result model.
-- Writes are not yet a fully staged/locked/rollback-capable transaction; #29 owns it.
-- Hostile paths, symlinks/junctions, reserved names, case collisions, and malicious plan
-  documents are not yet an approved security seam; #28 owns them.
+- #29 still owns interruption fixtures, stale-lock recovery, durable recovery evidence,
+  stronger atomicity, and complete conflict/reconciliation semantics.
+- #28 still owns junctions, reserved names, case collisions, malformed state, secret
+  leakage, command injection, and the complete malicious-plan matrix.
 - Exact released runtime support, installers, signing, and native semantic equivalence
   remain #30 and the release workflow.
 - GitHub, policy registry, plugin, retrofit, upgrade, and release adapters remain later

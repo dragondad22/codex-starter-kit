@@ -21,7 +21,7 @@ func TestCreateCommandEmitsLanguageNeutralPlan(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := cli.Run([]string{"create", "--repository", repository}, &stdout, &stderr)
+	exitCode := cli.Run(createArguments("create", repository), &stdout, &stderr)
 	if exitCode != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
@@ -40,7 +40,7 @@ func TestApplyAndStatusCommandsUsePlanIdentifier(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("initialize Git repository: %v: %s", err, output)
 	}
-	plan, err := engine.New().Create(t.Context(), repository)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
@@ -107,9 +107,7 @@ func TestInspectAndPlanCommandsExposeEngineOperations(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	exitCode = cli.Run([]string{
-		"plan", "--operation", "create", "--repository", repository,
-	}, &stdout, &stderr)
+	exitCode = cli.Run(createArguments("plan", repository), &stdout, &stderr)
 	if exitCode != 0 {
 		t.Fatalf("plan exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
@@ -120,4 +118,27 @@ func TestInspectAndPlanCommandsExposeEngineOperations(t *testing.T) {
 	if plan.Operation != engine.CreateOperation || plan.ID == "" {
 		t.Fatalf("unexpected plan: %#v", plan)
 	}
+}
+
+func approvedCreate(repository string) engine.CreateRequest {
+	return engine.CreateRequest{
+		Repository:            repository,
+		Brief:                 "Create a managed repository for CLI testing.",
+		BriefApproved:         true,
+		OwnerPersonaConfirmed: true,
+	}
+}
+
+func createArguments(operation, repository string) []string {
+	args := []string{
+		operation,
+		"--repository", repository,
+		"--brief", "Create a managed repository for CLI testing.",
+		"--approve-brief",
+		"--confirm-owner-persona",
+	}
+	if operation == "plan" {
+		args = append(args, "--operation", "create")
+	}
+	return args
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -19,13 +20,35 @@ const (
 
 // Plan is an immutable, reviewable set of proposed repository operations.
 type Plan struct {
-	SchemaVersion    int           `json:"schema_version"`
-	ID               string        `json:"plan_id"`
-	Operation        Operation     `json:"operation"`
-	Repository       string        `json:"repository"`
-	RepositoryDigest string        `json:"repository_digest"`
-	Files            []PlannedFile `json:"files"`
-	NoChange         bool          `json:"no_change"`
+	SchemaVersion    int            `json:"schema_version"`
+	ID               string         `json:"plan_id"`
+	Operation        Operation      `json:"operation"`
+	Repository       string         `json:"repository"`
+	RepositoryDigest string         `json:"repository_digest"`
+	Files            []PlannedFile  `json:"files"`
+	NoChange         bool           `json:"no_change"`
+	Approval         CreateApproval `json:"approval"`
+}
+
+// CreateRequest contains the human-owned inputs and confirmations needed to plan create.
+type CreateRequest struct {
+	Repository            string `json:"repository"`
+	Brief                 string `json:"brief"`
+	BriefApproved         bool   `json:"brief_approved"`
+	OwnerPersonaConfirmed bool   `json:"owner_persona_confirmed"`
+}
+
+// PlanRequest identifies an operation and its approved inputs.
+type PlanRequest struct {
+	Operation Operation     `json:"operation"`
+	Create    CreateRequest `json:"create"`
+}
+
+// CreateApproval retains the approval facts that shaped a create plan.
+type CreateApproval struct {
+	BriefDigest           string `json:"brief_digest"`
+	BriefApproved         bool   `json:"brief_approved"`
+	OwnerPersonaConfirmed bool   `json:"owner_persona_confirmed"`
 }
 
 // PlannedFile describes one file mutation without executing it.
@@ -38,55 +61,71 @@ type PlannedFile struct {
 }
 
 // Create composes the create operation into a reviewable plan.
-func (e *Engine) Create(ctx context.Context, repository string) (Plan, error) {
-	return e.Plan(ctx, repository, CreateOperation)
+func (e *Engine) Create(ctx context.Context, request CreateRequest) (Plan, error) {
+	return e.Plan(ctx, PlanRequest{Operation: CreateOperation, Create: request})
 }
 
 // Plan composes an immutable operation plan without modifying the repository.
-func (e *Engine) Plan(ctx context.Context, repository string, operation Operation) (Plan, error) {
-	if operation != CreateOperation {
-		return Plan{}, fmt.Errorf("unsupported plan operation: %s", operation)
+func (e *Engine) Plan(ctx context.Context, request PlanRequest) (Plan, error) {
+	if request.Operation != CreateOperation {
+		return Plan{}, fmt.Errorf("unsupported plan operation: %s", request.Operation)
 	}
-	inspection, err := e.Inspect(ctx, repository)
+	if request.Create.Brief == "" || !request.Create.BriefApproved || !request.Create.OwnerPersonaConfirmed {
+		return Plan{}, errors.New("create requires an approved brief and confirmed owner persona")
+	}
+	inspection, err := e.Inspect(ctx, request.Create.Repository)
 	if err != nil {
 		return Plan{}, err
 	}
 	if inspection.Managed {
-		return noChangePlan(inspection, operation)
+		return noChangePlan(inspection, request)
+	}
+	if inspection.ContractPresent {
+		return Plan{}, fmt.Errorf("managed-repository contract is invalid: %v", inspection.Problems)
 	}
 	if inspection.UserFileCount != 0 {
 		return Plan{}, fmt.Errorf("create requires an empty repository; found %d user files", inspection.UserFileCount)
 	}
 
-	files, err := createFiles()
+	files, err := createFiles(request.Create)
 	if err != nil {
 		return Plan{}, fmt.Errorf("render create plan: %w", err)
 	}
 	plan := Plan{
 		SchemaVersion:    1,
-		Operation:        operation,
+		Operation:        request.Operation,
 		Repository:       inspection.Repository,
-		RepositoryDigest: digestJSON(inspection),
+		RepositoryDigest: inspection.PreconditionDigest,
 		Files:            files,
+		Approval: CreateApproval{
+			BriefDigest:           digestBytes([]byte(request.Create.Brief)),
+			BriefApproved:         request.Create.BriefApproved,
+			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
+		},
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
 }
 
-func noChangePlan(inspection Inspection, operation Operation) (Plan, error) {
+func noChangePlan(inspection Inspection, request PlanRequest) (Plan, error) {
 	plan := Plan{
 		SchemaVersion:    1,
-		Operation:        operation,
+		Operation:        request.Operation,
 		Repository:       inspection.Repository,
-		RepositoryDigest: digestJSON(inspection),
+		RepositoryDigest: inspection.PreconditionDigest,
 		NoChange:         true,
 		Files:            []PlannedFile{},
+		Approval: CreateApproval{
+			BriefDigest:           digestBytes([]byte(request.Create.Brief)),
+			BriefApproved:         request.Create.BriefApproved,
+			OwnerPersonaConfirmed: request.Create.OwnerPersonaConfirmed,
+		},
 	}
 	plan.ID = digestJSON(plan)
 	return plan, nil
 }
 
-func createFiles() ([]PlannedFile, error) {
+func createFiles(request CreateRequest) ([]PlannedFile, error) {
 	base := map[string]struct {
 		ownership string
 		content   string
@@ -114,10 +153,12 @@ func createFiles() ([]PlannedFile, error) {
 		".starter-kit/project.json": {
 			ownership: "managed",
 			content: jsonDocument(struct {
-				SchemaVersion int    `json:"schema_version"`
-				Lifecycle     string `json:"lifecycle"`
-				ProjectType   string `json:"project_type"`
-			}{1, "managed", "unspecified"}),
+				SchemaVersion         int    `json:"schema_version"`
+				Lifecycle             string `json:"lifecycle"`
+				ProjectType           string `json:"project_type"`
+				BriefApproved         bool   `json:"brief_approved"`
+				OwnerPersonaConfirmed bool   `json:"owner_persona_confirmed"`
+			}{1, "managed", "unspecified", request.BriefApproved, request.OwnerPersonaConfirmed}),
 		},
 		".starter-kit/routes.json": {
 			ownership: "generated",
@@ -153,7 +194,7 @@ func createFiles() ([]PlannedFile, error) {
 		},
 		"docs/product/BRIEF.md": {
 			ownership: "human-owned",
-			content:   "# Project brief\n\nStatus: approved seed\n\nDescribe the project outcome without replacing this record automatically.\n",
+			content:   "# Project brief\n\nStatus: approved\n\n" + request.Brief + "\n",
 		},
 		"docs/product/PERSONAS.md": {
 			ownership: "human-owned",
@@ -161,28 +202,28 @@ func createFiles() ([]PlannedFile, error) {
 		},
 	}
 
-	manifestEntries := make([]struct {
-		Path      string `json:"path"`
-		Ownership string `json:"ownership"`
-		Source    string `json:"source"`
-		Digest    string `json:"digest"`
-	}, 0, len(base))
+	manifestEntries := make([]manifestEntry, 0, len(base))
 	for path, file := range base {
-		manifestEntries = append(manifestEntries, struct {
-			Path      string `json:"path"`
-			Ownership string `json:"ownership"`
-			Source    string `json:"source"`
-			Digest    string `json:"digest"`
-		}{path, file.ownership, "engine:create:v1", digestBytes([]byte(file.content))})
+		manifestEntries = append(manifestEntries, manifestEntry{
+			Path:      path,
+			Ownership: file.ownership,
+			Source:    "engine:create:v1",
+			Digest:    digestBytes([]byte(file.content)),
+		})
 	}
 	sort.Slice(manifestEntries, func(i, j int) bool { return manifestEntries[i].Path < manifestEntries[j].Path })
 	base[".starter-kit/managed-files.json"] = struct {
 		ownership string
 		content   string
-	}{"managed", jsonDocument(struct {
-		SchemaVersion int         `json:"schema_version"`
-		Files         interface{} `json:"files"`
-	}{1, manifestEntries})}
+	}{"managed", jsonDocument(managedManifest{
+		SchemaVersion: 1,
+		Self: manifestSelf{
+			Path:      ".starter-kit/managed-files.json",
+			Ownership: "managed",
+			Source:    "engine:create:v1",
+		},
+		Files: manifestEntries,
+	})}
 
 	paths := make([]string, 0, len(base))
 	for path := range base {

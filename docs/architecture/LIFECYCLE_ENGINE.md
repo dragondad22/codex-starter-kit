@@ -11,19 +11,22 @@ JSON on standard output and diagnostics on standard error:
 
 ```text
 starter-kit inspect --repository <path>
-starter-kit create --repository <path>
-starter-kit plan --operation create --repository <path>
+starter-kit create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
+starter-kit plan --operation create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
 starter-kit apply --plan <plan.json> --plan-id <sha256:...>
 starter-kit status --repository <path>
 ```
 
-`create` is the focused convenience operation for a create plan. `plan --operation
-create` produces the same immutable result for unchanged inputs. The caller reviews and
-stores that JSON plan, then supplies both the plan document and its separately retained
-identifier to `apply`. Apply re-hashes the plan, re-inspects repository preconditions,
-refuses existing targets, writes state last, verifies every content digest, and returns a
-structured result. Repeating create on the unchanged managed repository returns an
-explicit `no_change` plan and result.
+`create` is the focused convenience operation for a create plan. The caller supplies the
+brief and separately confirms brief approval and the seed owner persona; omission stops
+planning rather than inventing human authority. `plan --operation create` produces the
+same immutable result for unchanged inputs. The caller reviews and stores that JSON plan,
+then supplies both the plan document and its separately retained identifier to `apply`.
+Apply re-hashes the plan, re-inspects content/Git preconditions, constrains every path to
+the repository, stages and verifies content, acquires the lifecycle lock, refuses existing
+targets, commits state last, validates the complete managed contract, rolls back a failed
+commit where possible, and returns a structured result. Repeating create produces
+`no_change` only when the manifest, state, and every managed artifact remain valid.
 
 The current seam implements `create`, `inspect`, `plan`, `apply`, and `status`. `verify`
 is #27; `retrofit` and `upgrade` remain later phases. A missing operation must not be
@@ -33,9 +36,10 @@ represented as available.
 
 Every document/result includes `schema_version: 1`. Plan identity is the SHA-256 digest
 of its canonical Go-encoded JSON with an empty `plan_id`; file digests are SHA-256. Plans
-contain the repository precondition digest, proposed paths, ownership, content, and
-content digest. Go types are not durable authority: compatibility is defined by observable
-JSON fields and black-box behavior through the engine seam.
+contain content-based repository and Git precondition digests, proposed paths, ownership,
+provenance source, content, content digest, and the approved-input digests/confirmations.
+Go types are not durable authority: compatibility is defined by observable JSON fields
+and black-box behavior through the engine seam.
 
 Machine authority is stored under `.starter-kit/`. Human-owned records are seeded under
 `docs/` and are never silently replaced. Generated views identify their role through the
@@ -59,10 +63,12 @@ managed-file manifest.
 
 - Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
 - Phase 1 uses the Go standard library and the structured `git` executable/argument seam.
-- Transaction staging, locks, rollback, recovery evidence, and deeper stale-plan conflict
-  handling are #29.
-- Hostile path, symlink/junction, reserved-name, case-collision, and malicious-plan
-  hardening are #28.
+- Staging, exclusive locking, state-last commit, postcondition validation, and best-effort
+  rollback are present. #29 owns interruption fixtures, stale-lock recovery, durable
+  recovery evidence, stronger atomicity, and deeper conflict/reconciliation behavior.
+- Clean relative paths are root-constrained and symlink parents are rejected. #28 owns the
+  complete hostile path, junction, reserved-name, case-collision, malformed-state, secret,
+  and malicious-plan matrix.
 - Seed control evaluation and conformance evidence are #27; the initial summary explicitly
   reports that verification has not run and claims no pass.
 - Runtime support is not published until #30 proves native semantic equivalence and exact
