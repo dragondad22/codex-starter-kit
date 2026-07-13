@@ -29,7 +29,7 @@ unpinned package installation.
 
 - Required public, agent, decision, template, manifest, workflow, and support files exist.
 - Local Markdown links remain inside the repository and resolve.
-- D1–D14 have unique stable decision identities, targets, and substantive source anchors.
+- D1–D15 have unique stable decision identities, targets, and substantive source anchors.
 - Issue forms parse and reference known labels with unique body IDs.
 - The label manifest has unique names, valid colors, and descriptions.
 - Workflow actions are pinned, all three native runners are present, and no explicit
@@ -37,7 +37,8 @@ unpinned package installation.
 
 ## Deferred support decisions
 
-The engine implementation issue will publish exact minimum OS versions, CPU
+DEC-0015 selects Go 1.26.5 for initial contributor and CI builds. The engine
+implementation issues will publish exact minimum OS versions, CPU
 architectures, filesystems, installer/package behavior, Codex client compatibility, and
 external runtime requirements. Until those are implemented and tested, only the
 foundation scope above is supported.

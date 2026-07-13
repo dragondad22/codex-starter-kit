@@ -91,7 +91,7 @@ coverage, and required action. Keep implementation machinery behind progressive 
 
 **Permissions mapping:** Repository owner/maintainer; may hold multiple operational roles.
 
-**Evidence and owner:** Discovery decisions D1–D14, including the D1 sensitive-data
+**Evidence and owner:** Discovery decisions D1–D15, including the D1 sensitive-data
 assurance amendment; maintained by the project owner.
 
 **Anti-assumptions:** Solo does not mean hobby, low risk, unregulated, technically novice,

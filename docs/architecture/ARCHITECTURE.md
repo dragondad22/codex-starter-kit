@@ -45,7 +45,8 @@ checks that its preconditions still hold, and records the result.
 
 Deep module owning orchestration, transitions, plan composition, transaction boundaries,
 and result semantics. It accepts injected adapters and never asks an AI to perform a
-mechanical invariant.
+mechanical invariant. DEC-0015 selects a Go implementation, but consumers depend on the
+language-neutral operation, schema, result, and evidence contracts rather than Go types.
 
 ### Project Classifier
 
