@@ -10,8 +10,8 @@ The lifecycle-engine and CLI prepare/execute `verify` transaction evaluates six 
 explicit repository scope and lifecycle gate. Results preserve explicit states and
 aggregate to `pass` only when every result passes. Secret scanning remains
 `not-configured` rather than becoming false green. Issue #29 supplies a bounded create-v1
-recovery protocol, but the recovery control remains `needs-review` until #30 binds the
-executing binary to retained, current native test provenance.
+recovery protocol, but the recovery control remains `needs-review` for an unversioned
+source build that cannot bind its executing binary to retained native test provenance.
 
 Verification writes content-digested, self-describing machine evidence under
 `.starter-kit/evidence/`, regenerates the human conformance summary, updates its managed
@@ -47,7 +47,7 @@ recorded in the Git-local attempt ledger when repository evidence cannot be comm
 | `CORE-SECRETS-001` | Secrets and sensitive diagnostics are not exposed | `TestDiagnosticsAreRedactedBeforeEvidence` | #28 expands leakage attacks; later policy work selects a scanner |
 | `CORE-OWNERSHIP-001` | Human, generated, and machine ownership remain distinct | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults` | #29 reconciliation and upgrades preserve ownership/history |
 | `CORE-COVERAGE-001` | Claims disclose scope and unsupported coverage | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults` | Plugin, release, and assurance views consume disclosure |
-| `CORE-RECOVERY-001` | Recovery cannot pass without current evidence bound to the executing build | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults`; Issue #29 recovery fixtures | #30 binds released build/native provenance; later adapters add external-effect recovery |
+| `CORE-RECOVERY-001` | Recovery cannot pass without current evidence bound to the executing build | `TestVerifyCreatedRepositoryEmitsTruthfulSeedResults`; Issue #29 recovery fixtures | #30 publishes source-runtime native evidence; a future versioned release binds binary provenance; later adapters add external-effect recovery |
 | `CORE-ROUTES-001` | Stable breadcrumb IDs resolve to governed artifacts | `TestRequiredBreadcrumbCannotPassWhenMissing` | Plugin and governed breadcrumb routing consume stable IDs |
 
 ## Verification commands
@@ -66,7 +66,8 @@ Final local results and native CI evidence are retained in the completing pull r
 
 - No approved secret scanner exists; secret coverage cannot pass.
 - #28 owns complete malicious-path/input and secret-leakage coverage.
-- #30 owns exact released platform support and cross-platform semantic closure.
+- #30 publishes initial source-runtime platform evidence and cross-platform semantic closure;
+  packaged/versioned release provenance remains later work.
 - Create-v1 recovery does not claim crash-atomic multi-file mutation or recovery for future
   external adapters; it uses state-last commit, conservative replay, and compensation.
 - Human attestation, risk acceptance authorization, qualified review, signed policy packs,

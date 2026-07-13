@@ -291,6 +291,8 @@ class FoundationManifestValidationTests(unittest.TestCase):
                     "run: python scripts/validate_docs.py",
                     "run: python -m unittest discover -s tests",
                     "run: go test ./...",
+                    "run: go run ./cmd/phase1-evidence capture --output phase1-native-evidence.json",
+                    "run: go run ./cmd/phase1-evidence compare --directory phase1-native-evidence",
                 )
             ),
             encoding="utf-8",
@@ -316,6 +318,7 @@ class FoundationManifestValidationTests(unittest.TestCase):
         self.assertTrue(any("missing native runner: windows-latest" in failure for failure in failures))
         self.assertTrue(any("action is not pinned" in failure for failure in failures))
         self.assertTrue(any("explicit shell dependency" in failure for failure in failures))
+        self.assertTrue(any("phase1-evidence compare" in failure for failure in failures))
 
 
 class SensitiveDataBoundaryValidationTests(unittest.TestCase):

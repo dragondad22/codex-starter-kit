@@ -173,7 +173,7 @@ func (e *Engine) Verify(ctx context.Context, expectedPlanID string, plan VerifyP
 		CoverageLimitations: []string{
 			"No approved secret-scanning capability is configured.",
 			"Create recovery compensates multi-path interruption; it does not claim atomic external effects.",
-			"Published platform equivalence and runtime support remain issue #30.",
+			"Runtime support is limited to source-built Phase 1 create/verify on the published native matrix; no packaged release or broader lifecycle operation is covered.",
 		},
 	}
 	identity := struct {
@@ -275,7 +275,7 @@ func evaluateSeedControls(root string, inspection Inspection) []ControlResult {
 			ID: "CORE-RECOVERY-001", State: ControlNeedsReview,
 			Summary: "The create-v1 recovery protocol is implemented, but this verification run cannot bind " +
 				"the executing binary to retained native test provenance.",
-			Rationale: "Issue #30 must publish current, versioned build and native-equivalence evidence before recovery can pass.",
+			Rationale: "An unversioned source build cannot bind itself to retained native-equivalence evidence; a future versioned release must provide that provenance before recovery can pass.",
 			Evidence:  []EvidenceReference{}, Diagnostics: []string{},
 		},
 		evaluateRoutes(root),

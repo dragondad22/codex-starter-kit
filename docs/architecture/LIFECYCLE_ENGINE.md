@@ -2,7 +2,7 @@
 
 **Status:** Implemented development slice
 **Decision:** [DEC-0015](../decisions/DEC-0015-lifecycle-engine-toolchain.md)
-**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#29](https://github.com/dragondad22/codex-starter-kit/issues/29)
+**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#30](https://github.com/dragondad22/codex-starter-kit/issues/30)
 
 ## Interface
 
@@ -54,7 +54,7 @@ state. Aggregate `pass` is possible only when every evaluated control passes.
 | `CORE-SECRETS-001` | `not-configured` until an approved scanner provides defensible coverage |
 | `CORE-OWNERSHIP-001` | Passes only for a complete valid managed-file ownership/provenance contract |
 | `CORE-COVERAGE-001` | Passes when evaluated controls and coverage limits are disclosed |
-| `CORE-RECOVERY-001` | `needs-review` until #30 binds the executing build to retained native recovery evidence |
+| `CORE-RECOVERY-001` | `needs-review` for unversioned source builds; a future versioned release must bind the executable to retained native evidence |
 | `CORE-ROUTES-001` | Passes only when stable seed routes parse and resolve |
 
 The engine injects a clock so controlled runs can reproduce timestamps and semantics.
@@ -190,10 +190,11 @@ than trusted as an automatically resumable artifact.
 - Portable path, ownership, secret, malformed-state, malicious-plan, and structured Git
   defenses are implemented. Symlink fixtures execute where native creation is available;
   Windows CI adds a native directory-junction fixture, and the case-collision fixture records
-  the runner's filesystem behavior. #30 owns broader reparse-point capability evidence,
-  exact filesystem support claims, and released native support closure.
+  the runner's filesystem behavior. The native evidence report records symlink/junction
+  capability separately; broader reparse-point and ACL assurance remain unsupported.
 - Seed verification is implemented. Recovery remains `needs-review` until build provenance
   is bound to native evidence, and secrets remain `not-configured`, so no current aggregate
   verification result is expected to pass.
-- Runtime support is not published until #30 proves native semantic equivalence and exact
-  OS/architecture/filesystem assumptions.
+- Initial source-runtime support and its exact evidence boundary are published in the
+  [Phase 1 support matrix](SUPPORT_MATRIX.md). Packaged/versioned binary support is not yet
+  claimed.
