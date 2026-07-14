@@ -23,3 +23,4 @@
 | Issue #23 | [DEC-0016](DEC-0016-starter-kit-1-0-outcome.md) | Codex Starter Kit 1.0.0 outcome, qualification, authority, and membership |
 | Issue #23 | [DEC-0017](DEC-0017-professional-engineering-baseline.md) | Universal professional engineering baseline with variable ceremony |
 | Issue #50 | [DEC-0018](DEC-0018-codex-plugin-compatibility-and-distribution.md) | Skills-only Phase 2 plugin, capability-based compatibility, bounded distribution, offline inputs, and direct-engine fallback |
+| Issue #47 | [DEC-0019](DEC-0019-operating-profile-contract.md) | Three-axis operating profiles with delegated defaults, additive assurance, truthful evidence views, and prospective transitions |
