@@ -1,0 +1,11 @@
+[
+  {"id": "first-run-offline", "condition": "first-run-offline", "expected": {"mode": "degraded-guidance", "outcome": "stopped"}},
+  {"id": "restricted-workspace", "condition": "restricted-workspace", "expected": {"mode": "verification-only", "outcome": "read_only"}},
+  {"id": "plugin-admin-disabled", "condition": "plugin-admin-disabled", "expected": {"mode": "degraded-guidance", "outcome": "stopped"}},
+  {"id": "missing-engine", "condition": "missing-engine", "expected": {"mode": "degraded-guidance", "outcome": "stopped"}},
+  {"id": "incompatible-engine", "condition": "incompatible-engine", "expected": {"mode": "degraded-guidance", "outcome": "stopped"}},
+  {"id": "malformed-engine-output", "condition": "malformed-engine-output", "expected": {"mode": "unsupported", "outcome": "failed"}},
+  {"id": "interrupted-operation", "condition": "interrupted-operation", "expected": {"mode": "full", "outcome": "failed"}},
+  {"id": "cancelled-operation", "condition": "cancelled-operation", "expected": {"mode": "full", "outcome": "cancelled"}},
+  {"id": "recoverable-operation", "condition": "recoverable-operation", "expected": {"mode": "full", "outcome": "recovery_available"}}
+]

@@ -1,5 +1,8 @@
 # Codex plugin status tracer
 
+Shared installation, update, offline, troubleshooting, fallback, and removal implications
+are documented in [Plugin installation and operations](PLUGIN_OPERATIONS.md).
+
 **Status:** Installable development slice
 
 **Decision:** [DEC-0018](../decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md)

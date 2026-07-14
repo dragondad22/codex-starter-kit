@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scenario_id",
+    "routed_skill",
+    "invocation",
+    "loaded_references",
+    "engine_invocation_planned",
+    "lifecycle_effect_planned",
+    "stopped_reason"
+  ],
+  "properties": {
+    "scenario_id": {"type": "string"},
+    "routed_skill": {"enum": ["starter-kit-create", "starter-kit-status", "starter-kit-verify", "none"]},
+    "invocation": {"enum": ["explicit", "implicit", "not-routed"]},
+    "loaded_references": {"type": "array", "items": {"type": "string"}},
+    "engine_invocation_planned": {"type": "boolean"},
+    "lifecycle_effect_planned": {"type": "boolean"},
+    "stopped_reason": {"type": "string"}
+  }
+}

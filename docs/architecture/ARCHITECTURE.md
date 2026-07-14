@@ -141,6 +141,11 @@ plugin, engine, managed-repository pins, baseline, native environment, approvals
 requested authority. The result is exactly `full`, `degraded-guidance`,
 `verification-only`, or `unsupported`. These are workflow capability states, not
 conformance results, and no state may reinterpret the engine's explicit evidence.
+The versioned machine contract is
+[`capability-model-v1.json`](../../plugins/codex-starter-kit/contracts/capability-model-v1.json);
+plan, repository-effect, network, installation, data-handling, and authority approvals
+remain independently modeled by
+[`approval-boundaries-v1.json`](../../plugins/codex-starter-kit/contracts/approval-boundaries-v1.json).
 
 Client versions are retained as evidence but do not establish compatibility alone. Codex
 CLI is the required development surface; desktop support requires native qualification;

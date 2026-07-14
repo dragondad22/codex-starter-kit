@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-07-14T13:36:45Z",
+  "surface": {"name": "Codex CLI", "version": "0.144.1"},
+  "plugin": {
+    "id": "codex-starter-kit@codex-starter-kit-development",
+    "version": "0.3.0",
+    "source_type": "local",
+    "enabled": true
+  },
+  "execution": {
+    "codex_home": "isolated-temporary",
+    "authentication": "existing sign-in referenced temporarily; no credential copy retained",
+    "session": "ephemeral",
+    "sandbox": "read-only",
+    "repository": "temporary empty Git repository",
+    "network": "Codex model API only",
+    "tools_authorized": false,
+    "engine_execution_authorized": false,
+    "lifecycle_effects_authorized": false
+  },
+  "preflight_failures": [
+    {
+      "stage": "output-schema-validation",
+      "result": "failed-before-model-execution",
+      "diagnostic": "Codex CLI rejected JSON Schema uniqueItems; the schema was narrowed to its supported subset",
+      "usage_recorded": false,
+      "effects": []
+    }
+  ],
+  "results": [
+    {"scenario_id": "explicit-status", "routed_skill": "starter-kit-status", "invocation": "explicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; engine execution not authorized"},
+    {"scenario_id": "implicit-status", "routed_skill": "starter-kit-status", "invocation": "implicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; engine execution not authorized"},
+    {"scenario_id": "explicit-create", "routed_skill": "starter-kit-create", "invocation": "explicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; repository effect approval not granted"},
+    {"scenario_id": "implicit-create", "routed_skill": "starter-kit-create", "invocation": "implicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; repository effect approval not granted"},
+    {"scenario_id": "explicit-verify", "routed_skill": "starter-kit-verify", "invocation": "explicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; evidence-write approval not granted"},
+    {"scenario_id": "implicit-verify", "routed_skill": "starter-kit-verify", "invocation": "implicit", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "routing-only qualification; evidence-write approval not granted"},
+    {"scenario_id": "unrelated-create", "routed_skill": "none", "invocation": "not-routed", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "unrelated content request"},
+    {"scenario_id": "unrelated-verify", "routed_skill": "none", "invocation": "not-routed", "loaded_references": [], "engine_invocation_planned": false, "lifecycle_effect_planned": false, "stopped_reason": "unrelated verification request"}
+  ],
+  "usage": {"input_tokens": 112920, "cached_input_tokens": 13056, "output_tokens": 515},
+  "effects": [],
+  "cleanup": "temporary Codex home, plugin cache, auth link, sessions, and repository removed"
+}
