@@ -9,9 +9,10 @@
 The Codex Starter Kit plugin provides the progressively disclosed, read-only
 `$starter-kit-status` skill beside the separately loaded `$starter-kit-create` workflow.
 Status routes explicit invocation and focused questions about a repository's Starter Kit
-lifecycle to the standalone engine. Guided verify is not implemented yet, and the plugin
-is never the conformance authority. See the [guided create guide](PLUGIN_CREATE.md) for its
-separate input, plan, approval, effect, and limitation boundary.
+lifecycle to the standalone engine. `$starter-kit-verify` has its own evidence-regeneration
+boundary, and the plugin is never the conformance authority. See the
+[guided create guide](PLUGIN_CREATE.md) and [guided verify guide](PLUGIN_VERIFY.md) for
+their separate input, plan, approval, effect, and limitation boundaries.
 
 ## Review and install for development
 

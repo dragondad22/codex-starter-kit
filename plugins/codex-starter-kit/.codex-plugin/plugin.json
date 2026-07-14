@@ -1,18 +1,18 @@
 {
   "name": "codex-starter-kit",
-  "version": "0.2.0",
-  "description": "Guided creation and truthful lifecycle status for Codex Starter Kit repositories",
+  "version": "0.3.0",
+  "description": "Guided creation, lifecycle status, and truthful verification for Codex Starter Kit repositories",
   "author": {
     "name": "Codex Starter Kit contributors"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Starter Kit",
-    "shortDescription": "Create and inspect Starter Kit managed repositories.",
-    "longDescription": "A skills-only adapter for approved create planning/application and read-only status while preserving the standalone Starter Kit engine's authority and fail-closed compatibility boundary.",
+    "shortDescription": "Create, inspect, and verify Starter Kit repositories.",
+    "longDescription": "A skills-only adapter for approved create and verification plans plus read-only status while preserving the standalone Starter Kit engine's authority, evidence states, and fail-closed compatibility boundary.",
     "developerName": "Codex Starter Kit contributors",
     "category": "Developer Tools",
     "capabilities": [],
-    "defaultPrompt": "Help me create or inspect a Codex Starter Kit managed repository."
+    "defaultPrompt": "Help me create, inspect, or verify a Codex Starter Kit managed repository."
   }
 }
