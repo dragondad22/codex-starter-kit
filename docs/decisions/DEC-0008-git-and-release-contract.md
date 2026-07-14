@@ -24,6 +24,9 @@ Release operations are transactional, evidence-backed, audience-aware, and tied 
 immutable source/artifact identity without forcing invented SemVer on every repository.
 Draft PR status communicates that more implementation, verification, or internal review
 is expected; a completed, verified, internally reviewed PR is moved to ready for review.
+[DEC-0020](DEC-0020-distinct-pull-request-review.md) defines the required distinct review
+pass and its separation from automated checks, self-review, outcome approval, and stronger
+qualified assurance.
 
 ## Source
 

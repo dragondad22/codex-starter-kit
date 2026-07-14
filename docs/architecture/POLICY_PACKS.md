@@ -34,8 +34,9 @@ tests, evidence summaries, and release communication.
 
 Always active because GitHub is required. Owns issue taxonomy/templates/readiness,
 Project fields/views/Horizon, synchronization, protected branch/ruleset outcomes, PR
-traceability, review rules, merge completion memory, milestones-as-releases, and
-break-glass tracking.
+traceability, the universal distinct-review pass, review-result invalidation, merge
+completion memory, milestones-as-releases, and break-glass tracking. Stronger human
+independence and qualification requirements compose from applicable assurance packs.
 
 ### `release-foundation`
 

@@ -133,6 +133,9 @@ The product ships as three layers from its first usable release:
 - Logical directory roles map policy concepts to concrete paths.
 - GitHub Issues and exactly one linked GitHub Project are mandatory.
 - Ready issues use a human summary and a complete AI execution brief.
+- Every PR receives a distinct capable review pass outside its implementation context;
+  self-review and automated checks are supporting evidence, while effective policy may
+  require stronger human independence or qualifications.
 - Consequential questions and bounded research use subtype-specific Ready and completion
   contracts; ordinary clarification remains outside the Project.
 - Material question answers are promoted with reciprocal issue/authority references, and

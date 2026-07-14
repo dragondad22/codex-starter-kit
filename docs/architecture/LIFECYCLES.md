@@ -162,7 +162,10 @@ request do not create a lower-quality passing route.
    throughout delivery and between releases.
 5. Record every applicable result and its evidence. Record a genuinely irrelevant concern
    as `not-applicable` with its deciding facts and rule; do not skip it invisibly.
-6. Produce a quality receipt that leads with the requested and delivered outcome and
+6. Require a distinct capable review pass for every PR, separate from implementer
+   self-review and automated checks; add stronger human independence or qualifications
+   where effective policy requires them.
+7. Produce a quality receipt that leads with the requested and delivered outcome and
    links checks, evidence, limitations, and unresolved work.
 
 An operating profile may change human checkpoints, add project-specific assurance,
