@@ -1,0 +1,141 @@
+[
+  {
+    "id": "happy-path",
+    "prompt": "$starter-kit-create initialize /work/new",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a local task tracker.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "applied", "recovery": [], "evidence": [".starter-kit/events/create.json"]}
+  },
+  {
+    "id": "no-change-replay",
+    "prompt": "Re-run the exact approved Starter Kit create plan",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a local task tracker.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "no_change", "recovery": [], "evidence": ["git:starter-kit-attempts/replay.json"]}
+  },
+  {
+    "id": "declaration-no",
+    "prompt": "Set up this new repository with Starter Kit",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a documentation site.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "applied", "recovery": [], "evidence": []}
+  },
+  {
+    "id": "declaration-yes",
+    "prompt": "Create a managed project",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a patient scheduling shell without patient content.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "Yes", "notice_acknowledged": true},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "applied", "recovery": [], "evidence": []}
+  },
+  {
+    "id": "declaration-unsure",
+    "prompt": "Bootstrap this repository",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Prototype an intake workflow using metadata only.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "Unsure", "notice_acknowledged": true},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "applied", "recovery": [], "evidence": []}
+  },
+  {
+    "id": "notice-not-acknowledged",
+    "prompt": "Create a managed project that may use specially handled data",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a metadata-only intake shell.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "Unsure", "notice_acknowledged": false}
+  },
+  {
+    "id": "declined-approval",
+    "prompt": "Plan Starter Kit creation but do not apply it",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a CLI utility.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": false
+  },
+  {
+    "id": "missing-authority",
+    "prompt": "Create the repo; choose whatever brief you want",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "", "brief_approved": false, "owner_persona_confirmed": false, "special_data": "No"}
+  },
+  {
+    "id": "malformed-plan",
+    "prompt": "$starter-kit-create",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a service.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "malformed",
+    "effect_approved": true
+  },
+  {
+    "id": "stale-precondition",
+    "prompt": "$starter-kit-create",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a service.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "failed", "recoverable": true, "recovery": ["re-inspect and prepare a new plan"], "evidence": [".starter-kit/events/create-failed.json"]}
+  },
+  {
+    "id": "existing-content",
+    "prompt": "Create Starter Kit files here",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a service.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "reconciliation_required",
+    "effect_approved": false,
+    "result": {"outcome": "reconciliation_required", "conflicts": ["README.md"], "recovery": ["preserve human-owned content"], "evidence": []}
+  },
+  {
+    "id": "interrupted-setup",
+    "prompt": "Resume approved Starter Kit creation",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a service.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "failed", "recoverable": true, "recovery": ["retry the same immutable create plan"], "evidence": ["git:starter-kit-attempts/attempt.json"]}
+  },
+  {
+    "id": "rollback-failure",
+    "prompt": "$starter-kit-create",
+    "route": true,
+    "capability": "qualified",
+    "inputs": {"brief": "Build a service.", "brief_approved": true, "owner_persona_confirmed": true, "special_data": "No"},
+    "plan": "valid",
+    "effect_approved": true,
+    "result": {"outcome": "failed", "recoverable": false, "recovery": ["preserve repository for explicit reconciliation"], "evidence": [".starter-kit/events/create-failed.json"]}
+  },
+  {
+    "id": "missing-engine",
+    "prompt": "Initialize this with Starter Kit",
+    "route": true,
+    "capability": "missing-engine"
+  },
+  {
+    "id": "missing-baseline",
+    "prompt": "$starter-kit-create",
+    "route": true,
+    "capability": "missing-baseline"
+  },
+  {
+    "id": "unrelated-create-request",
+    "prompt": "Create a calendar event for tomorrow",
+    "route": false
+  }
+]

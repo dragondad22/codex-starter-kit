@@ -57,6 +57,10 @@
     and support guide for the skills-only status tracer.
 28. `evidence/ISSUE-51.md` — implementation, scenario, install-flow, verification, and
     limitation record for the plugin status tracer.
+29. `product/PLUGIN_CREATE.md` — guided-create inputs, notice, inspection, immutable plan,
+    effect approval, recovery, offline, authority, and fallback guide.
+30. `evidence/ISSUE-52.md` — implementation, scenario, update-flow, verification, and
+    limitation record for the guided-create plugin slice.
 
 ## Document lifecycle
 

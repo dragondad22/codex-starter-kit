@@ -6,10 +6,12 @@
 
 **Issue:** [#51](https://github.com/dragondad22/codex-starter-kit/issues/51)
 
-The Codex Starter Kit plugin currently provides one progressively disclosed, read-only
-skill: `$starter-kit-status`. It routes explicit invocation and focused questions about a
-repository's Starter Kit lifecycle to the standalone engine. It does not provide guided
-create or verify yet, and it is never the conformance authority.
+The Codex Starter Kit plugin provides the progressively disclosed, read-only
+`$starter-kit-status` skill beside the separately loaded `$starter-kit-create` workflow.
+Status routes explicit invocation and focused questions about a repository's Starter Kit
+lifecycle to the standalone engine. Guided verify is not implemented yet, and the plugin
+is never the conformance authority. See the [guided create guide](PLUGIN_CREATE.md) for its
+separate input, plan, approval, effect, and limitation boundary.
 
 ## Review and install for development
 

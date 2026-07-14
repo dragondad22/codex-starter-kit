@@ -10,7 +10,7 @@ PLUGIN = ROOT / "plugins" / "codex-starter-kit"
 
 
 class PluginStatusContractTests(unittest.TestCase):
-    def test_plugin_exposes_only_the_focused_status_skill(self):
+    def test_plugin_exposes_only_the_focused_lifecycle_skills(self):
         manifest = json.loads(
             (PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
@@ -18,13 +18,9 @@ class PluginStatusContractTests(unittest.TestCase):
         self.assertEqual(manifest["interface"]["capabilities"], [])
 
         skills = sorted((PLUGIN / "skills").glob("*/SKILL.md"))
-        self.assertEqual(
-            [path.parent.name for path in skills],
-            ["status"],
-            "the tracer must progressively disclose one status workflow only",
-        )
+        self.assertEqual([path.parent.name for path in skills], ["create", "status"])
 
-        skill = skills[0].read_text(encoding="utf-8")
+        skill = (PLUGIN / "skills" / "status" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("name: starter-kit-status", skill)
         self.assertIn("repository lifecycle status", skill.lower())
         self.assertIn("managed", skill.lower())

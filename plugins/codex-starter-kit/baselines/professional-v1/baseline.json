@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "baseline:professional-engineering:v1",
+  "version": "1.0.0",
+  "source_decision": "DEC-0017",
+  "content_path": "professional-engineering.md",
+  "content_encoding": "utf-8",
+  "line_endings": "lf",
+  "content_sha256": "sha256:b6e4d017c8b0f7bb81c31e819f49ea2426c5dc140ec7f863fbf350f4bbc175d6",
+  "authority": "offline-plugin-projection",
+  "policy_pack_status": "not_configured",
+  "limitations": [
+    "Source DEC-0017 remains authoritative.",
+    "This projection is not a signed policy pack or conformance evidence.",
+    "External qualification must verify the containing plugin snapshot before full workflow use."
+  ]
+}
