@@ -33,12 +33,16 @@ def _select_mode(workflow, facts):
         )
     )
     if compatible:
-        if facts["mutation_authorized"]:
-            return "full"
-        if workflow in {"status", "verify"} and facts["evidence_write_authorized"]:
-            return "verification-only"
+        if workflow == "status":
+            return "full" if facts["mutation_authorized"] else "verification-only"
+        if workflow == "verify":
+            if not facts["evidence_write_authorized"]:
+                return "unsupported"
+            return "full" if facts["mutation_authorized"] else "verification-only"
         if workflow == "create":
-            return "verification-only"
+            if not facts["mutation_authorized"]:
+                return "verification-only"
+            return "full" if facts["evidence_write_authorized"] else "unsupported"
         return "unsupported"
 
     known = all(
@@ -74,6 +78,7 @@ def evaluate_mode_scenario(model, scenario):
         "engine_invocation": permissions.get("engine_invocation", False),
         "lifecycle_effect": permissions.get("lifecycle_effect", False),
         "evidence_effect": permissions.get("evidence_effect", False),
+        "diagnostics": list(mode_contract["diagnostics"]),
         "remediation": list(mode_contract["remediation"]),
         "fallback": mode_contract["fallback"],
     }

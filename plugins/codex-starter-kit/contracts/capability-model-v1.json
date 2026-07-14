@@ -21,6 +21,7 @@
   "modes": {
     "full": {
       "required_evidence": ["plugin-enabled", "engine-verified-compatible", "baseline-verified-compatible", "requested-operation-present", "requested-authority-established"],
+      "diagnostics": [],
       "workflows": {
         "create": {"engine_invocation": true, "lifecycle_effect": true, "evidence_effect": true},
         "status": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": false},
@@ -31,6 +32,7 @@
     },
     "degraded-guidance": {
       "required_evidence": ["bounded-guidance-safe", "failed-or-missing-capability-identified"],
+      "diagnostics": ["capability-known-missing-disabled-incompatible-or-unverified"],
       "workflows": {
         "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
         "status": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
@@ -41,6 +43,7 @@
     },
     "verification-only": {
       "required_evidence": ["plugin-enabled", "engine-verified-compatible", "baseline-verified-compatible", "read-or-evidence-authority-established", "create-mutation-unavailable-or-unauthorized"],
+      "diagnostics": ["create-mutation-unavailable-or-unauthorized"],
       "workflows": {
         "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
         "status": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": false},
@@ -51,6 +54,7 @@
     },
     "unsupported": {
       "required_evidence": ["required-guarantee-failed-unknown-or-conflicting"],
+      "diagnostics": ["required-guarantee-failed-unknown-or-conflicting"],
       "workflows": {
         "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
         "status": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
