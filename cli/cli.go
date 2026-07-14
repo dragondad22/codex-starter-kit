@@ -20,6 +20,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "capabilities":
+		flags := flag.NewFlagSet("capabilities", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "capabilities accepts no arguments")
+			return 2
+		}
+		return writeJSON(stdout, stderr, engine.New().Capabilities())
 	case "inspect":
 		flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
 		flags.SetOutput(stderr)

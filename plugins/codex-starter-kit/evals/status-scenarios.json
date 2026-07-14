@@ -1,0 +1,113 @@
+[
+  {
+    "id": "explicit-managed",
+    "prompt": "$starter-kit-status report status for C:/work/sample",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "0.1.0", "provenance": "verified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+      "operations": ["status"],
+      "status_schema_versions": [1],
+      "status_authorized": true,
+      "mutation_authorized": true
+    },
+    "status": {"schema_version": 1, "repository": "C:/work/sample", "lifecycle": "managed", "problems": [], "recovery": [], "evidence": []}
+  },
+  {
+    "id": "implicit-unmanaged",
+    "prompt": "Is this repository managed by Starter Kit?",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "0.1.0", "provenance": "verified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+      "operations": ["status"],
+      "status_schema_versions": [1],
+      "status_authorized": true,
+      "mutation_authorized": false
+    },
+    "status": {"schema_version": 1, "repository": "/work/sample", "lifecycle": "unmanaged", "problems": [], "recovery": [], "evidence": []}
+  },
+  {
+    "id": "explicit-non-pass",
+    "prompt": "$starter-kit-status diagnose this managed repository",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "0.1.0", "provenance": "verified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+      "operations": ["status"],
+      "status_schema_versions": [1],
+      "status_authorized": true,
+      "mutation_authorized": false
+    },
+    "status": {"schema_version": 1, "repository": "/work/sample", "lifecycle": "managed_degraded", "problems": ["managed artifact digest mismatch"], "recovery": ["preserve the repository and reconcile explicitly"], "evidence": [".starter-kit/evidence/failure.json"]}
+  },
+  {
+    "id": "malformed-output",
+    "prompt": "Show Starter Kit lifecycle status",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "0.1.0", "provenance": "verified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+      "operations": ["status"],
+      "status_schema_versions": [1],
+      "status_authorized": true,
+      "mutation_authorized": false
+    },
+    "status": {"schema_version": 1, "repository": "/work/sample", "lifecycle": "managed", "problems": "concealed", "recovery": [], "evidence": []}
+  },
+  {
+    "id": "missing-engine",
+    "prompt": "Is this Starter Kit repository healthy?",
+    "route": true,
+    "capability": {"state": "missing"}
+  },
+  {
+    "id": "incompatible-engine",
+    "prompt": "$starter-kit-status",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "9.0.0", "provenance": "verified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 9},
+      "operations": ["status"],
+      "status_schema_versions": [9],
+      "status_authorized": true,
+      "mutation_authorized": false
+    }
+  },
+  {
+    "id": "unverified-engine",
+    "prompt": "Show the Starter Kit lifecycle status",
+    "route": true,
+    "capability": {
+      "state": "available",
+      "schema_version": 1,
+      "engine": {"name": "starter-kit", "version": "devel", "provenance": "unverified"},
+      "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+      "operations": ["status"],
+      "status_schema_versions": [1],
+      "status_authorized": true,
+      "mutation_authorized": false
+    }
+  },
+  {
+    "id": "administratively-unavailable",
+    "prompt": "$starter-kit-status for this repository",
+    "route": true,
+    "capability": {"state": "administratively-unavailable"}
+  },
+  {
+    "id": "unrelated-git-status",
+    "prompt": "What files did Git change?",
+    "route": false
+  }
+]
