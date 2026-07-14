@@ -64,7 +64,7 @@
     "The bundled baseline is an offline projection of DEC-0017, not a signed policy pack or conformance evidence.",
     "Only Codex CLI routing was exercised live; desktop and IDE remain needs-review, while web/chat/mobile local lifecycle operation is unsupported.",
     "The aggregate remains needs-review because engine packaging, candidate Codex surfaces, and accessibility retain explicit review gaps even though the selected CLI/native deterministic envelope passed.",
-    "CI reports that pinned checkout/upload actions still target Node 20 compatibility and are temporarily forced onto Node 24; replacement revision review is tracked by issue #61.",
+    "CI reports that pinned checkout/download/upload actions still target Node 20 compatibility and are temporarily forced onto Node 24; replacement revision review is tracked by issue #61.",
     "The macos-latest runner label is migrating; this report is bound to the exact macos26 image recorded above rather than the moving label.",
     "No dedicated assistive-technology evaluation has been performed for the CLI and Markdown interaction path."
   ]
