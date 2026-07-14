@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "id": "codex-starter-kit:capability-model:v1",
+  "plugin_version": "0.3.0",
+  "engine": {
+    "name": "starter-kit",
+    "protocol": {"name": "starter-kit.lifecycle", "version": 1},
+    "status_schema_versions": [1],
+    "required_operations": ["apply", "create", "inspect", "plan", "status", "verify", "verify-plan"]
+  },
+  "baseline": {
+    "id": "baseline:professional-engineering:v1",
+    "version": "1.0.0",
+    "manifest": "../baselines/professional-v1/baseline.json"
+  },
+  "workflows": {
+    "create": {"skill": "starter-kit-create", "mutates_lifecycle": true},
+    "status": {"skill": "starter-kit-status", "mutates_lifecycle": false},
+    "verify": {"skill": "starter-kit-verify", "mutates_lifecycle": false, "regenerates_evidence": true}
+  },
+  "modes": {
+    "full": {
+      "required_evidence": ["plugin-enabled", "engine-verified-compatible", "baseline-verified-compatible", "requested-operation-present", "requested-authority-established"],
+      "workflows": {
+        "create": {"engine_invocation": true, "lifecycle_effect": true, "evidence_effect": true},
+        "status": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": false},
+        "verify": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": true}
+      },
+      "remediation": [],
+      "fallback": "direct verified compatible engine"
+    },
+    "degraded-guidance": {
+      "required_evidence": ["bounded-guidance-safe", "failed-or-missing-capability-identified"],
+      "workflows": {
+        "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
+        "status": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
+        "verify": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false}
+      },
+      "remediation": ["report exact missing, disabled, incompatible, or unverified fact", "provision and verify prerequisites without silent installation"],
+      "fallback": "review direct-engine commands after prerequisites are satisfied"
+    },
+    "verification-only": {
+      "required_evidence": ["plugin-enabled", "engine-verified-compatible", "baseline-verified-compatible", "read-or-evidence-authority-established", "create-mutation-unavailable-or-unauthorized"],
+      "workflows": {
+        "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
+        "status": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": false},
+        "verify": {"engine_invocation": true, "lifecycle_effect": false, "evidence_effect": true}
+      },
+      "remediation": ["preserve the create/apply prohibition", "request separate authority only when the user chooses mutation"],
+      "fallback": "direct verified compatible status or verify operation"
+    },
+    "unsupported": {
+      "required_evidence": ["required-guarantee-failed-unknown-or-conflicting"],
+      "workflows": {
+        "create": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
+        "status": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false},
+        "verify": {"engine_invocation": false, "lifecycle_effect": false, "evidence_effect": false}
+      },
+      "remediation": ["stop and name every failed or unknown guarantee", "retain only authorized redacted diagnostics"],
+      "fallback": "none until a safe fallback is established"
+    }
+  },
+  "transitions": [
+    {"from": "full", "to": "degraded-guidance", "when": "a known prerequisite becomes missing, disabled, incompatible, or unverified while bounded guidance remains safe"},
+    {"from": "full", "to": "verification-only", "when": "create mutation becomes unavailable or unauthorized while verified status/verify authority remains"},
+    {"from": "degraded-guidance", "to": "full", "when": "all requested workflow facts are independently verified and authorized"},
+    {"from": "degraded-guidance", "to": "verification-only", "when": "verified status/verify facts and authority are restored but create mutation is not"},
+    {"from": "verification-only", "to": "full", "when": "create mutation authority and all full-mode facts are separately established"},
+    {"from": "verification-only", "to": "degraded-guidance", "when": "a verified read/evidence prerequisite becomes known unavailable but guidance remains safe"},
+    {"from": "full", "to": "unsupported", "when": "evidence becomes malformed/conflicting or policy denies safe execution/fallback"},
+    {"from": "degraded-guidance", "to": "unsupported", "when": "bounded guidance or safe fallback can no longer be established"},
+    {"from": "verification-only", "to": "unsupported", "when": "evidence becomes malformed/conflicting or evidence authority is denied/unknown"},
+    {"from": "unsupported", "to": "degraded-guidance", "when": "known facts positively establish safe bounded guidance"}
+  ]
+}
