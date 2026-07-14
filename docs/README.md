@@ -69,6 +69,14 @@
     evidence-presentation, interruption, override, receipt, and transition contract.
 34. `evidence/ISSUE-47.md` — approval, promotion, verification, and downstream
     decomposition record for the operating-profile decision.
+35. `product/PLUGIN_OPERATIONS.md` — development installation, update, offline,
+    troubleshooting, fallback, removal, and implication guide for the Phase 2 plugin.
+36. `evidence/phase2-plugin-compatibility.json` — machine-tested surface, native,
+    identity, freshness, limitation, and qualification states.
+37. `evidence/phase2-plugin-quality-receipt.json` — concise category-by-category Phase 2
+    outcome and evidence routes.
+38. `evidence/ISSUE-54.md` — capability, live-routing, compatibility, qualification,
+    limitation, verification, and downstream handoff record.
 
 ## Document lifecycle
 

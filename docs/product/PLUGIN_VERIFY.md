@@ -1,5 +1,8 @@
 # Codex plugin guided verification
 
+Shared installation, update, offline, troubleshooting, fallback, and removal implications
+are documented in [Plugin installation and operations](PLUGIN_OPERATIONS.md).
+
 **Status:** Implemented development workflow; qualified engine prerequisite unavailable
 
 **Decision:** [DEC-0018](../decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md)

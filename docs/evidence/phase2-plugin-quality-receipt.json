@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "receipt_id": "codex-starter-kit:phase2-plugin-quality-receipt:v1",
+  "requested_outcome": "Qualify the Phase 2 create, status, and verify plugin vertical slice without overstating support.",
+  "delivered_outcome": "Versioned capability and approval contracts, deterministic mode/failure scenarios, bounded live CLI routing evidence, compatibility reporting, and operational handoff.",
+  "aggregate_state": "needs-review",
+  "results": [
+    {"category": "functional", "state": "pass", "summary": "Create, status, and verify are covered in all four capability modes with required failure and recovery paths.", "evidence": ["plugins/codex-starter-kit/evals/qualification-scenarios.json", "plugins/codex-starter-kit/evals/operational-scenarios.json"]},
+    {"category": "security", "state": "pass", "summary": "Plans, repository effects, network, installation, data handling, and authority remain separate explicit boundaries; live checks had no tool or lifecycle effect.", "evidence": ["plugins/codex-starter-kit/contracts/approval-boundaries-v1.json", "plugins/codex-starter-kit/evals/live-routing-results.json"]},
+    {"category": "interaction", "state": "pass", "summary": "Six explicit/implicit requests selected the focused skill and two unrelated prompts did not route or load extra references.", "evidence": ["plugins/codex-starter-kit/evals/live-routing-results.json"]},
+    {"category": "accessibility", "state": "needs-review", "summary": "The slice is text/CLI/Markdown based, but no dedicated keyboard, screen-reader, cognitive-load, or alternative-presentation evaluation has been retained.", "evidence": ["docs/product/PLUGIN_OPERATIONS.md"]},
+    {"category": "testing", "state": "needs-review", "summary": "Local Python qualification tests pass; final native CI for this source revision is pending.", "evidence": ["tests/test_plugin_qualification.py", "docs/evidence/ISSUE-54.md"]},
+    {"category": "documentation", "state": "needs-review", "summary": "Operational and evidence documentation is present; final documentation validation for the completing revision is pending.", "evidence": ["docs/product/PLUGIN_OPERATIONS.md", "docs/evidence/ISSUE-54.md"]},
+    {"category": "compatibility", "state": "needs-review", "summary": "Codex CLI 0.144.1 live routing passed on Linux; native deterministic CI and all other candidate surfaces remain bounded as recorded.", "evidence": ["docs/evidence/phase2-plugin-compatibility.json"]},
+    {"category": "evidence", "state": "pass", "summary": "Every current pass, limitation, unavailable capability, preflight failure, usage cost, and cleanup result has an inspectable route.", "evidence": ["docs/evidence/phase2-plugin-compatibility.json", "plugins/codex-starter-kit/evals/live-routing-results.json"]}
+  ],
+  "limitations": [
+    "Aggregate remains needs-review until final native CI passes.",
+    "No verified packaged engine was available for live full/verification-only execution.",
+    "Accessibility remains needs-review rather than being inferred from a text-only interface."
+  ]
+}

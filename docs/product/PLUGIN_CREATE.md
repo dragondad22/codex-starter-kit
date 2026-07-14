@@ -1,5 +1,8 @@
 # Codex plugin guided create
 
+Shared installation, update, offline, troubleshooting, fallback, and removal implications
+are documented in [Plugin installation and operations](PLUGIN_OPERATIONS.md).
+
 **Status:** Implemented development workflow; full execution prerequisites unavailable
 
 **Decision:** [DEC-0018](../decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md)

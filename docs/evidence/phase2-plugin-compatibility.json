@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "report_id": "codex-starter-kit:phase2-plugin-compatibility:v1",
+  "qualification_state": "needs-review",
+  "plugin": {
+    "id": "codex-starter-kit@codex-starter-kit-development",
+    "name": "codex-starter-kit",
+    "version": "0.3.0",
+    "source": "repository development marketplace",
+    "shape": "skills-only"
+  },
+  "engine": {
+    "name": "starter-kit",
+    "protocol": "starter-kit.lifecycle/v1",
+    "required_operations": ["apply", "create", "inspect", "plan", "status", "verify", "verify-plan"],
+    "qualification": "not-available",
+    "reason": "no verified packaged engine is installed on the qualification workstation"
+  },
+  "baseline": {
+    "id": "baseline:professional-engineering:v1",
+    "version": "1.0.0",
+    "sha256": "b6e4d017c8b0f7bb81c31e819f49ea2426c5dc140ec7f863fbf350f4bbc175d6",
+    "authority": "offline-plugin-projection",
+    "policy_pack_status": "not_configured"
+  },
+  "source": {
+    "repository": "dragondad22/codex-starter-kit",
+    "revision": "d2214c3cf3b1d7e08a43305b3e445918ebcd1d7c",
+    "revision_role": "qualification branch before final evidence update"
+  },
+  "freshness": {
+    "captured_at": "2026-07-14T13:36:45Z",
+    "invalidated_by": [
+      "plugin skill or manifest change",
+      "capability or approval contract change",
+      "Codex surface or plugin-distribution change",
+      "engine protocol, operation, provenance, or packaging change",
+      "baseline identity or content change",
+      "native semantic or CI-environment drift"
+    ]
+  },
+  "surfaces": [
+    {"name": "Codex CLI", "version": "0.144.1", "os": "Linux 6.17.0-35-generic", "architecture": "x86_64", "status": "pass", "scope": "isolated development-marketplace installation and eight ephemeral read-only routing checks"},
+    {"name": "Codex in ChatGPT desktop", "version": "not-tested", "os": "not-tested", "architecture": "not-tested", "status": "needs-review", "scope": "candidate surface; no manual native qualification"},
+    {"name": "Codex IDE extension in Visual Studio Code", "version": "VS Code 1.128.0 / host commit fc3def6774c76082adf699d366f31a557ce5573f", "os": "Linux 6.17.0-35-generic", "architecture": "x64", "status": "needs-review", "scope": "host observed; official plugin-distribution documentation remains conflicting and workflow was not qualified here"},
+    {"name": "ChatGPT Work web", "version": "not-applicable", "os": "hosted", "architecture": "not-applicable", "status": "unsupported", "scope": "no verified local lifecycle-engine route"},
+    {"name": "Chat and mobile", "version": "not-applicable", "os": "not-tested", "architecture": "not-tested", "status": "unsupported", "scope": "Phase 2 local lifecycle operation is not supported"}
+  ],
+  "native_environments": [
+    {"os": "Linux", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"},
+    {"os": "macOS", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"},
+    {"os": "Windows", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"}
+  ],
+  "evidence": [
+    "plugins/codex-starter-kit/evals/live-routing-results.json",
+    "plugins/codex-starter-kit/evals/qualification-scenarios.json",
+    "plugins/codex-starter-kit/evals/operational-scenarios.json",
+    "plugins/codex-starter-kit/evals/approval-scenarios.json",
+    "tests/test_plugin_qualification.py"
+  ],
+  "limitations": [
+    "No verified packaged engine was available, so actual full or verification-only engine execution is not qualified; those modes are covered by deterministic contract scenarios.",
+    "The local development marketplace is not an immutable Git-backed release snapshot and supplies no public support claim.",
+    "The bundled baseline is an offline projection of DEC-0017, not a signed policy pack or conformance evidence.",
+    "Only Codex CLI routing was exercised live; desktop and IDE remain needs-review, while web/chat/mobile local lifecycle operation is unsupported.",
+    "Native CI evidence is pending for this branch and the aggregate qualification state remains needs-review until it passes.",
+    "No dedicated assistive-technology evaluation has been performed for the CLI and Markdown interaction path."
+  ]
+}
