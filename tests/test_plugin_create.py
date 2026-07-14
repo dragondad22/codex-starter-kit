@@ -21,6 +21,8 @@ class PluginCreateContractTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], 1)
         self.assertEqual(manifest["id"], "baseline:professional-engineering:v1")
         self.assertEqual(manifest["source_decision"], "DEC-0017")
+        self.assertEqual(manifest["content_encoding"], "utf-8")
+        self.assertEqual(manifest["line_endings"], "lf")
         self.assertEqual(
             manifest["content_sha256"], f"sha256:{hashlib.sha256(content).hexdigest()}"
         )

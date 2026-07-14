@@ -13,7 +13,8 @@
 - Added the create capability/input/notice/inspection/plan/review/apply/result contract
   using structured executable and argument-vector semantics.
 - Bundled the approved DEC-0017 professional baseline as a versioned, digest-bound offline
-  projection. It is explicitly not a signed policy pack or conformance evidence.
+  UTF-8/LF projection with checkout normalization on every native host. It is explicitly
+  not a signed policy pack or conformance evidence.
 - Kept brief, persona, special-data notice, plan, and effect approvals separate. The skill
   discloses that create-v1 does not persist the special-data declaration.
 - Added a deterministic development/CI evaluation oracle and checked-in routing, approval,
