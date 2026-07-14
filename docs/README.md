@@ -65,6 +65,10 @@
     effects, control states, redaction, authority, and fallback guide.
 32. `evidence/ISSUE-53.md` — implementation, scenario, verification, and limitation record
     for the guided-verify plugin slice.
+33. `decisions/DEC-0019-operating-profile-contract.md` — approved engagement, assurance,
+    evidence-presentation, interruption, override, receipt, and transition contract.
+34. `evidence/ISSUE-47.md` — approval, promotion, verification, and downstream
+    decomposition record for the operating-profile decision.
 
 ## Document lifecycle
 

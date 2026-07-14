@@ -171,6 +171,20 @@ convert a failed or missing professional-baseline result into a pass. An explora
 prototype narrows its claim and lifespan and remains isolated until the supported-delivery
 gate is satisfied.
 
+The default operating profile is delegated engagement, no discretionary assurance
+addition beyond effective policy, and concise evidence presentation. Collaborative
+engagement adds checkpoints at planning and material decisions or effects. Repository,
+work-item, and release assurance additions compose without weakening broader policy.
+Delegated execution interrupts for unresolved governing decisions, changed or ambiguous
+authority, destructive/external/install/network effects, sensitive-data uncertainty,
+failed or stale evidence, unsafe recovery, or a material change to the approved outcome,
+plan, assumptions, cost, or compatibility.
+
+A profile change is attributable and prospective. It makes every affected active plan
+stale and regenerates derived views after policy/profile re-evaluation. Historical
+receipts, evidence, approvals, exceptions, and claims retain the profile identity under
+which they were produced.
+
 ## Control Evaluation Lifecycle
 
 ```mermaid

@@ -93,9 +93,10 @@ repository, and approved-risk policy layers for a project.
 
 ### Engagement mode
 
-The configured degree and timing of human participation, ranging from delegated execution
-with approved defaults to collaborative decision-by-decision work. It changes interaction,
-not the professional engineering baseline or the truth of control results.
+The configured degree and timing of human participation: `delegated` execution within
+established authority and approved defaults, or `collaborative` checkpoints at planning
+and material decisions or effects. It changes interaction, not the professional
+engineering baseline or the truth of control results.
 
 ### Epic
 
@@ -171,12 +172,13 @@ express different concepts and are not milestones.
 
 ### Operating profile
 
-A governed configuration of engagement, project-specific assurance, and evidence
-presentation or retention. It may add controls, approvals, and detail above the universal
-professional engineering baseline; it is not a code-quality tier. Evidence presentation
-sets the normal summary depth and routes to inspectable detail. Evidence retention sets
-how long and where evidence is preserved, subject to governing policy. Neither may hide a
-non-pass or discard evidence required to support a claim.
+A versioned governed configuration of engagement mode, scoped assurance additions, and
+evidence presentation. The default is `delegated` engagement, no discretionary assurance
+addition beyond effective policy, and a `concise` evidence view. It may add controls,
+approvals, and detail above the universal professional engineering baseline; it is not a
+code-quality tier. Retention remains an effective-policy and handling requirement rather
+than a presentation preference. Profile changes are prospective and never rewrite prior
+evidence or claims.
 
 ### Persona
 
