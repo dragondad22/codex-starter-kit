@@ -52,10 +52,18 @@ expected warning that PATH helper aliases are refused under `/tmp`; the skills-o
 requires no helper alias. The user's real Codex profile and plugin configuration were not
 changed.
 
-The local Python, documentation, diff, and plugin checks are recorded by the completing
-pull request. The required local Go command is currently unavailable because this host has
-no Go executable; native CI with pinned Go 1.26.5 must provide the completing Go and
-Linux/macOS/Windows evidence before merge.
+The local Python suite passed 24 tests; documentation validation, plugin validation, skill
+validation, and `git diff --check` also passed. The required local Go command remains
+unavailable because this host has no Go executable; that unavailable local capability was
+not converted to a pass.
+
+Draft PR #56 run `29296901686` tested source commit
+`58104bb99b373a0b9c8729857f386d409d48a852` using pinned Python 3.12 and Go 1.26.5.
+The Linux, macOS, and Windows foundation jobs all passed the Python suite, documentation
+validation, `go test ./...`, and native evidence capture. Phase 1 native semantic
+equivalence and the aggregate required-check gate also passed. The final-head checks
+triggered by this evidence update supersede that initial run when determining merge
+readiness.
 
 ## Limitations and downstream work
 
