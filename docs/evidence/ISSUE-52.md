@@ -53,6 +53,19 @@ changed.
 Local Go remains unavailable; required Go and native Linux/macOS/Windows evidence must pass
 in CI before merge. That local unavailable capability is not a pass.
 
+Draft PR #57 run `29297643566` found that the baseline raw-byte digest passed on Linux and
+macOS but failed on Windows because checkout translated the new Markdown artifact to CRLF.
+The change added a baseline-scoped `.gitattributes` rule for UTF-8/LF identity and recorded
+the encoding/line-ending contract in the baseline manifest instead of weakening the digest
+test through normalization.
+
+Corrected run `29297719672` tested source commit
+`c707526cacf948e8f884a1693358df03cf2ffd4e` with pinned Python 3.12 and Go 1.26.5. Linux,
+macOS, and Windows all passed the 26-test Python suite, documentation validation,
+`go test ./...`, and native evidence capture. Phase 1 native semantic equivalence and the
+aggregate required-check gate passed. Final-head checks triggered by this evidence update
+supersede that run when determining merge readiness.
+
 No verified packaged engine or signed baseline policy pack exists. The plugin does contain
 the approved offline baseline projection, but ordinary local source does not externally
 verify the containing snapshot. The implemented full path is therefore exercised against
