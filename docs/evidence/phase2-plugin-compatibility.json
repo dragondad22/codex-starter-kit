@@ -25,11 +25,11 @@
   },
   "source": {
     "repository": "dragondad22/codex-starter-kit",
-    "revision": "d2214c3cf3b1d7e08a43305b3e445918ebcd1d7c",
-    "revision_role": "qualification branch before final evidence update"
+    "revision": "94959b4d08fdf630e06e0bd946cd6f7087e45d19",
+    "revision_role": "native-qualified pull-request head before final evidence update"
   },
   "freshness": {
-    "captured_at": "2026-07-14T13:36:45Z",
+    "captured_at": "2026-07-14T13:47:36Z",
     "invalidated_by": [
       "plugin skill or manifest change",
       "capability or approval contract change",
@@ -47,9 +47,9 @@
     {"name": "Chat and mobile", "version": "not-applicable", "os": "not-tested", "architecture": "not-tested", "status": "unsupported", "scope": "Phase 2 local lifecycle operation is not supported"}
   ],
   "native_environments": [
-    {"os": "Linux", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"},
-    {"os": "macOS", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"},
-    {"os": "Windows", "version": "pending native CI", "architecture": "pending native CI", "status": "needs-review", "scope": "deterministic capability, approval, workflow, and documentation checks"}
+    {"os": "Linux", "version": "ubuntu24 image 20260705.232.1", "architecture": "amd64 / runner X64", "status": "pass", "toolchain": "Python 3.12 and Go 1.26.5; Git 2.54.0", "scope": "33 Python tests, documentation validation, Go tests, native evidence, and semantic equivalence", "run": "https://github.com/dragondad22/codex-starter-kit/actions/runs/29337780138"},
+    {"os": "macOS", "version": "macos26 image 20260630.0213.1", "architecture": "arm64 / runner ARM64", "status": "pass", "toolchain": "Python 3.12 and Go 1.26.5; Git 2.55.0", "scope": "33 Python tests, documentation validation, Go tests, native evidence, and semantic equivalence", "run": "https://github.com/dragondad22/codex-starter-kit/actions/runs/29337780138"},
+    {"os": "Windows", "version": "win25-vs2026 image 20260628.158.1", "architecture": "amd64 / runner X64", "status": "pass", "toolchain": "Python 3.12 and Go 1.26.5; Git 2.54.0.windows.1", "scope": "33 Python tests, documentation validation, Go tests, native evidence, and semantic equivalence", "run": "https://github.com/dragondad22/codex-starter-kit/actions/runs/29337780138"}
   ],
   "evidence": [
     "plugins/codex-starter-kit/evals/live-routing-results.json",
@@ -63,7 +63,9 @@
     "The local development marketplace is not an immutable Git-backed release snapshot and supplies no public support claim.",
     "The bundled baseline is an offline projection of DEC-0017, not a signed policy pack or conformance evidence.",
     "Only Codex CLI routing was exercised live; desktop and IDE remain needs-review, while web/chat/mobile local lifecycle operation is unsupported.",
-    "Native CI evidence is pending for this branch and the aggregate qualification state remains needs-review until it passes.",
+    "The aggregate remains needs-review because engine packaging, candidate Codex surfaces, and accessibility retain explicit review gaps even though the selected CLI/native deterministic envelope passed.",
+    "CI reports that pinned checkout/upload actions still target Node 20 compatibility and are temporarily forced onto Node 24; replacement revision review is tracked by issue #61.",
+    "The macos-latest runner label is migrating; this report is bound to the exact macos26 image recorded above rather than the moving label.",
     "No dedicated assistive-technology evaluation has been performed for the CLI and Markdown interaction path."
   ]
 }

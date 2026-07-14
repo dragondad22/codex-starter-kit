@@ -60,10 +60,24 @@ evaluation was retained.
 
 ## Verification evidence
 
-Before publication, the complete local suite and documentation validator must pass. Local
-Go remains unavailable and is not represented as pass. The completing pull request records
-the exact final source revision and native Linux, macOS, and Windows CI run before the
-aggregate state can move from `needs-review`.
+Local verification passed 33 Python tests, documentation validation, plugin validation,
+all three skill validations, `git diff --check`, and an isolated marketplace install/list
+of plugin `0.3.0`. Local Go remained unavailable and was not represented as pass.
+
+Pull request #60 run
+[`29337780138`](https://github.com/dragondad22/codex-starter-kit/actions/runs/29337780138)
+qualified source `94959b4d08fdf630e06e0bd946cd6f7087e45d19`. Ubuntu 24 x64,
+macOS 26 ARM64, and Windows 2025 x64 each passed 33 Python tests, documentation
+validation, Go `1.26.5` tests, and native evidence capture. Aggregate native semantic
+equivalence and the required-check gate passed.
+
+CI emitted non-blocking maintenance warnings: pinned checkout/upload actions still target
+Node 20 compatibility and are temporarily forced to Node 24, and the moving
+`macos-latest` label is migrating. The compatibility report binds evidence to exact image
+identities; action-revision maintenance is tracked separately by
+[issue #61](https://github.com/dragondad22/codex-starter-kit/issues/61). The receipt's
+overall state remains `needs-review` for the explicitly unqualified packaged engine,
+candidate Codex surfaces, and accessibility—not because native gates are pending.
 
 ## Downstream assumptions
 
