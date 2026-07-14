@@ -112,4 +112,5 @@ alone is insufficient.
 The Codex CLI remains the selected development surface. IDE marketplace behavior is
 `needs-review` because official documentation conflicts; web/mobile cannot execute the
 local engine workflow. Cross-model/client/native qualification remains #54. Guided verify
-remains #53, and the create skill does not run verification automatically.
+is a separate [implemented workflow](PLUGIN_VERIFY.md), and the create skill does not run
+it automatically.

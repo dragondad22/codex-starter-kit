@@ -61,6 +61,10 @@
     effect approval, recovery, offline, authority, and fallback guide.
 30. `evidence/ISSUE-52.md` — implementation, scenario, update-flow, verification, and
     limitation record for the guided-create plugin slice.
+31. `product/PLUGIN_VERIFY.md` — guided verification inputs, immutable plan, evidence
+    effects, control states, redaction, authority, and fallback guide.
+32. `evidence/ISSUE-53.md` — implementation, scenario, verification, and limitation record
+    for the guided-verify plugin slice.
 
 ## Document lifecycle
 

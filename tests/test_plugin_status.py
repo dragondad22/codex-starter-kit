@@ -18,7 +18,9 @@ class PluginStatusContractTests(unittest.TestCase):
         self.assertEqual(manifest["interface"]["capabilities"], [])
 
         skills = sorted((PLUGIN / "skills").glob("*/SKILL.md"))
-        self.assertEqual([path.parent.name for path in skills], ["create", "status"])
+        self.assertEqual(
+            [path.parent.name for path in skills], ["create", "status", "verify"]
+        )
 
         skill = (PLUGIN / "skills" / "status" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("name: starter-kit-status", skill)

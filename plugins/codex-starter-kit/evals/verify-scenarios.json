@@ -1,0 +1,132 @@
+[
+  {
+    "id": "state-pass",
+    "prompt": "$starter-kit-verify the release gate",
+    "route": true,
+    "capability": "full",
+    "inputs": {"scope": "repository", "gate": "release", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "pass", "controls": [{"id": "CORE-EXAMPLE-001", "state": "pass", "evidence": [{"kind": "file", "target": "evidence.json"}], "diagnostics": []}], "coverage_limitations": [], "evidence_path": ".starter-kit/evidence/verify.json", "event_path": ".starter-kit/events/verify.json"}
+  },
+  {
+    "id": "state-fail",
+    "prompt": "Verify this managed repository",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "fail", "controls": [{"id": "CORE-EXAMPLE-001", "state": "fail", "evidence": [], "diagnostics": ["required artifact is invalid"]}], "coverage_limitations": ["example limitation"]}
+  },
+  {
+    "id": "state-not-applicable",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "not-applicable", "controls": [{"id": "CORE-EXAMPLE-001", "state": "not-applicable", "evidence": [], "diagnostics": []}], "coverage_limitations": []}
+  },
+  {
+    "id": "state-not-configured",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "not-configured", "controls": [{"id": "CORE-SECRETS-001", "state": "not-configured", "evidence": [], "diagnostics": []}], "coverage_limitations": ["No scanner is configured."]}
+  },
+  {
+    "id": "state-needs-review",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "needs-review", "controls": [{"id": "CORE-RECOVERY-001", "state": "needs-review", "evidence": [], "diagnostics": []}], "coverage_limitations": ["Packaged provenance is unavailable."]}
+  },
+  {
+    "id": "state-accepted-exception",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "approved risk record"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "accepted-exception", "controls": [{"id": "CORE-EXAMPLE-001", "state": "accepted-exception", "underlying_state": "fail", "evidence": [{"kind": "risk", "target": "RISK-1"}], "diagnostics": []}], "coverage_limitations": []}
+  },
+  {
+    "id": "mixed-aggregate",
+    "prompt": "Verify and show every non-pass state",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "release", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "fail", "controls": [{"id": "CORE-A", "state": "pass", "evidence": [], "diagnostics": []}, {"id": "CORE-B", "state": "not-configured", "evidence": [], "diagnostics": []}, {"id": "CORE-C", "state": "fail", "evidence": [], "diagnostics": []}], "coverage_limitations": ["Mixed coverage."]}
+  },
+  {
+    "id": "declined-approval",
+    "prompt": "Prepare verification but do not regenerate evidence",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": false
+  },
+  {
+    "id": "stale-plan",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"outcome": "failed", "diagnostics": ["verification plan precondition no longer matches repository content"], "evidence": ["git:starter-kit-attempts/verify.json"]}
+  },
+  {
+    "id": "malformed-output",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "pass", "controls": "concealed", "coverage_limitations": []}
+  },
+  {
+    "id": "evaluator-failure",
+    "prompt": "Verify despite a control evaluator failure",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "fail", "controls": [{"id": "CORE-EVALUATOR-001", "state": "fail", "evidence": [], "diagnostics": ["evaluator failed closed"]}], "coverage_limitations": ["Evaluator result is unavailable."]}
+  },
+  {
+    "id": "redacted-diagnostics",
+    "prompt": "$starter-kit-verify",
+    "route": true,
+    "capability": "verification-only",
+    "inputs": {"scope": "repository", "gate": "development", "actor": "PER-OWNER", "authority": "owner approval"},
+    "plan": "valid",
+    "execute_approved": true,
+    "result": {"overall_state": "fail", "controls": [{"id": "CORE-SECRETS-001", "state": "fail", "evidence": [], "diagnostics": ["diagnostic [REDACTED]"]}], "coverage_limitations": []}
+  },
+  {
+    "id": "plugin-unavailable",
+    "prompt": "Verify this Starter Kit repository",
+    "route": true,
+    "capability": "plugin-unavailable"
+  },
+  {
+    "id": "unrelated-verify-request",
+    "prompt": "Verify my email address",
+    "route": false
+  }
+]
