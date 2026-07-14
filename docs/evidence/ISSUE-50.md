@@ -46,9 +46,17 @@ passed. After internal review corrections, the same applicable local checks agai
 with 22 Python tests.
 
 The required `go test ./...` command could not run because the local IDE host did not
-expose `go` after reload. That is an explicit missing local verification capability, not
-a pass. Native CI and the completing pull request must run the Go suite before this work
-completes.
+expose `go` after reload. That local result remains an explicit unavailable capability,
+not a pass.
+
+Draft PR #55 run `29296084203` tested source commit
+`7ccdaa73289b0aeb15f6b7dee9a814851601f16b` with the pinned Python 3.12 and Go 1.26.5
+toolchains. The Linux, macOS, and Windows foundation jobs all passed their Python tests,
+documentation validation, `go test ./...`, and native evidence capture. The aggregate
+Phase 1 semantic-equivalence job and final required-check gate also passed. The completing
+PR retains that run and the final-head checks triggered by this evidence-only update; the
+latest PR checks supersede this recorded intermediate source when determining merge
+readiness.
 
 ## Limitations and downstream work
 
