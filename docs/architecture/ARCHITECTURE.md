@@ -64,6 +64,12 @@ Resolves locked packs, evaluates applicability rules, layers organization/projec
 policy, applies exception rules, and emits the effective policy graph. It never makes
 unbounded legal conclusions; uncertainty becomes `needs-review`.
 
+Assurance additions from DEC-0019 attach at repository, work-item, or release scope and
+compose additively with the universal and otherwise applicable graph. A narrower scope
+may strengthen but never remove a governing requirement; unresolved conflicts become
+`needs-review`. Engagement mode and evidence presentation remain separate inputs rather
+than policy-strength selectors.
+
 ### Control Evaluator
 
 Executes automated controls, assembles human-attestation requests, validates evidence,
@@ -79,6 +85,8 @@ atomic writes, rollback, and migration. User-owned prose is not regenerated sile
 
 Resolves stable IDs, validates breadcrumbs, generates the effective-policy index, and
 enforces routing/context budgets. It provides focused material to skills and issues.
+It routes the effective operating-profile identity, mandatory interrupts, and the minimum
+concise receipt while preserving links to expanded evidence.
 
 ### Layout Manager
 

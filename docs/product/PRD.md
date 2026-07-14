@@ -107,6 +107,9 @@ The product ships as three layers from its first usable release:
 48. As a project owner, I want engagement separated from assurance so that I can request low-interaction delivery with strong verification or collaborative exploration with deliberately narrow claims.
 49. As a reviewer, I want a concise quality receipt backed by inspectable evidence so that I can trust ordinary delivery and expand detail when risk or governance requires it.
 50. As a stakeholder using GitHub, I want release and phase context at the operational surface so that I do not need hidden documentation knowledge to interpret project state.
+51. As a project owner, I want delegated delivery as the default with predictable mandatory interrupts so that routine work can proceed without inferring new authority.
+52. As an assurance owner, I want repository, work-item, and release additions to compose without weakening broader requirements so that scope-specific rigor remains explainable.
+53. As a maintainer, I want profile changes to invalidate active plans without rewriting historical evidence so that current work adapts and prior claims remain reconstructable.
 
 ## Implementation Decisions
 
@@ -141,6 +144,13 @@ The product ships as three layers from its first usable release:
 - Every managed project applies the professional engineering baseline from DEC-0017.
   Operating profiles may add assurance and change interaction or evidence presentation,
   but they are not implementation-quality tiers.
+- DEC-0019 defines an operating profile as three independent axes: `delegated` or
+  `collaborative` engagement, additive assurance at repository/work-item/release scope,
+  and `concise` or `expanded` evidence presentation. Defaults are delegated, no
+  discretionary addition beyond effective policy, and concise.
+- Profile changes are attributable and prospective. They invalidate affected active
+  plans and derived views but never rewrite prior evidence, decisions, exceptions, or
+  claims.
 - The default delivery flow is Ready issue, issue branch, PR, gates, squash merge.
 - Version and release adapters are selected from project outputs and policy.
 - Linux, macOS, and Windows are native first-release targets.
