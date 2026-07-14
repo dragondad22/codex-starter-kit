@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "codex-starter-kit:approval-boundaries:v1",
+  "plugin_version": "0.3.0",
+  "approval_boundaries": {
+    "plan": "approval of the exact immutable plan identity",
+    "repository-effects": "approval to apply the plan's named repository effects",
+    "network-access": "approval for the named endpoint, data, and purpose",
+    "tool-installation": "approval for the named tool identity, source, authority, and effects",
+    "data-handling": "authorization for named content to enter a named tool, service, or environment",
+    "authority-change": "approval to grant or broaden a named actor or integration authority"
+  },
+  "rules": [
+    "conversation, prior approval, plan approval, or one effect approval never implies another boundary",
+    "every approval records actor, scope, identity, purpose, effects, and applicable expiry",
+    "changed plan, effect, endpoint, data class, tool identity, or authority invalidates the affected approval"
+  ],
+  "operation_domains": {
+    "plugin-install": ["plugin"],
+    "plugin-update": ["plugin"],
+    "engine-install": ["engine"],
+    "engine-update": ["engine"],
+    "repository-upgrade": ["repository"],
+    "baseline-resolution": ["baseline-policy"]
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {"id": "conversation-does-not-approve-plan", "requested_approvals": ["plan"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-plan", "requested_approvals": ["plan"], "explicit_approvals": ["plan"], "conversation_approval": false},
+  {"id": "conversation-does-not-approve-repository-effects", "requested_approvals": ["repository-effects"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-repository-effects", "requested_approvals": ["repository-effects"], "explicit_approvals": ["repository-effects"], "conversation_approval": false},
+  {"id": "conversation-does-not-approve-network-access", "requested_approvals": ["network-access"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-network-access", "requested_approvals": ["network-access"], "explicit_approvals": ["network-access"], "conversation_approval": false},
+  {"id": "conversation-does-not-approve-tool-installation", "requested_approvals": ["tool-installation"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-tool-installation", "requested_approvals": ["tool-installation"], "explicit_approvals": ["tool-installation"], "conversation_approval": false},
+  {"id": "conversation-does-not-approve-data-handling", "requested_approvals": ["data-handling"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-data-handling", "requested_approvals": ["data-handling"], "explicit_approvals": ["data-handling"], "conversation_approval": false},
+  {"id": "conversation-does-not-approve-authority-change", "requested_approvals": ["authority-change"], "explicit_approvals": [], "conversation_approval": true},
+  {"id": "explicitly-approve-authority-change", "requested_approvals": ["authority-change"], "explicit_approvals": ["authority-change"], "conversation_approval": false}
+]

@@ -71,5 +71,70 @@
     {"from": "degraded-guidance", "to": "unsupported", "when": "bounded guidance or safe fallback can no longer be established"},
     {"from": "verification-only", "to": "unsupported", "when": "evidence becomes malformed/conflicting or evidence authority is denied/unknown"},
     {"from": "unsupported", "to": "degraded-guidance", "when": "known facts positively establish safe bounded guidance"}
-  ]
+  ],
+  "operational_conditions": {
+    "first-run-offline": {
+      "mode": "degraded-guidance",
+      "outcome": "stopped",
+      "diagnostics": ["offline-prerequisites-not-provisioned"],
+      "remediation": ["provision and verify the plugin snapshot, engine, baseline, compatibility metadata, and trust roots before disconnecting"],
+      "fallback": "use a separately verified local engine only when its offline inputs are already provisioned"
+    },
+    "restricted-workspace": {
+      "mode": "verification-only",
+      "outcome": "read_only",
+      "diagnostics": ["repository-mutation-not-authorized"],
+      "remediation": ["retain the mutation prohibition and request separate repository authority only if create is chosen"],
+      "fallback": "run authorized status or verification through the verified engine or CI"
+    },
+    "plugin-admin-disabled": {
+      "mode": "degraded-guidance",
+      "outcome": "stopped",
+      "diagnostics": ["plugin-disabled-by-administrator"],
+      "remediation": ["ask the administrator to review enablement without bypassing policy"],
+      "fallback": "use the independently installed verified engine or CI"
+    },
+    "missing-engine": {
+      "mode": "degraded-guidance",
+      "outcome": "stopped",
+      "diagnostics": ["engine-not-resolved"],
+      "remediation": ["install or select a trusted engine as a separate authorized operation, then verify its identity"],
+      "fallback": "review direct-engine installation guidance; no engine result is available"
+    },
+    "incompatible-engine": {
+      "mode": "degraded-guidance",
+      "outcome": "stopped",
+      "diagnostics": ["engine-protocol-or-operation-incompatible"],
+      "remediation": ["select a separately trusted compatible engine or compatible plugin without changing repository pins"],
+      "fallback": "use a verified compatible direct engine or CI"
+    },
+    "malformed-engine-output": {
+      "mode": "unsupported",
+      "outcome": "failed",
+      "diagnostics": ["engine-output-malformed-or-conflicting"],
+      "remediation": ["retain redacted output for diagnosis and stop until the engine contract is restored"],
+      "fallback": "none until a safe compatible engine response is independently established"
+    },
+    "interrupted-operation": {
+      "mode": "full",
+      "outcome": "failed",
+      "diagnostics": ["operation-interrupted-before-final-result"],
+      "remediation": ["inspect durable engine status and evidence before replaying the same immutable plan"],
+      "fallback": "use engine status and documented replay or reconciliation recovery"
+    },
+    "cancelled-operation": {
+      "mode": "full",
+      "outcome": "cancelled",
+      "diagnostics": ["operation-cancelled-without-completion-claim"],
+      "remediation": ["inspect status before choosing whether to leave state unchanged or resume with explicit approval"],
+      "fallback": "use direct engine status; cancellation grants no later effect authority"
+    },
+    "recoverable-operation": {
+      "mode": "full",
+      "outcome": "recovery_available",
+      "diagnostics": ["durable-recovery-evidence-available"],
+      "remediation": ["review the retained plan, status, evidence, and recovery action before explicit replay approval"],
+      "fallback": "use the engine's documented replay or reconciliation path"
+    }
+  }
 }
