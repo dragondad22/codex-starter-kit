@@ -9,10 +9,11 @@ decisions, GitHub work, stakeholder communication, releases, and upgrades are co
 behind a guided workflow and backed by evidence.
 
 > **Project status: Phase 2 development slice.** Empty-repository create, seed
-> verification, and a skills-only plugin status tracer are implemented for development.
-> No verified packaged engine is published, and guided create/verify, secret scanning,
-> retrofit, upgrades, and broader policy/release capabilities remain incomplete. Do not
-> use this repository as a production compliance control today.
+> verification, and skills-only plugin status/guided-create workflows are implemented for
+> development. No verified packaged engine or baseline pack is published, so full plugin
+> execution and guided verify remain unavailable; secret scanning, retrofit, upgrades, and
+> broader policy/release capabilities are also incomplete. Do not use this repository as a
+> production compliance control today.
 
 ## What it will provide
 
@@ -46,9 +47,10 @@ The current development CLI implements a read-only `capabilities` handshake plus
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
 contract, ownership model, and explicit limitations.
 
-The repository also contains the installable development status tracer. See the
-[plugin status guide](docs/product/PLUGIN_STATUS.md) before adding its local marketplace;
-installation adds guided instructions but does not install or verify the engine.
+The repository also contains the installable development status and guided-create skills.
+See the [plugin status guide](docs/product/PLUGIN_STATUS.md) and
+[guided create guide](docs/product/PLUGIN_CREATE.md) before adding its local marketplace;
+installation adds guided instructions but does not install or verify the engine/baseline.
 
 ## Build and use the Phase 1 engine
 
@@ -102,6 +104,7 @@ runtime requirements, capability gaps, and evidence model.
 - [Policy-pack map](docs/architecture/POLICY_PACKS.md)
 - [Current support matrix](docs/architecture/SUPPORT_MATRIX.md)
 - [Plugin status tracer](docs/product/PLUGIN_STATUS.md)
+- [Plugin guided create](docs/product/PLUGIN_CREATE.md)
 - [Implementation roadmap](docs/roadmap/IMPLEMENTATION_ROADMAP.md)
 - [Discovery and approved decisions](docs/discovery/CODEX_STARTER_KIT_REVIEW.md)
 - [Durable decision index](docs/decisions/INDEX.md)
