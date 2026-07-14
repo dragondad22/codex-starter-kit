@@ -35,6 +35,14 @@ package and review cases but does not submit or publish it publicly. Publisher i
 legal/support materials, signed release artifacts, release approval, and universal
 directory publication remain Phase 6 authorities.
 
+A personal marketplace is permitted for individual development convenience but supplies
+no qualification or support evidence. Workspace sharing and workspace-installed
+distribution are deferred until the exact plan, administrator policy, and supported
+surface can be qualified; team qualification uses the pinned Git marketplace. Plugin or
+marketplace changes require the documented refresh and a new task, session, or desktop
+restart before evaluation. An administrator-disabled plugin is never silently enabled or
+bypassed.
+
 Compatibility is a non-mutating capability handshake, not a guessed minimum Codex
 version. It records the host surface; plugin identity, source, enabled state, and
 capabilities; engine resolution, identity, provenance, protocol/schema range, and
@@ -55,6 +63,10 @@ The handshake selects one workflow-specific mode:
 These modes describe workflow capability, not repository conformance. `full` can
 truthfully return non-pass controls; no narrower mode may simulate an engine result or
 appear as full conformance.
+
+Unknown, malformed, or conflicting required evidence selects `unsupported` unless the
+known facts positively establish the narrower `degraded-guidance` boundary. An
+unverified capability is therefore not automatically degraded guidance.
 
 Codex CLI is the required development surface once its marketplace, installation, skill,
 and workflow behavior passes qualification. ChatGPT desktop Codex is a candidate supported

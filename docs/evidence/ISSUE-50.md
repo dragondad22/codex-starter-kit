@@ -23,13 +23,16 @@ Public submission and publication remain Phase 6 work.
 - Added DEC-0018 and linked it from the decision index.
 - Promoted the research record from recommendation to approved decision provenance.
 - Added the capability handshake and surface boundary to the architecture.
+- Added the capability handshake and workflow capability mode to the canonical glossary.
+- Reconciled the decision-record format with the established approved issue-backed source
+  pattern used by DEC-0016 onward.
 - Routed the decision, research, and evidence records from the documentation index.
 - Decomposed Epic #3 into native issues #50–#54 while retaining its existing operating-
   profile child #47 and independently reconciling Project readiness and dependencies.
 
 ## Verification evidence
 
-The final implementation branch must run:
+Before internal review corrections, the implementation branch ran:
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"
@@ -37,6 +40,10 @@ python3 scripts/validate_docs.py
 go test ./...
 git diff --check
 ```
+
+The Python suite passed 22 tests, documentation validation passed, and `git diff --check`
+passed. After internal review corrections, the same applicable local checks again passed
+with 22 Python tests.
 
 The local IDE host did not expose `go` after reload. That is an explicit missing local
 verification capability, not a pass. Native CI and the completing pull request must run

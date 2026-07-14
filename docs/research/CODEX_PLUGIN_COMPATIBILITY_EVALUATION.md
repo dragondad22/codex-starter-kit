@@ -82,6 +82,16 @@ Local and Git marketplace installation is a distribution convenience, not artifa
 provenance. A supported workflow still verifies the engine, baseline pack, plugin source,
 and compatibility facts it relies on.
 
+A personal marketplace is permitted as an individual developer convenience but is not a
+qualification or support surface. Workspace sharing and workspace-installed distribution
+are deferred until an authorized workspace, plan, administration policy, and exact
+surface behavior can be qualified; Phase 2 team testing uses the pinned Git marketplace
+instead. Plugin or marketplace changes require the documented refresh plus a new task,
+session, or desktop restart before evaluation. Refreshing a marketplace snapshot does not
+authorize repository migration or prove that an installed cached plugin changed. An
+administrator-disabled or unavailable plugin selects the safe narrower capability mode;
+it is never bypassed by copying or silently enabling the bundle.
+
 ### Public publication
 
 The official submission portal accepts skills-only plugins. Public submission requires
