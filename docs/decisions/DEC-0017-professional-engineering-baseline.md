@@ -71,6 +71,9 @@ independence, retained evidence, and point-of-use detail; they cannot be quality
 Verification must assess code, security, tests, documentation, and the full user
 experience rather than only successful execution or a minimally functional interface.
 Failures and missing evidence remain visible even when the human asks for a concise result.
+[DEC-0020](DEC-0020-distinct-pull-request-review.md) adds the universal distinct PR-review
+pass without treating stronger policy-required independence or qualifications as optional
+ceremony.
 
 ## Source
 

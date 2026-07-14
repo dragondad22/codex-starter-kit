@@ -28,8 +28,9 @@ prototype.
   research ticket to issue #63.
 - Enabled the accepted `type:question` and `type:research` labels required by DEC-0013.
 - Created #62, #63, and #64 as native children of #4 and added them to Project #8.
-- Set #62 and #63 to `In progress` / `Ready`; set #64 to `Backlog` / `Blocked` with native
-  dependencies on #62 and #63.
+- Initially set #62 and #63 to `In progress` / `Ready`; set #64 to `Backlog` / `Blocked`
+  with native dependencies on #62 and #63. PR #66 subsequently closed #62 as `Done`, so
+  #63 is now #64's remaining active blocker.
 - Routed the research, planning map, and this evidence record from the documentation index.
 
 ## Research outcome
@@ -78,9 +79,10 @@ issue branch after this evidence record is added.
 
 ## Downstream work
 
-Issue #62 promotes the independently reviewed PR-assurance answer. Issue #64 consumes both
-that answer and this research to prototype the lifecycle-engine-facing Work Manager
-boundary. It remains blocked until #62 and #63 close. The later sandbox ticket must
+Issue #62 promoted the independently reviewed PR-assurance answer through DEC-0020 and is
+closed as `Done`. Issue #64 consumes that answer and this research to prototype the
+lifecycle-engine-facing Work Manager boundary. It remains blocked until #63 closes. The
+later sandbox ticket must
 qualify the exact identity/permission matrix, lost-response and rate-limit recovery,
 Project-field migration, revocation, plan availability, and negative paths before the
 final #4 decomposition can claim support.

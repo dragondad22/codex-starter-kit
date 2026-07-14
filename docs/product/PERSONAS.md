@@ -81,7 +81,8 @@ decision at the right time.
 
 **Context and constraints:** May be time-constrained, switching domains, using any major
 desktop OS, online or offline, and simultaneously acting as developer, product owner,
-reviewer, and operator.
+reviewer, and operator. Holding several roles does not make implementation self-review a
+distinct review pass or establish qualifications the owner does not have.
 
 **Risks and concerns:** False confidence, leaked credentials, missing tests or obligations,
 AI shortcuts, insecure code that merely appears functional, minimally implemented user
@@ -89,7 +90,8 @@ interfaces, process theater, excessive ceremony, lost decisions, unsafe upgrades
 being locked into tools they cannot evaluate.
 
 **Authority:** Approves product direction, ordinary implementation plans, tools, and
-project risks unless policy requires independent or qualified approval.
+project risks unless policy requires independent or qualified approval. May review
+requested-outcome alignment without claiming code-language or assurance expertise.
 
 **Information and communication:** Lead with outcome, impact, choices, recommendation,
 coverage, quality receipt, and required action. Keep implementation machinery behind
@@ -102,7 +104,8 @@ assurance amendment, and issue #23's professional-baseline clarification; mainta
 the project owner.
 
 **Anti-assumptions:** Solo does not mean hobby, low risk, unregulated, technically novice,
-or authorized to self-approve every control.
+authorized to self-approve every control, or unable to obtain a distinct review through a
+separate capable AI context.
 
 ## PER-CONTRIBUTOR — Team developer / maintainer
 
@@ -265,7 +268,9 @@ These are behaviors, not personas:
 - **Planner:** converts approved intent into plans and Ready issues without inventing
   unresolved decisions.
 - **Implementer:** executes Ready scope and stops on stale or missing authority.
-- **Reviewer:** evaluates change and evidence independently within declared capability.
+- **Reviewer:** evaluates change and evidence in a distinct context within declared
+  capability, with stronger independence or qualifications where effective policy
+  requires them.
 - **Maintainer:** detects drift, upgrades, stale risks, and documentation impact.
 
 Every AI action names the human persona(s) served and the authority under which it acts.

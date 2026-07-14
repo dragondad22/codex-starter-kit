@@ -68,6 +68,10 @@ explicit conflict handling. Quality-receipt implementations need stable routes f
 concise view to machine evidence and human-owned authority records. Historical profile
 identity remains part of evidence provenance.
 
+[DEC-0020](DEC-0020-distinct-pull-request-review.md) requires a distinct PR-review pass in
+every profile. Assurance additions may strengthen its reviewer independence, number, or
+qualifications but cannot remove or weaken the universal pass.
+
 ## Source
 
 Approved by the product owner through [issue #47](https://github.com/dragondad22/codex-starter-kit/issues/47).

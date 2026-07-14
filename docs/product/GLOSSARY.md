@@ -86,6 +86,13 @@ A durable human-owned record of an approved consequential choice, its context,
 alternatives or tradeoffs, consequences, owner, and history. It explains what governs
 later work and why; it is more authoritative than the discussion that produced it.
 
+### Distinct review pass
+
+An evidence-producing PR evaluation by a declared capable human or AI reviewer that did
+not implement the change in the same working context. Automated checks and implementer
+self-review support it but do not fulfill it; effective policy may require stronger human
+independence or qualifications.
+
 ### Effective policy
 
 The deterministic result of compiling universal, project-type, triggered, organization,

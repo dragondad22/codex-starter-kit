@@ -77,12 +77,16 @@
     outcome and evidence routes.
 38. `evidence/ISSUE-54.md` — capability, live-routing, compatibility, qualification,
     limitation, verification, and downstream handoff record.
-39. `research/GITHUB_AUTHENTICATION_AND_TRANSPORT_EVALUATION.md` — bounded official-source
+39. `decisions/DEC-0020-distinct-pull-request-review.md` — universal distinct PR-review
+    pass, role/capability separation, evidence identity, and stronger-policy boundary.
+40. `evidence/ISSUE-62.md` — approval, promotion, verification, and downstream dependency
+    record for the PR-review assurance question.
+41. `research/GITHUB_AUTHENTICATION_AND_TRANSPORT_EVALUATION.md` — bounded official-source
     and read-only-probe comparison of GitHub identities, transport, recovery, limitations,
     and the recommended Phase 3 adapter contract.
-40. `roadmap/GITHUB_EXECUTABLE_WORK_DECISION_MAP.md` — active issue-backed planning map for
+42. `roadmap/GITHUB_EXECUTABLE_WORK_DECISION_MAP.md` — active issue-backed planning map for
     resolving the remaining GitHub executable-work design frontier.
-41. `evidence/ISSUE-63.md` — research scope, provenance, GitHub-state, verification, and
+43. `evidence/ISSUE-63.md` — research scope, provenance, GitHub-state, verification, and
     downstream prototype record for the authentication/transport evaluation.
 
 ## Document lifecycle

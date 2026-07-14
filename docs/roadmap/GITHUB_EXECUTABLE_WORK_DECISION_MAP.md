@@ -24,13 +24,13 @@ human or a separate AI context. Automated checks and implementer self-review are
 supporting evidence, not the review. Effective policy may require stronger human
 independence or qualifications; missing required expertise blocks the affected gate.
 The product owner can review outcome alignment without being treated as the code-language
-expert. This answer must be promoted through `type:question` issue #62 and reconciled
-with DEC-0008, DEC-0017, DEC-0019, the persona registry, lifecycle, glossary, and policy
-ownership before dependent implementation becomes Ready.
+expert. The answer was promoted through `type:question` issue #62 as DEC-0020 and
+reconciled with DEC-0008, DEC-0017, DEC-0019, the persona registry, lifecycle, glossary,
+and policy ownership.
 
 On 2026-07-14 the accepted `type:question` label was enabled and #62 was created as a
-native child of #4. It is `In progress` and `Ready`; #64 remains blocked until the answer
-is promoted and #62 closes.
+native child of #4. PR #66 promoted the answer, and #62 is now closed and `Done`. This
+removes one dependency from #64, which remains `Backlog` / `Blocked` by #63.
 
 ## #2: Which GitHub authentication and transport contract should the kit support?
 
@@ -87,9 +87,10 @@ embedding policy in the adapter.
 
 ### Answer
 
-Unresolved. Issue #64 is a native child of #4 and is `Backlog` / `Blocked` by native
-dependencies on #62 and #63. The prototype must use the lifecycle-engine seam and
-incorporate existing children #15, #16, and #46 rather than duplicating or bypassing them.
+Unresolved. Issue #64 is a native child of #4 and is `Backlog` / `Blocked`. Its #62
+dependency is complete; #63 remains its active native blocker. The prototype must use the
+lifecycle-engine seam and incorporate existing children #15, #16, and #46 rather than
+duplicating or bypassing them.
 
 ## #4: How will live GitHub behavior be qualified safely?
 
