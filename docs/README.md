@@ -77,6 +77,10 @@
     outcome and evidence routes.
 38. `evidence/ISSUE-54.md` — capability, live-routing, compatibility, qualification,
     limitation, verification, and downstream handoff record.
+39. `decisions/DEC-0020-distinct-pull-request-review.md` — universal distinct PR-review
+    pass, role/capability separation, evidence identity, and stronger-policy boundary.
+40. `evidence/ISSUE-62.md` — approval, promotion, verification, and downstream dependency
+    record for the PR-review assurance question.
 
 ## Document lifecycle
 

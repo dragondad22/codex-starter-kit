@@ -24,3 +24,4 @@
 | Issue #23 | [DEC-0017](DEC-0017-professional-engineering-baseline.md) | Universal professional engineering baseline with variable ceremony |
 | Issue #50 | [DEC-0018](DEC-0018-codex-plugin-compatibility-and-distribution.md) | Skills-only Phase 2 plugin, capability-based compatibility, bounded distribution, offline inputs, and direct-engine fallback |
 | Issue #47 | [DEC-0019](DEC-0019-operating-profile-contract.md) | Three-axis operating profiles with delegated defaults, additive assurance, truthful evidence views, and prospective transitions |
+| Issue #62 | [DEC-0020](DEC-0020-distinct-pull-request-review.md) | A distinct capable review pass for every PR, separate from implementation, checks, outcome authority, and stronger qualified assurance |
