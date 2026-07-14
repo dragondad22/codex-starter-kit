@@ -1,0 +1,18 @@
+{
+  "name": "codex-starter-kit",
+  "version": "0.1.0",
+  "description": "Truthful read-only lifecycle status for Codex Starter Kit repositories",
+  "author": {
+    "name": "Codex Starter Kit contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Starter Kit",
+    "shortDescription": "Inspect Starter Kit repository lifecycle status.",
+    "longDescription": "A skills-only, read-only adapter that preserves the standalone Starter Kit engine's lifecycle result and fail-closed compatibility boundary.",
+    "developerName": "Codex Starter Kit contributors",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "defaultPrompt": "Report the Codex Starter Kit lifecycle status of this repository."
+  }
+}

@@ -49,6 +49,10 @@ three operating systems.
 
 Outcome: a user installs the plugin and completes guided create using the same engine.
 
+The installable read-only status tracer and development marketplace are delivered by
+[#51](https://github.com/dragondad22/codex-starter-kit/issues/51). Guided create, guided
+verify, and cross-surface qualification remain #52–#54.
+
 - Scaffold/validate plugin manifest and marketplace development flow.
 - Implement focused create/status/verify skills with progressive disclosure.
 - Bundle the baseline pack for first-run offline use.

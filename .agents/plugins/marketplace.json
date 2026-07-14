@@ -1,0 +1,20 @@
+{
+  "name": "codex-starter-kit-development",
+  "interface": {
+    "displayName": "Codex Starter Kit Development"
+  },
+  "plugins": [
+    {
+      "name": "codex-starter-kit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-starter-kit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

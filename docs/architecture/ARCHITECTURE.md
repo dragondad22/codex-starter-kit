@@ -25,6 +25,10 @@ flowchart LR
 
 The lifecycle engine presents one interface to plugin, CLI, CI, and tests:
 
+Before selecting an operation, adapters may call the read-only `capabilities` metadata
+handshake. It reports identity, protocol/schema, and implemented-operation facts without
+repository access or a self-issued verification claim.
+
 | Operation | Result |
 |---|---|
 | `create` | Approved plan for initializing an empty/new project |

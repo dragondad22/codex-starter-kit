@@ -11,6 +11,7 @@ JSON on standard output and diagnostics on standard error:
 
 ```text
 starter-kit inspect --repository <path>
+starter-kit capabilities
 starter-kit create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
 starter-kit plan --operation create --repository <path> --brief <text> --approve-brief --confirm-owner-persona
 starter-kit apply --plan <plan.json> --plan-id <sha256:...>
@@ -35,7 +36,11 @@ structured reconciliation stop; content is preserved and the result names confli
 recovery actions, and available evidence.
 
 The current seam implements `create`, `inspect`, `plan`, `apply`, `status`, and seed
-`verify`. `retrofit` and `upgrade` remain later phases. A missing operation must not be
+`verify`. The read-only `capabilities` metadata operation reports engine build facts,
+protocol `starter-kit.lifecycle` version `1`, available operations, and status schema
+version `1` without inspecting a repository. It always self-reports provenance as
+`unverified`: only retained external evidence may establish trust in the resolved
+artifact. `retrofit` and `upgrade` remain later phases. A missing operation must not be
 represented as available.
 
 ## Seed verification

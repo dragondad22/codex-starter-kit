@@ -53,6 +53,10 @@
     implications for DEC-0018.
 26. `evidence/ISSUE-50.md` — approval, promotion, verification, limitation, and GitHub-state
     record for the Phase 2 compatibility/distribution decision.
+27. `product/PLUGIN_STATUS.md` — development installation, capability, authority, fallback,
+    and support guide for the skills-only status tracer.
+28. `evidence/ISSUE-51.md` — implementation, scenario, install-flow, verification, and
+    limitation record for the plugin status tracer.
 
 ## Document lifecycle
 

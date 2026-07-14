@@ -34,6 +34,32 @@ func TestCreateCommandEmitsLanguageNeutralPlan(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.Run([]string{"capabilities"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var report engine.CapabilityReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode capability report: %v: %s", err, stdout.String())
+	}
+	if report.SchemaVersion != 1 || report.Engine.Name != "starter-kit" {
+		t.Fatalf("unexpected engine identity: %#v", report)
+	}
+	if report.Protocol.Name != "starter-kit.lifecycle" || report.Protocol.Version != 1 {
+		t.Fatalf("unexpected protocol: %#v", report.Protocol)
+	}
+	if len(report.Operations) == 0 || report.Operations[0] != "apply" {
+		t.Fatalf("operations are absent or unstable: %#v", report.Operations)
+	}
+	if report.Engine.Provenance != engine.ProvenanceUnverified {
+		t.Fatalf("engine self-asserted provenance trust: %#v", report.Engine)
+	}
+}
+
 func TestCreateCommandEmitsStructuredReconciliation(t *testing.T) {
 	repository := t.TempDir()
 	command := exec.Command("git", "init", "--quiet", repository)

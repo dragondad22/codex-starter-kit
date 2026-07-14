@@ -8,11 +8,11 @@ development feel coherent: standards, testing, security, compliance, documentati
 decisions, GitHub work, stakeholder communication, releases, and upgrades are coordinated
 behind a guided workflow and backed by evidence.
 
-> **Project status: Phase 1 engine slice.** Empty-repository create and seed verification
-> are implemented with initial source-runtime support on the tested native matrix. The
-> plugin, packaged releases, secret scanning, retrofit, upgrades, and broader policy and
-> release capabilities remain incomplete. Do not use this repository as a production
-> compliance control today.
+> **Project status: Phase 2 development slice.** Empty-repository create, seed
+> verification, and a skills-only plugin status tracer are implemented for development.
+> No verified packaged engine is published, and guided create/verify, secret scanning,
+> retrofit, upgrades, and broader policy/release capabilities remain incomplete. Do not
+> use this repository as a production compliance control today.
 
 ## What it will provide
 
@@ -41,10 +41,14 @@ Managed repository
 The lifecycle engine is the primary test and enforcement seam. The plugin is the
 preferred Codex experience; it is not the sole conformance authority.
 
-The current development CLI implements `inspect`, `create`, `plan`, `apply`, `status`, and
-seed `verify`.
+The current development CLI implements a read-only `capabilities` handshake plus
+`inspect`, `create`, `plan`, `apply`, `status`, and seed `verify`.
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
 contract, ownership model, and explicit limitations.
+
+The repository also contains the installable development status tracer. See the
+[plugin status guide](docs/product/PLUGIN_STATUS.md) before adding its local marketplace;
+installation adds guided instructions but does not install or verify the engine.
 
 ## Build and use the Phase 1 engine
 
@@ -72,6 +76,7 @@ The minimal direct flow is:
 ```text
 git init <repository>
 starter-kit inspect --repository <repository>
+starter-kit capabilities
 starter-kit create --repository <repository> --brief <approved-text> --approve-brief --confirm-owner-persona
 starter-kit apply --plan <create-plan.json> --plan-id <sha256-plan-id>
 starter-kit status --repository <repository>
@@ -96,6 +101,7 @@ runtime requirements, capability gaps, and evidence model.
 - [Lifecycle state machines](docs/architecture/LIFECYCLES.md)
 - [Policy-pack map](docs/architecture/POLICY_PACKS.md)
 - [Current support matrix](docs/architecture/SUPPORT_MATRIX.md)
+- [Plugin status tracer](docs/product/PLUGIN_STATUS.md)
 - [Implementation roadmap](docs/roadmap/IMPLEMENTATION_ROADMAP.md)
 - [Discovery and approved decisions](docs/discovery/CODEX_STARTER_KIT_REVIEW.md)
 - [Durable decision index](docs/decisions/INDEX.md)
