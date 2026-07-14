@@ -49,6 +49,13 @@ repositories were unchanged.
 Local Go remains unavailable; Go and native Linux/macOS/Windows evidence must pass in CI
 before merge, and unavailable local Go is not a pass.
 
+Draft PR #58 run `29298182066` tested source commit
+`b110b2f242f5788b2b9522cb834d48df44d2f2b1` with pinned Python 3.12 and Go 1.26.5.
+Linux, macOS, and Windows all passed the 27-test Python suite, documentation validation,
+`go test ./...`, and native evidence capture. Phase 1 native semantic equivalence and the
+aggregate required-check gate passed. Final-head checks triggered by this evidence update
+supersede that run when determining merge readiness.
+
 No verified packaged engine exists, so an ordinary development installation remains
 `degraded-guidance` and performs no verification through the plugin. The conditional
 qualified path and every explicit state are exercised by deterministic scenarios. Live
