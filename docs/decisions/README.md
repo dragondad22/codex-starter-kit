@@ -18,7 +18,7 @@ Every record contains:
 - stable `DEC-NNNN` identity and title;
 - `Accepted`, `Superseded`, or `Retired` status;
 - owner and decision date;
-- exactly one source D-item;
+- exactly one source: a discovery D-item or an approved issue-backed decision;
 - context, decision, consequences, and source sections;
 - replacement links when superseded.
 

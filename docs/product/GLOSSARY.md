@@ -53,6 +53,13 @@ It supplements repeatable qualification evidence but cannot be the sole basis fo
 release pass. A confirmed supported-contract failure remains blocking or requires a
 truthful approved limitation.
 
+### Capability handshake
+
+A non-mutating collection and evaluation of host, plugin, engine, repository, baseline,
+native-environment, approval, and authority facts for one requested workflow. It retains
+unknown and conflicting facts and selects a workflow capability mode; it does not install,
+upgrade, grant authority, or establish conformance.
+
 ### Conformance
 
 An evidence-backed result for an explicit scope, policy version, source revision, and
@@ -354,3 +361,14 @@ Do not use Status to express roadmap intent or readiness. Its states are:
 
 One independently executable implementation or operational slice with explicit scope,
 acceptance criteria, verification, dependencies, and completion evidence.
+
+### Workflow capability mode
+
+The evidence-backed boundary of what the Codex plugin may do for one requested workflow.
+Its values are `full`, `degraded-guidance`, `verification-only`, and `unsupported`.
+`full` permits the supported engine-backed workflow when every required capability and
+authority is established; `degraded-guidance` permits only guidance and fallback when
+known facts establish that narrower safe boundary; `verification-only` permits supported
+read-only status and verification but no mutation; and `unsupported` stops when required
+guarantees are unknown, conflicting, failed, or unavailable. A workflow capability mode
+is not a conformance result.

@@ -45,6 +45,14 @@
     quality baseline and the separation of engagement, assurance, and evidence ceremony.
 23. `evidence/ISSUE-23.md` — promotion, coverage, verification, and GitHub-state record for
     the 1.0.0 release-definition work.
+24. `decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md` — approved Phase 2
+    plugin shape, capability modes, compatibility evidence, distribution, offline, and
+    fallback contract.
+25. `research/CODEX_PLUGIN_COMPATIBILITY_EVALUATION.md` — bounded official-source and local
+    capability research, conflict record, recommendation provenance, and downstream
+    implications for DEC-0018.
+26. `evidence/ISSUE-50.md` — approval, promotion, verification, limitation, and GitHub-state
+    record for the Phase 2 compatibility/distribution decision.
 
 ## Document lifecycle
 

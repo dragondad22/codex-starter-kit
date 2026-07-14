@@ -117,6 +117,25 @@ redaction rules.
 | Codex plugin/skills | Adapter | Scenario/evaluation tests against engine calls and artifacts |
 | Release/publish/deploy tools | True external | Per-adapter mocks, sandboxes, and provider contract tests |
 
+### Codex plugin compatibility boundary
+
+[DEC-0018](../decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md)
+defines the Phase 2 adapter as a skills-only plugin distributed through a repository
+marketplace for development and an immutable Git-backed snapshot for qualification. It
+adds no MCP server, connector, hook, browser extension, scheduled task, or remote service.
+
+Every focused workflow performs a non-mutating capability handshake across the host,
+plugin, engine, managed-repository pins, baseline, native environment, approvals, and
+requested authority. The result is exactly `full`, `degraded-guidance`,
+`verification-only`, or `unsupported`. These are workflow capability states, not
+conformance results, and no state may reinterpret the engine's explicit evidence.
+
+Client versions are retained as evidence but do not establish compatibility alone. Codex
+CLI is the required development surface; desktop support requires native qualification;
+IDE plugin distribution remains `needs-review` while official documentation conflicts.
+Plugin, engine, repository, and policy versions remain independent, and direct engine use
+is always the fallback.
+
 ## Repository Contract
 
 Proposed logical contents; exact filenames require schema design:
