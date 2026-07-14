@@ -32,12 +32,12 @@ Public submission and publication remain Phase 6 work.
 
 ## Verification evidence
 
-Before internal review corrections, the implementation branch ran:
+Before and after internal review corrections, the implementation branch ran these
+available local checks:
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"
 python3 scripts/validate_docs.py
-go test ./...
 git diff --check
 ```
 
@@ -45,9 +45,10 @@ The Python suite passed 22 tests, documentation validation passed, and `git diff
 passed. After internal review corrections, the same applicable local checks again passed
 with 22 Python tests.
 
-The local IDE host did not expose `go` after reload. That is an explicit missing local
-verification capability, not a pass. Native CI and the completing pull request must run
-the required Go suite before this work completes.
+The required `go test ./...` command could not run because the local IDE host did not
+expose `go` after reload. That is an explicit missing local verification capability, not
+a pass. Native CI and the completing pull request must run the Go suite before this work
+completes.
 
 ## Limitations and downstream work
 
