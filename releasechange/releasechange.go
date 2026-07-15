@@ -179,10 +179,14 @@ func Check(repository string) (ValidationResult, error) {
 	if err != nil {
 		return ValidationResult{}, fmt.Errorf("read generated CHANGELOG.md: %w", err)
 	}
-	if string(actual) != expected {
+	if normalizeLineEndings(string(actual)) != normalizeLineEndings(expected) {
 		return ValidationResult{}, errors.New("generated CHANGELOG.md is stale; regenerate it with `starter-kit changes render --repository .`")
 	}
 	return result, nil
+}
+
+func normalizeLineEndings(content string) string {
+	return strings.ReplaceAll(content, "\r\n", "\n")
 }
 
 // Render returns a deterministic Markdown view of unreleased external changes. An empty

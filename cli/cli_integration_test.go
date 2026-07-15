@@ -410,6 +410,35 @@ func TestChangesCheckRejectsStaleGeneratedChangelog(t *testing.T) {
 	}
 }
 
+func TestChangesCheckAcceptsWindowsCheckoutLineEndings(t *testing.T) {
+	repository := t.TempDir()
+	writeReleaseFixture(t, repository, `{
+  "schema_version": 1,
+  "id": "issue-78-release-tracking",
+  "summary": "Compare generated views across native checkouts.",
+  "category": "fixed",
+  "audiences": ["developers"],
+  "components": ["release"],
+  "issues": [78],
+  "breaking": false,
+  "internal_only": false
+}`)
+	var rendered bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := cli.Run([]string{"changes", "render", "--repository", repository}, &rendered, &stderr); exitCode != 0 {
+		t.Fatalf("render failed: %s", stderr.String())
+	}
+	windowsCheckout := strings.ReplaceAll(rendered.String(), "\n", "\r\n")
+	if err := os.WriteFile(filepath.Join(repository, "CHANGELOG.md"), []byte(windowsCheckout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	stderr.Reset()
+	if exitCode := cli.Run([]string{"changes", "check", "--repository", repository}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Windows checkout should match generated view: exit=%d stderr=%q", exitCode, stderr.String())
+	}
+}
+
 func TestChangesValidateRejectsDuplicateRecordIdentity(t *testing.T) {
 	repository := t.TempDir()
 	writeReleaseFixture(t, repository, `{

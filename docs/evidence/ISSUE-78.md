@@ -36,6 +36,11 @@ CI validation counts, version skew, unsafe and duplicate IDs, trailing JSON, unk
 audiences, missing internal-only disposition, stale generated views, successful prepared
 archive creation, and refusal of a non-incrementing version without mutation.
 
+PR CI additionally exposed native checkout line-ending variance: Windows checked out the
+generated changelog with CRLF while the deterministic renderer emitted LF. The freshness
+check now normalizes CRLF only at the comparison boundary, retains strict content
+comparison, and has regression coverage alongside the stale-view negative path.
+
 Release preparation preflights all inputs, admits only named records, uses same-directory
 temporary files and backups for native replacement, and records originals in a durable
 recovery journal before mutation. The recovery command restores interrupted work. It
