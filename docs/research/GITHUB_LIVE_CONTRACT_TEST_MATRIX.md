@@ -39,38 +39,67 @@ approved target is qualified.
 
 ## Evidence vocabulary
 
-Every case has exactly one disposition; blank evidence is not a pass.
+Evidence mode and result are independent. A live request may fail, a deterministic case
+may need review, and an optional live target may be not configured. Every receipt records
+at least one required evidence mode and exactly one result; blank evidence is never a
+pass.
 
-| State | Meaning |
+| Evidence mode | Meaning |
 |---|---|
 | `memory` | Deterministic fake/fault evidence proves product logic, not GitHub behavior |
-| `live` | A retained sandbox receipt proves the exact identity, owner kind, visibility, plan, permission, endpoint, and API version |
+| `live` | A retained sandbox receipt exercises the exact identity, owner kind, visibility, plan, permission, endpoint, and API version |
 | `read-only` | A current non-mutating probe informs the plan but cannot qualify a mutation |
-| `not-applicable` | A recorded rule and facts prove the case irrelevant to the declared target |
-| `not-configured` | The optional target, identity, service, or feature was not provisioned |
-| `unsupported` | The platform or supported contract does not provide the route |
-| `needs-review` | Evidence is conflicting, stale, partial, ambiguous, or requires human/qualified disposition |
 
-The release qualification for a supported claim requires every `memory` and `live` row
-assigned to that claim. A read-only probe, documentation link, or successful broader token
-does not substitute for the live minimum-permission and one-less-permission cases.
+| Result | Meaning |
+|---|---|
+| `pass` | Required observations and postconditions were proved by the required mode |
+| `fail` | An exercised required behavior or postcondition did not hold |
+| `not-applicable` | A recorded rule and target facts prove the case irrelevant |
+| `not-configured` | The required target, identity, service, fixture, or feature was not provisioned |
+| `unsupported` | An authoritative capability check proves the declared platform route is unavailable |
+| `needs-review` | Evidence is conflicting, stale, partial, ambiguous, or requires qualified disposition |
+| `accepted-exception` | A named authority accepts a result that remains `fail`, `not-configured`, or `needs-review`; the underlying result and expiry remain visible |
 
-## Identity and permission manifest
+All rows below currently have result `not-configured`: this issue designed the matrix but
+did not provision or execute it. The read-only snapshot is research input, not a
+qualification result. Release qualification for a supported claim requires `pass` for
+every required `memory` and `live` mode assigned to it. A documentation link, read-only
+probe, accepted exception, or successful broader token does not substitute for a required
+minimum-permission or one-less-permission pass.
 
-The production endpoint inventory generates the final manifest. The sandbox creates a
-token for one case at a time; it does not maintain one permanently broad credential.
+## Identity, permission, and endpoint manifest
 
-| Capability | App/user authority to qualify | Required negative case |
+The base manifest is fixed rather than inferred at runtime. Each case mints or selects the
+narrow identity named below. Seeder and optional webhook authority are outside Work
+Manager authority and require their own approved operation. An endpoint absent from the
+manifest must not be called; adding one invalidates the manifest and its least-authority
+evidence.
+
+| Identity | Exact positive authority | Required one-less or denied case |
 |---|---|---|
-| Repository and actor handshake | Metadata read; explicit actor/App and installation; selected repository; immutable owner/repository ID | Wrong actor, wrong installation/account, unselected repository, expired/revoked/suspended token |
-| Issue, label, hierarchy, and dependency reconciliation | Repository `Issues: write` | `Issues: read` or omitted; verify denial and no state change |
-| Project read/reconciliation in O | Organization `Projects: read`/`write`; repository Issues/PR read only when the operation needs them | Repository Project permission alone, Projects read-only for mutation, stale Project/field/option IDs |
-| Project reconciliation in P | Explicit user token with classic `project` scope; add repository scope only as required by target visibility/effects | Fine-grained PAT, App user token, and App installation token remain unsupported for user-owned Project item endpoints unless GitHub changes and the exact case passes |
-| Ruleset inspection/application | Repository `Administration: read`/`write`; application is a separate high-authority approved effect | Administration read-only/omitted; disabled versus active rule; no bypass inference |
-| PR/review/check observation | Pull requests, Checks, commit statuses, and Actions read only for the endpoint inventory | Missing one required read permission; ruleset/check success must not be treated as proof of reviewer capability or independence |
-| PR metadata mutation, if included | `Pull requests: write` only | No Contents, Workflows, merge, or bypass authority inferred |
-| Repository webhook configuration/redelivery, if enabled | `Webhooks: write` as a separately approved optional capability | Built-in `GITHUB_TOKEN` denial; missing/invalid signature; duplicate delivery GUID |
-| Actions job | Explicit job `permissions`; normally `contents: read` plus the one repository-local write under test | Project access and another-repository access denied; no recursive-workflow assumption |
+| O reconciler App installation | Selected O repository; repository Metadata read, Issues write, Pull requests read, Checks read, Actions read, Commit statuses read; organization Projects write | Omit Issues for issue mutation; Projects read for Project mutation; unselected repository; wrong installation; expired/revoked/suspended installation token |
+| O rules inspector | Selected O repository; Metadata and Administration read | Administration omitted cannot inspect |
+| O rules applier | One-operation selected-repository token; Metadata read and Administration write | Inspector token cannot mutate; token is destroyed after disable/delete cleanup |
+| P reconciler classic user token | Expected personal actor; classic scopes exactly `public_repo` and `project` | Separately omit `public_repo` and `project`; fine-grained, App-user, and App-installation tokens must be rejected for the documented user-owned Project item route |
+| A issue job | `contents: read`, `issues: write`, every other job permission `none` | Project and other-repository access denied; a second job with `issues: read` cannot mutate |
+| A observation job | `contents: read`, `pull-requests: read`, `checks: read`, `actions: read`, every other job permission `none` | No issue, Project, ruleset, merge, contents-write, or workflow-write authority |
+| Fixture seeder | Separate approved user/App identity with Metadata read, Contents write, Pull requests write, Actions write, and Issues write only in the sandbox | Seeder credential is unavailable to Work Manager and contract jobs |
+| Optional webhook manager | Separate one-operation identity with Metadata read and Webhooks write | Omitted by default; built-in `GITHUB_TOKEN` cannot configure it |
+
+| Endpoint family | Allowed operations |
+|---|---|
+| Handshake | REST actor, repository, installation/repositories, rate-limit, API-version metadata; GraphQL viewer/rateLimit and repository/Project immutable IDs |
+| Issues | REST labels and issue create/read/update; native sub-issue and dependency create/read/delete endpoints |
+| Projects | Versioned REST Project fields, items, and views for O/P owner routes; GraphQL Project V2 item/field mutations only where the REST inventory lacks the required operation |
+| Pull requests and gates | REST/GraphQL read of PR, reviews, review requests, checks, statuses, workflows/runs, branch and merge metadata |
+| Rules | REST repository ruleset read/create/update/delete against fixture branches only |
+| Webhooks | REST repository webhook create/read/delivery/redelivery/delete only when `GH-WEB-02` is separately approved |
+
+The manifest forbids merge, branch protection bypass, repository administration other
+than isolated ruleset operations, repository deletion, member administration, Secrets,
+and Actions variable/secret access. Project views and built-in auto-add/close workflows
+are preprovisioned by the fixture owner because the documented public API surface does
+not establish a complete workflow-configuration contract.
 
 GitHub publishes a per-endpoint App permission table and returns
 `X-Accepted-GitHub-Permissions` for REST troubleshooting. GraphQL permission behavior must
@@ -97,56 +126,106 @@ an explicit qualification input even while REST is pinned.
 
 ## Contract matrix
 
+`Current result` is `not-configured` for every row because no qualification environment
+was provisioned. The required-evidence column describes what a later run must produce;
+it is not a claim that the behavior has already been observed.
+
 ### Identity, capability, and version
 
-| ID | Claim and action | Target/evidence | Negative or stopping condition |
-|---|---|---|---|
-| `GH-ID-01` | Handshake records host, REST/GraphQL versions, mode, immutable actor/install/account, repository/Project owner kind and IDs, granted versus required permissions, feature/plan limits, and budgets | O/P/A `live`; F schema validation | Any mismatch is `unsupported` or `needs-review`; never switch credentials automatically |
-| `GH-ID-02` | App installation token expires/refreshes and remains selected-repository scoped | O `live` | Expired, revoked, suspended, or uninstalled App retains desired intent and reports exact recovery; no retry loop |
-| `GH-ID-03` | User token authenticates the expected API login and accesses only the accepted personal route | P `live` | Wrong active account, expired/revoked token, fine-grained/App user-Project rejection |
-| `GH-ID-04` | Actions token is unique to the job, repository-local, and least-permission | A `live` | Project and cross-repository requests denied; token-created workflow effects follow documented trigger limitations |
-| `GH-ID-05` | REST sends `X-GitHub-Api-Version: 2026-03-10`; adapter reports supported range | O/P/A `live`; version list `read-only` | Unsupported version returns explicit version failure; no unversioned fallback |
+| ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
+|---|---|---|---|---|
+| `GH-ID-01` | Handshake records host, REST/GraphQL versions, mode, immutable actor/install/account, repository/Project owner kind and IDs, granted versus required permissions, feature/plan limits, and budgets | O/P/A `live`; F `memory` schema validation | `not-configured` | A mismatch is `fail`, `unsupported` only after an authoritative capability check, or `needs-review` if ambiguous; never switch credentials automatically |
+| `GH-ID-02` | App installation token expires/refreshes and remains selected-repository scoped | O `live` | `not-configured` | Expired, revoked, suspended, or uninstalled App retains desired intent and reports exact recovery; no retry loop |
+| `GH-ID-03` | User token authenticates the expected API login and accesses only the accepted personal route | P `live` | `not-configured` | Wrong active account, expired/revoked token, fine-grained/App user-Project rejection |
+| `GH-ID-04` | Actions token is unique to the job, repository-local, and least-permission | A `live` | `not-configured` | Project and cross-repository requests denied; token-created workflow effects follow documented trigger limitations |
+| `GH-ID-05` | REST sends `X-GitHub-Api-Version: 2026-03-10`; adapter reports supported range | O/P/A `live`; supported-version inventory `read-only` | `not-configured` | Unsupported version returns explicit version failure; no unversioned fallback |
+
+### Bootstrap, issue rendering, readiness, and lifecycle projection
+
+| ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
+|---|---|---|---|---|
+| `GH-BOOT-01` | Reconcile the exact managed label vocabulary, create a missing managed label, correct managed color/description drift, and preserve an unrecognized human label | O/P `live`; F `memory` | `not-configured` | No deletion or rewrite of unrecognized labels; collision or permission denial produces no partial bootstrap pass |
+| `GH-BOOT-02` | Inspect exact Project fields/options/views, recreate one isolated field/option, and refresh immutable configuration IDs | O/P `live`; F `memory` | `not-configured` | Missing or duplicate field/view, wrong type, or stale ID invalidates the configuration and any old plan before effects |
+| `GH-BOOT-03` | Prove the preprovisioned auto-add filter and close-to-Done workflow with marked and unmarked issues | O/P `live` | `not-configured` | Existing matching items are not assumed to backfill; an unmarked issue must not be added; workflow configuration remains human-owned |
+| `GH-ISSUE-01` | Render and parse the two-layer issue contract: concise human summary plus validated machine details and governed source references | F `memory`; O/P `live` round trip | `not-configured` | Missing summary, invalid/missing details, unknown schema, or unresolved source reference is `fail` and blocks mutation/readiness |
+| `GH-READY-01` | Refresh readiness from current dependencies, governed source, policy facts, and Project state before plan and apply | F `memory`; O/P `live` observations | `not-configured` | Stale/missing source, facts, dependency, Project configuration, or accepted plan returns `Needs refinement`/new plan rather than guessing |
+| `GH-QRES-01` | Complete question and research fixtures only after their required answer/output is promoted to its governed record and linked from the issue | F `memory`; O/P `live` issue/Project projection | `not-configured` | Issue prose is not authority; missing promotion, validation, source link, or qualified acceptance prevents completion |
+| `GH-HORIZON-01` | Intake a feature, assign Now/Next/Later Horizon, inherit Phase to children, and promote Horizon without conflating Status or Readiness | F `memory`; O/P `live` Project projection | `not-configured` | Child Phase conflict, invalid promotion, or Status/Readiness used as Horizon is `fail` |
 
 ### Issues, relationships, Project, and replay
 
-| ID | Claim and action | Target/evidence | Negative or stopping condition |
-|---|---|---|---|
-| `GH-WORK-01` | Create one marked issue, re-observe immutable ID, replay unchanged desired state | O and P `live`; F `memory` | Exactly one issue exists; marker collision or multiple matches is `needs-review` |
-| `GH-WORK-02` | Update title/body/labels, close/reopen, and re-run semantic comparison | O and P `live`; F `memory` | Formatting/order normalization does not cause loops; omitted permission changes nothing |
-| `GH-WORK-03` | Create parent/child and blocker/dependent relationships, then remove/reapply | O and P `live`; F derives lifecycle | Native relationships match stable IDs; missing blocker prevents Ready; completing final blocker promotes Ready but not Status Next |
-| `GH-WORK-04` | Add issue/PR to Project, update Status/Readiness and one ordinary field by immutable IDs | O and P `live` with their distinct identities | Name-only lookup is rejected; read-only permission and wrong owner kind are denied |
-| `GH-WORK-05` | Recreate one Project option/field in an isolated fixture and attempt an old plan | O and P `live`; F `memory` | Old field/option/configuration identity invalidates before effects and produces a new plan |
-| `GH-WORK-06` | Inject response loss after a successful live issue create; reconcile by stable marker | O and P `live` through faulting client shim; F `memory` | No blind create retry; zero or multiple lookup matches remain ambiguous |
-| `GH-WORK-07` | Apply a multi-effect plan with one accepted effect followed by injected failure | F `memory`, then O/P live postcondition reads | Completed receipt/observation remains; next plan contains only remaining semantic delta |
-| `GH-WORK-08` | Close a linked work item and reconcile item, parent, and direct dependents | O and P `live`; F `memory` | Reproduces the #15 class and proves closed→Done plus parent/dependency rules |
-| `GH-WORK-09` | Complete question and research fixtures | F `memory`; O/P `live` issue/Project projection | Cannot close without the required promoted-record/durable-output route; issue text never becomes authority |
+| ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
+|---|---|---|---|---|
+| `GH-WORK-01` | Create one marked issue, re-observe immutable ID, replay unchanged desired state | O/P `live`; F `memory` | `not-configured` | Exactly one issue exists; marker collision or multiple matches is `needs-review` |
+| `GH-WORK-02` | Update title/body/labels, close/reopen, and re-run semantic comparison | O/P `live`; F `memory` | `not-configured` | Formatting/order normalization does not cause loops; omitted permission changes nothing |
+| `GH-WORK-03` | Create parent/child and blocker/dependent relationships, then remove/reapply | O/P `live`; F `memory` lifecycle derivation | `not-configured` | Native relationships match stable IDs; missing blocker prevents Ready; completing final blocker promotes Ready but not Status Next |
+| `GH-WORK-04` | Add issue/PR to Project, update Status/Readiness and one ordinary field by immutable IDs | O/P `live` with distinct identities | `not-configured` | Name-only lookup is rejected; read-only permission and wrong owner kind are denied |
+| `GH-WORK-05` | Attempt an accepted plan after isolated Project field/option recreation | O/P `live`; F `memory` | `not-configured` | Old field/option/configuration identity invalidates before effects and produces a new plan |
+| `GH-WORK-06` | Inject response loss after a successful live issue create; reconcile by stable marker | O/P `live` through faulting client shim; F `memory` | `not-configured` | No blind create retry; zero or multiple lookup matches remain ambiguous |
+| `GH-WORK-07` | Apply a multi-effect plan with one accepted effect followed by injected failure | F `memory`; O/P `live` postcondition reads | `not-configured` | Completed receipt/observation remains; next plan contains only remaining semantic delta |
+| `GH-WORK-08` | Close a linked work item and reconcile item, parent, and direct dependents | O/P `live`; F `memory` | `not-configured` | Reproduces the #15 class and proves closed-to-Done plus parent/dependency rules |
 
 ### PR, checks, review, and rules
 
-| ID | Claim and action | Target/evidence | Negative or stopping condition |
-|---|---|---|---|
-| `GH-PR-01` | Observe pre-created branch/PR through draft, ready, checks pending/pass/fail, changes requested, and merged/closed states | O and P `live`; branch content is fixture setup outside default Work Manager authority | Missing or stale check/review evidence blocks the modeled gate; head SHA change invalidates review evidence |
-| `GH-PR-02` | Record implementation, checks, distinct change review, product outcome approval, and stronger assurance as separate roles/results | F `memory`; O/P live GitHub observations | A ruleset, check, implementer self-review, or broad approval is not relabeled as a capable/distinct/qualified review |
-| `GH-RULE-01` | Read a disabled fixture ruleset, separately approve activation, observe enforcement on a fixture branch, then disable/delete | O `live`; P `live` public/free | Read permission cannot mutate; no operational branch target; bypass is tested only if separately approved |
-| `GH-RULE-02` | Compare effective layered rule observation with desired repository rule | O/P `live` | Plan/visibility feature unavailable becomes `not-configured`/`unsupported`, not a paid-upgrade assumption |
+| ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
+|---|---|---|---|---|
+| `GH-BRANCH-01` | Accept only an issue-named fixture branch whose PR carries the stable issue link and expected head identity | F `memory`; O/P `live` | `not-configured` | Unlinked, ambiguously linked, wrong-issue, wrong-base, or stale-head branch cannot satisfy implementation |
+| `GH-PR-01` | Observe seeded PRs through draft, ready, checks pending/pass/fail, changes requested, and merged/closed states | O/P `live`; branch content is seeder authority | `not-configured` | Missing/stale check or review evidence blocks the gate; head SHA change invalidates review evidence |
+| `GH-PR-02` | Record implementation, checks, distinct change review, product outcome approval, and stronger assurance as separate roles/results | F `memory`; O/P `live` observations | `not-configured` | A ruleset, check, implementer self-review, or broad approval is not relabeled as capable/distinct/qualified review |
+| `GH-PR-03` | On a qualifying squash merge, record issue, source, PR, head, merge commit, checks/reviews, and completion receipt in durable memory | F `memory`; O/P `live` | `not-configured` | Draft, closed-unmerged, merge/rebase method, changed head, or absent governed source cannot complete work |
+| `GH-RULE-01` | Read a disabled fixture ruleset, separately approve activation, observe enforcement on a fixture branch, then disable/delete | O/P public/free `live` | `not-configured` | Read permission cannot mutate; no operational branch target; bypass is not tested |
+| `GH-RULE-02` | Compare effective layered rule observation with desired repository rule | O/P `live` | `not-configured` | Unavailable plan/visibility feature yields `unsupported` only after capability proof, otherwise `not-configured`; never assume a paid upgrade |
 
 ### Transport, rate, webhook, offline, and recovery
 
-| ID | Claim and action | Target/evidence | Negative or stopping condition |
-|---|---|---|---|
-| `GH-TRANS-01` | Follow REST `Link` and GraphQL cursors with `first`/`last` 1–100; preserve immutable IDs | O/P `live` with enough isolated fixtures; F boundary cases | Missing page or duplicate cursor fails; partial GraphQL `data` plus required-field `errors` is not success |
-| `GH-TRANS-02` | Preserve 401, 403, 404-for-hidden-resource, validation, and GraphQL error distinctions | O/P/A one-less/revoked cases `live`; other responses F `memory` | No credential broadening or guessing that a 404 proves absence |
-| `GH-TRANS-03` | Record primary/GraphQL budgets and reset headers from ordinary requests | O/P/A `live` | Do **not** exhaust live limits; a point-in-time budget is not a rate-recovery pass |
-| `GH-TRANS-04` | Inject primary exhaustion, secondary limit with/without `retry-after`, reset, exponential delay, and maximum attempts | F `memory` | Serialize mutations, normally pause ≥1 second, stop at bound; never intentionally provoke GitHub limits or integration bans |
-| `GH-WEB-01` | Validate official HMAC-SHA-256 vectors, invalid/missing signature, GUID dedupe, and replay hint | F `memory` required | Webhook remains optional `not-configured` live; payload is a hint and always triggers authoritative read |
-| `GH-WEB-02` | If a receiver is separately approved, observe signed delivery, duplicate redelivery, failure, and recent-delivery lookup | O optional `live` | GitHub does not auto-redeliver failures and exposes recent deliveries for only three days; polling/full reconciliation remains required |
-| `GH-OFF-01` | Queue credential-free desired intent while offline, expire/stale it, reconnect, reacquire credential, repeat handshake/read/plan | F `memory`; O/P reconnect handshake `live` | No raw HTTP, token, inferred current readiness, or automatic identity switch in the queue |
+| ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
+|---|---|---|---|---|
+| `GH-TRANS-01` | Follow REST `Link` and GraphQL cursors with `per_page`/`first` set to 1 across three marked objects; preserve immutable IDs | O/P `live`; F `memory` boundary cases | `not-configured` | Missing page or duplicate cursor fails; partial GraphQL `data` plus required-field `errors` is not success |
+| `GH-TRANS-02` | Preserve 401, 403, 404-for-hidden-resource, validation, and GraphQL error distinctions | O/P/A one-less/revoked `live`; F `memory` other responses | `not-configured` | No credential broadening or guessing that a 404 proves absence |
+| `GH-TRANS-03` | Record primary/GraphQL budgets and reset headers from ordinary requests | O/P/A `live` | `not-configured` | Do not exhaust live limits; a point-in-time budget is not a rate-recovery pass |
+| `GH-TRANS-04` | Inject primary exhaustion, secondary limit with/without `retry-after`, reset, exponential delay, and maximum attempts | F `memory` | `not-configured` | Serialize mutations, normally pause at least one second, stop at bound; never intentionally provoke live limits or bans |
+| `GH-WEB-01` | Validate official HMAC-SHA-256 vectors, invalid/missing signature, GUID dedupe, and replay hint | F `memory` | `not-configured` | Payload is a hint and always triggers authoritative read; no receiver is required |
+| `GH-WEB-02` | After separate receiver approval, observe signed delivery, duplicate redelivery, failure, and recent-delivery lookup | O `live` | `not-configured` | GitHub does not auto-redeliver failures and exposes recent deliveries for only three days; polling/full reconciliation remains required |
+| `GH-OFF-01` | Queue credential-free desired intent while offline, expire/stale it, reconnect, reacquire credential, repeat handshake/read/plan | F `memory`; O/P reconnect `live` | `not-configured` | No raw HTTP, token, inferred current readiness, or automatic identity switch in the queue |
+
+## Phase 3 coverage ledger
+
+| Phase 3 outcome | Contract cases |
+|---|---|
+| Label vocabulary bootstrap | `GH-BOOT-01` |
+| Project fields, options, execution views, and roadmap view | `GH-BOOT-02` |
+| Auto-add and closed-to-Done automation | `GH-BOOT-03`, `GH-WORK-08` |
+| Two-layer issue rendering and schema validation | `GH-ISSUE-01` |
+| Hierarchy, dependencies, and stale-reference readiness refresh | `GH-WORK-03`, `GH-READY-01` |
+| Question/research completion and promotion | `GH-QRES-01` |
+| Horizon intake/promotion and inherited Phase context | `GH-HORIZON-01` |
+| Issue-linked branch and PR lifecycle | `GH-BRANCH-01`, `GH-PR-01` |
+| Distinct review roles and stale-head invalidation | `GH-PR-02` |
+| Squash completion memory | `GH-PR-03` |
+| Ruleset inspection and separately approved application | `GH-RULE-01`, `GH-RULE-02` |
+| Authentication, pagination, rate, replay, offline, and recovery | `GH-ID-01`–`GH-ID-05`, `GH-WORK-01`–`GH-WORK-07`, `GH-TRANS-01`–`GH-OFF-01` |
 
 ## Fixture and isolation contract
 
-- Sandbox repository and Project names start with `codex-starter-kit-sandbox`; every run
-  has an immutable run ID and every created object has a stable non-secret
-  `starter-kit-contract:<run-id>:<case-id>` marker.
+- Provision exactly one public O repository with one organization-owned Project and one
+  public P repository with one user-owned Project. Names start with
+  `codex-starter-kit-sandbox`; every run has an immutable run ID and every created object
+  has a stable non-secret `starter-kit-contract:<run-id>:<case-id>` marker.
+- Each route begins with these exact managed fixtures: labels `type:task`,
+  `ready-for-agent`, and `contract-run`; single-select Project fields Status, Readiness,
+  Horizon, and Phase; table view `Execution` and roadmap view `Horizon`; one auto-add
+  workflow matching the run marker; and one closed-item workflow targeting Status Done.
+  The run records immutable field, option, view, and workflow/configuration identities.
+- The seeder creates exactly nine marked issues per route: parent, child, blocker,
+  dependent, question, research, pagination-a, pagination-b, and pagination-c. It creates
+  three fixture branches and two PRs: one draft/success-path PR and one failing/stale-head
+  PR. One workflow supplies deterministic pending/pass/fail checks. One disabled ruleset
+  targets only `contract/<run-id>/**`; its temporary activation and deletion are isolated
+  `GH-RULE-01` effects. Create/replay and lost-response cases may create one additional
+  issue each and must close them during case cleanup.
+- Project workflow configuration is asserted, not silently created by the adapter. If the
+  named views or workflows cannot be provisioned exactly, their cases remain
+  `not-configured`; another mechanism is not substituted.
 - No operational repository, Project, branch, ruleset, App, credential, webhook, or issue
   is a target. The adapter rejects target IDs not present in the signed/approved run
   manifest.
@@ -170,7 +249,8 @@ engine, desired-state, and API versions; timestamp; target host/owner kind/visib
 and immutable IDs; credential mode and verified actor/installation (never the token);
 required/observed permissions; endpoint operation and semantic request digest; redacted
 status/error/rate headers; before/after IDs and normalized digests; effect attempts;
-cleanup result; disposition; limitations; and linked raw-evidence digest.
+  cleanup result; required evidence mode; result and any accepted-exception authority,
+  reason, and expiry; limitations; and linked raw-evidence digest.
 
 Durable repository evidence keeps the matrix, concise run summary, limitations, and
 content-addressed receipt digests. Proposed raw Actions artifacts/logs retain for 30 days,
@@ -243,8 +323,11 @@ the broader claim until it is refreshed.
 - [Choosing permissions for a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app)
 - [Authenticating as a GitHub App installation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)
 - [Project item REST endpoints](https://docs.github.com/en/rest/projects/items)
+- [Project view REST endpoints](https://docs.github.com/en/rest/projects/views)
 - [Using the API to manage Projects](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects)
 - [Automating Projects using Actions](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/automating-projects-using-actions)
+- [Adding items automatically](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/adding-items-automatically)
+- [Using built-in Project automations](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-built-in-automations)
 - [`GITHUB_TOKEN`](https://docs.github.com/en/actions/concepts/security/github_token)
 - [Using `GITHUB_TOKEN` in workflows](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication)
 - [REST API best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)

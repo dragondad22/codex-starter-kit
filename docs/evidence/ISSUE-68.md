@@ -12,9 +12,13 @@ permission changes, mutating endpoints, paid services, and adapter implementatio
 
 The durable output is
 [`GITHUB_LIVE_CONTRACT_TEST_MATRIX.md`](../research/GITHUB_LIVE_CONTRACT_TEST_MATRIX.md).
-It allocates the already-approved authentication and Work Manager contracts between live,
-in-memory, read-only, not-applicable, not-configured, unsupported, and needs-review
-evidence. It does not authorize provisioning or silently establish a product decision.
+It allocates the already-approved authentication and Work Manager contracts across
+independent evidence modes (`live`, `memory`, and `read-only`) and explicit results
+(`pass`, `fail`, `not-applicable`, `not-configured`, `unsupported`, `needs-review`, and
+governed accepted exceptions). Every qualification case currently remains
+`not-configured`; the read-only observations are research inputs, not qualification
+passes. The matrix does not authorize provisioning or silently establish a product
+decision.
 
 ## Result
 
@@ -31,6 +35,13 @@ The smallest honest qualification topology requires:
 The base route requires no paid GitHub feature and no live webhook receiver. Private,
 paid-plan, larger-runner, hosted-webhook, GitHub Enterprise Server, and App-based
 user-owned Project claims remain explicitly unqualified.
+
+The final matrix fixes the positive and one-less identity permissions, endpoint
+allowlist, and per-route fixture counts. Its Phase 3 coverage ledger includes label and
+Project bootstrap, views and built-in workflows, two-layer issue validation, stale
+readiness, hierarchy/dependencies, question/research promotion, Horizon and Phase,
+issue-linked branches, PR gates and distinct review, squash completion memory, rules,
+and transport/recovery behavior.
 
 ## Safety, cost, and provisioning disposition
 

@@ -36,7 +36,6 @@ removes one dependency from #64, which remains `Backlog` / `Blocked` by #63.
 
 Blocked by: None
 Type: Research
-GitHub work item: [#68](https://github.com/dragondad22/codex-starter-kit/issues/68)
 GitHub work item: [#63](https://github.com/dragondad22/codex-starter-kit/issues/63)
 
 ### Question
@@ -123,6 +122,7 @@ not compatibility promises.
 
 Blocked by: None
 Type: Research
+GitHub work item: [#68](https://github.com/dragondad22/codex-starter-kit/issues/68)
 
 ### Question
 
