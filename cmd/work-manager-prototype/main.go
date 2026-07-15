@@ -49,6 +49,8 @@ var actions = map[string]workmanager.Action{
 	"m": workmanager.MigrateFieldOption,
 	"g": workmanager.AcceptMigration,
 	"c": workmanager.CompleteBlocker,
+	"s": workmanager.ChangeSource,
+	"t": workmanager.ResetRate,
 }
 
 func render(state workmanager.State) {
@@ -61,5 +63,6 @@ func render(state workmanager.State) {
 	fmt.Println("\n\x1b[1mActions\x1b[0m")
 	fmt.Println("[p] plan  [a] apply next  [l] lose create response  [u] lookup ambiguous marker")
 	fmt.Println("[r] rate limit  [o] offline  [n] reconnect  [h] refresh handshake")
-	fmt.Println("[m] migrate option  [g] accept migration  [c] complete #64  [x] reset  [q] quit")
+	fmt.Println("[m] migrate option  [g] accept migration  [s] change desired source")
+	fmt.Println("[c] complete #64  [t] reset rate window  [x] reset prototype  [q] quit")
 }

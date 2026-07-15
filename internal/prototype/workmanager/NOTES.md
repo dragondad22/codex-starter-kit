@@ -27,16 +27,20 @@ credentials, network calls, filesystem operations, or GitHub mutations.
 2. Continue applying and planning until the `future:sandbox-matrix` create is first,
    then press `l`, `u`, `p`. A lost create response becomes `ambiguous`; marker lookup
    discovers one object and re-planning does not create a duplicate.
-3. Press `p`, `a`, `p`, `r`. The completed effect stays observed while the rate-limited
-   remainder becomes credential-free desired intent. Press `h`, `p` to plan only the
-   remaining delta.
-4. Press `p`, `m`, `p`. A changed option ID invalidates the plan. Press `g`, `h`, `p` to
+3. Press `p`, `a`, `p`, `r`, `h`, `p`, `r`, `h`, `p`. The completed effect stays
+   observed while the rate-limited remainder becomes credential-free desired intent.
+   The second bounded attempt exhausts the retry allowance and blocks another plan until
+   `t`, `h`, `p` observes a reset and repeats the handshake.
+4. Press `p`, `m`, `a`. A changed option ID invalidates the retained plan before its
+   effect. Press `g`, `h`, `p` to
    show that only a new Work Manager input revision—not the adapter—accepts migrated IDs.
 5. Press `o`, `p`, `n`, `p`, `h`, `p`. Offline state queues intent rather than raw HTTP;
    reconnect cannot apply until identity, capability, and preconditions are refreshed.
 6. Press `c`, `p`. Completing blocker #64 promotes the sandbox ticket from `Blocked` to
    `Ready`, but leaves Status `Backlog` until it is explicitly selected. Parent #4 stays
    `In progress` while children remain.
+7. Press `p`, `s`, `a`. A changed governed source revision invalidates the retained plan
+   before any effect.
 
 The seed also keeps #16's promoted decision record separate from its closed issue and
 models #46's Phase as inherited parent context rather than copying the field to the task.
@@ -69,7 +73,7 @@ never credentials or transport requests.
 ## Delete or absorb
 
 Delete the terminal command and this entire prototype package after the production Work
-Manager contract and in-memory adapter absorb the validated boundary. Do not preserve the
+Manager contract and in-memory adapter absorb the prototype-supported boundary. Do not preserve the
 prototype's seed IDs, terse error strings, synthetic revision scheme, or absence of real
 schema validation/tests. Production work still needs schema design, durable state and
 evidence storage, expiry, pagination, GraphQL partial-error handling, permission manifests,

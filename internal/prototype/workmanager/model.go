@@ -42,6 +42,7 @@ type DesiredWorkItem struct {
 type DesiredIntent struct {
 	SchemaVersion  int                   `json:"schema_version"`
 	SourceRevision string                `json:"source_revision"`
+	InputDigests   map[string]string     `json:"input_digests"`
 	OperationID    string                `json:"operation_id"`
 	Credential     CredentialExpectation `json:"credential"`
 	Target         Target                `json:"target"`
@@ -49,24 +50,43 @@ type DesiredIntent struct {
 }
 
 type Capability struct {
-	Online                bool     `json:"online"`
-	Fresh                 bool     `json:"fresh"`
-	Mode                  string   `json:"mode"`
-	Actor                 string   `json:"actor"`
-	Permissions           []string `json:"permissions"`
-	RESTRemaining         int      `json:"rest_remaining"`
-	GraphQLRemaining      int      `json:"graphql_remaining"`
-	ConfigurationRevision string   `json:"configuration_revision"`
+	Online                bool      `json:"online"`
+	Fresh                 bool      `json:"fresh"`
+	Mode                  string    `json:"mode"`
+	Actor                 string    `json:"actor"`
+	Permissions           []string  `json:"permissions"`
+	RESTRemaining         int       `json:"rest_remaining"`
+	GraphQLRemaining      int       `json:"graphql_remaining"`
+	ConfigurationRevision string    `json:"configuration_revision"`
+	ObservedAt            string    `json:"observed_at"`
+	Rate                  RateState `json:"rate"`
+}
+
+type RateState struct {
+	Resource          string `json:"resource"`
+	Limit             int    `json:"limit"`
+	Used              int    `json:"used"`
+	Remaining         int    `json:"remaining"`
+	ResetAt           string `json:"reset_at"`
+	RetryAfterSeconds int    `json:"retry_after_seconds"`
+	Attempt           int    `json:"attempt"`
+	MaxAttempts       int    `json:"max_attempts"`
+	Disposition       string `json:"disposition"`
 }
 
 type ObservedWorkItem struct {
-	ManagedID       string `json:"managed_id"`
-	IssueNodeID     string `json:"issue_node_id"`
-	ProjectItemID   string `json:"project_item_id"`
-	Title           string `json:"title"`
-	ReadinessOption string `json:"readiness_option_id"`
-	StatusOption    string `json:"status_option_id"`
-	Closed          bool   `json:"closed"`
+	ManagedID       string              `json:"managed_id"`
+	IssueNodeID     string              `json:"issue_node_id"`
+	ProjectItemID   string              `json:"project_item_id"`
+	Title           string              `json:"title"`
+	ReadinessOption string              `json:"readiness_option_id"`
+	StatusOption    string              `json:"status_option_id"`
+	ParentManagedID string              `json:"parent_managed_id,omitempty"`
+	BlockedBy       []string            `json:"blocked_by,omitempty"`
+	Phase           string              `json:"phase,omitempty"`
+	PromotionRecord string              `json:"promotion_record,omitempty"`
+	Review          []ReviewRequirement `json:"review,omitempty"`
+	Closed          bool                `json:"closed"`
 }
 
 type Observation struct {
@@ -81,33 +101,59 @@ type Observation struct {
 }
 
 type Effect struct {
-	ID              string `json:"id"`
-	Kind            string `json:"kind"`
-	ManagedID       string `json:"managed_id"`
-	Marker          string `json:"marker,omitempty"`
-	Title           string `json:"title,omitempty"`
-	ReadinessOption string `json:"readiness_option_id,omitempty"`
-	StatusOption    string `json:"status_option_id,omitempty"`
-	Closed          *bool  `json:"closed,omitempty"`
+	ID              string              `json:"id"`
+	Kind            string              `json:"kind"`
+	ManagedID       string              `json:"managed_id"`
+	Marker          string              `json:"marker,omitempty"`
+	Title           string              `json:"title,omitempty"`
+	ReadinessOption string              `json:"readiness_option_id,omitempty"`
+	StatusOption    string              `json:"status_option_id,omitempty"`
+	ParentManagedID string              `json:"parent_managed_id,omitempty"`
+	BlockedBy       []string            `json:"blocked_by,omitempty"`
+	Phase           string              `json:"phase,omitempty"`
+	PromotionRecord string              `json:"promotion_record,omitempty"`
+	Review          []ReviewRequirement `json:"review,omitempty"`
+	Closed          *bool               `json:"closed,omitempty"`
 }
 
 type Plan struct {
-	SchemaVersion         int      `json:"schema_version"`
-	ID                    string   `json:"id"`
-	OperationID           string   `json:"operation_id"`
-	SourceRevision        string   `json:"source_revision"`
-	ObservationRevision   string   `json:"observation_revision"`
-	ConfigurationRevision string   `json:"configuration_revision"`
-	Preconditions         []string `json:"preconditions"`
-	Effects               []Effect `json:"effects"`
+	SchemaVersion         int               `json:"schema_version"`
+	ID                    string            `json:"id"`
+	OperationID           string            `json:"operation_id"`
+	SourceRevision        string            `json:"source_revision"`
+	InputDigests          map[string]string `json:"input_digests"`
+	ObservationRevision   string            `json:"observation_revision"`
+	ConfigurationRevision string            `json:"configuration_revision"`
+	Host                  string            `json:"host"`
+	RepositoryID          string            `json:"repository_id"`
+	ProjectID             string            `json:"project_id"`
+	FieldIDs              map[string]string `json:"field_ids"`
+	OptionIDs             map[string]string `json:"option_ids"`
+	Preconditions         []string          `json:"preconditions"`
+	RequiredApprovals     []string          `json:"required_approvals"`
+	Impact                []string          `json:"impact"`
+	Recovery              string            `json:"recovery"`
+	ExpiresAt             string            `json:"expires_at"`
+	Effects               []Effect          `json:"effects"`
 }
 
 type EffectReceipt struct {
-	EffectID  string `json:"effect_id"`
-	ManagedID string `json:"managed_id"`
-	Outcome   string `json:"outcome"`
-	Attempt   int    `json:"attempt"`
-	Detail    string `json:"detail"`
+	SchemaVersion       int      `json:"schema_version"`
+	PlanID              string   `json:"plan_id"`
+	OperationID         string   `json:"operation_id"`
+	EffectID            string   `json:"effect_id"`
+	EffectKind          string   `json:"effect_kind"`
+	ManagedID           string   `json:"managed_id"`
+	Actor               string   `json:"actor"`
+	CredentialMode      string   `json:"credential_mode"`
+	Authority           []string `json:"authority"`
+	SourceRevision      string   `json:"source_revision"`
+	ObservationRevision string   `json:"observation_revision"`
+	RepositoryID        string   `json:"repository_id"`
+	ProjectID           string   `json:"project_id"`
+	Outcome             string   `json:"outcome"`
+	Attempt             int      `json:"attempt"`
+	Detail              string   `json:"detail"`
 }
 
 type State struct {
@@ -137,4 +183,6 @@ const (
 	MigrateFieldOption Action = "migrate-field-option"
 	AcceptMigration    Action = "accept-field-migration"
 	CompleteBlocker    Action = "complete-blocker"
+	ChangeSource       Action = "change-source"
+	ResetRate          Action = "reset-rate"
 )
