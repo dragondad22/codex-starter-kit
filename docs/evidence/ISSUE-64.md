@@ -99,9 +99,10 @@ JSON, in-memory-only state, or deliberate lack of tests. Production still needs 
 durable state/evidence, expiry, pagination, partial GraphQL error handling, permission
 manifests, bounded retry scheduling, and sandbox-qualified transport behavior.
 
-Delete `cmd/work-manager-prototype` and `internal/prototype/workmanager` after the
-production Work Manager and in-memory adapter absorb the prototype-supported boundary. The decision
-map, this evidence record, and the later production contract remain the durable result.
+Issue #71 subsequently absorbed this boundary into the production lifecycle engine and
+in-memory adapter, added automated coverage for the claimed scenarios, and deleted
+`cmd/work-manager-prototype` plus `internal/prototype/workmanager`. The decision map, this
+historical evidence record, and [Issue #71 evidence](ISSUE-71.md) remain the durable route.
 
 ## Downstream handoff
 

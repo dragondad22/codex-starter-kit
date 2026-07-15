@@ -98,7 +98,9 @@ reserved names, and platform-native path behavior.
 
 Renders and validates executable issues, readiness, hierarchy, labels, Project fields,
 Horizon roadmap, and completion memory. It owns desired state; the GitHub adapter owns
-transport.
+transport. The implemented one-task slice uses versioned desired intent, adapter
+capability/observation, immutable plans, effect receipts, and self-digested durable state
+behind the lifecycle-engine seam; see [the Work Manager contract](WORK_MANAGER.md).
 
 ### Release Manager
 
@@ -126,7 +128,7 @@ redaction rules.
 | Adapter | Category | Test approach |
 |---|---|---|
 | Filesystem/Git | Local-substitutable | Temporary real repositories on native OS runners |
-| GitHub | True external | In-memory adapter + GitHub contract/sandbox tests |
+| GitHub | True external | Implemented in-memory managed-task adapter; production transport and sandbox qualification in #72–#76 |
 | Policy registry/signature | Remote but owned | Local registry/signing fixture + production contract tests |
 | Clock/identity/approval | In-process | Deterministic fakes |
 | Process/tool runner | Local-substitutable | Fake runner plus allowlisted native integration fixtures |

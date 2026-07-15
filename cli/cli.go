@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -140,6 +141,38 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return writeJSON(stdout, stderr, engine.New().Capabilities())
+	case "manage-task":
+		flags := flag.NewFlagSet("manage-task", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		inputPath := flags.String("input", "", "versioned managed-task request, capability, and observation JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *inputPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--input is required and positional arguments are unsupported")
+			return 2
+		}
+		content, err := os.ReadFile(*inputPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "read managed-task input: %v\n", err)
+			return 1
+		}
+		var input struct {
+			Request     engine.ManagedTaskRequest `json:"request"`
+			Capability  engine.WorkCapability     `json:"capability"`
+			Observation engine.WorkObservation    `json:"observation"`
+		}
+		if err := decodeOneCLIJSON(content, &input); err != nil {
+			fmt.Fprintf(stderr, "decode managed-task input: %v\n", err)
+			return 1
+		}
+		adapter := engine.NewInMemoryWorkAdapter(input.Capability, input.Observation)
+		journey, err := engine.New(engine.WithWorkAdapter(adapter)).ManageTask(context.Background(), input.Request)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, journey)
 	case "inspect":
 		flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -283,6 +316,22 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported operation: %s\n", args[0])
 		return 2
 	}
+}
+
+func decodeOneCLIJSON(content []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("unexpected trailing JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 func writeApplyFailure(stderr io.Writer, result engine.ApplyResult, err error) {

@@ -47,9 +47,11 @@ The lifecycle engine is the primary test and enforcement seam. The plugin is the
 preferred Codex experience; it is not the sole conformance authority.
 
 The current development CLI implements a read-only `capabilities` handshake plus
-`inspect`, `create`, `plan`, `apply`, `status`, and seed `verify`.
+`inspect`, `create`, `plan`, `apply`, `status`, seed `verify`, and credential-free
+in-memory `manage-task`.
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
-contract, ownership model, and explicit limitations.
+contract, ownership model, and explicit limitations, and the
+[Work Manager contract](docs/architecture/WORK_MANAGER.md) for the one-task route.
 
 The repository also contains installable development status, create, and verify skills.
 See the [plugin status guide](docs/product/PLUGIN_STATUS.md) and
@@ -90,6 +92,7 @@ starter-kit apply --plan <create-plan.json> --plan-id <sha256-plan-id>
 starter-kit status --repository <repository>
 starter-kit verify-plan --repository <repository> --scope repository --gate development --actor <actor> --authority <authority>
 starter-kit verify --plan <verify-plan.json> --plan-id <sha256-plan-id>
+starter-kit manage-task --input <managed-task-v1.json>
 ```
 
 `create` and `verify-plan` emit reviewable JSON plans on standard output. Retain each exact
@@ -97,6 +100,10 @@ document and separately retain its `plan_id` using the native process/file facil
 your environment, review it, then pass it to `apply` or `verify`. Results are JSON on
 standard output; structured apply/reconciliation failures are JSON on standard error.
 The engine never installs Git or Go, changes sandbox authority, or performs network effects.
+`manage-task` strictly reads one JSON envelope containing desired intent plus normalized
+in-memory capability and observation, writes self-digested credential-free state below
+the selected repository, and returns the complete inspect/plan/apply/verify/status result.
+It is a deterministic contract route, not live GitHub qualification.
 
 See the [support matrix](docs/architecture/SUPPORT_MATRIX.md) for the exact tested envelope,
 runtime requirements, capability gaps, and evidence model.

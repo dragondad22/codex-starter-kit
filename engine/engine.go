@@ -17,7 +17,8 @@ import (
 
 // Engine owns lifecycle orchestration behind the public operation seam.
 type Engine struct {
-	clock Clock
+	clock       Clock
+	workAdapter WorkAdapter
 }
 
 // Clock supplies deterministic verification time.
@@ -37,6 +38,15 @@ func WithClock(clock Clock) Option {
 	return func(engine *Engine) {
 		if clock != nil {
 			engine.clock = clock
+		}
+	}
+}
+
+// WithWorkAdapter supplies the transport adapter used by managed-task operations.
+func WithWorkAdapter(adapter WorkAdapter) Option {
+	return func(engine *Engine) {
+		if adapter != nil {
+			engine.workAdapter = adapter
 		}
 	}
 }
