@@ -15,6 +15,10 @@ behind a guided workflow and backed by evidence.
 > policy/release capabilities are also incomplete. Do not use this repository as a
 > production compliance control today.
 
+The current development product version is `0.3.0`. It is not a claim that a supported
+GitHub Release has been published. See the [release guide](docs/product/RELEASES.md) and
+generated [changelog](CHANGELOG.md).
+
 ## What it will provide
 
 - Guided creation of new projects and safe retrofit of existing repositories
@@ -80,6 +84,7 @@ The minimal direct flow is:
 git init <repository>
 starter-kit inspect --repository <repository>
 starter-kit capabilities
+starter-kit version
 starter-kit create --repository <repository> --brief <approved-text> --approve-brief --confirm-owner-persona
 starter-kit apply --plan <create-plan.json> --plan-id <sha256-plan-id>
 starter-kit status --repository <repository>
@@ -107,6 +112,8 @@ runtime requirements, capability gaps, and evidence model.
 - [Plugin status tracer](docs/product/PLUGIN_STATUS.md)
 - [Plugin guided create](docs/product/PLUGIN_CREATE.md)
 - [Plugin guided verify](docs/product/PLUGIN_VERIFY.md)
+- [Versions, change records, and releases](docs/product/RELEASES.md)
+- [Generated changelog](CHANGELOG.md)
 - [Implementation roadmap](docs/roadmap/IMPLEMENTATION_ROADMAP.md)
 - [Discovery and approved decisions](docs/discovery/CODEX_STARTER_KIT_REVIEW.md)
 - [Durable decision index](docs/decisions/INDEX.md)

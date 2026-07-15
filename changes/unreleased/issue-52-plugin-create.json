@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-52-plugin-create",
+  "summary": "Guide managed-repository creation through separate input, notice, plan, effect-approval, and recovery steps in the Codex plugin.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers"],
+  "components": ["plugin"],
+  "issues": [52],
+  "breaking": false,
+  "internal_only": false
+}

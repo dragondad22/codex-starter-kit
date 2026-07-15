@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	starterkit "github.com/dragondad22/codex-starter-kit"
 )
 
 // ControlState is one explicit control-evaluation state.
@@ -166,7 +168,7 @@ func (e *Engine) Verify(ctx context.Context, expectedPlanID string, plan VerifyP
 	result := VerificationResult{
 		SchemaVersion: 1, Ownership: "machine-evidence", Source: "engine:verify:v1",
 		Scope: plan.Scope, Gate: plan.Gate, SourceRevision: sourceRevision,
-		SourceSnapshotDigest: inspection.SnapshotDigest, EngineVersion: "0.1.0-dev",
+		SourceSnapshotDigest: inspection.SnapshotDigest, EngineVersion: starterkit.Version(),
 		RepositorySchemaVersion: 1, PolicyVersion: "not-configured", VerifiedAt: verifiedAt,
 		Actor: plan.Actor, Authority: plan.Authority,
 		Controls: controls, OverallState: OverallControlState(controls),

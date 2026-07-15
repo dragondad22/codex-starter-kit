@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-54-plugin-qualification",
+  "summary": "Qualify plugin routing, capability modes, fallback behavior, and native development installation while preserving unpublished-engine limitations.",
+  "category": "changed",
+  "audiences": ["users", "operators", "developers", "stakeholders"],
+  "components": ["plugin"],
+  "issues": [54],
+  "breaking": false,
+  "internal_only": false
+}

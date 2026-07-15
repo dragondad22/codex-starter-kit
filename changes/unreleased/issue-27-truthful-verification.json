@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-27-truthful-verification",
+  "summary": "Verify seed controls without converting fail, not-applicable, not-configured, needs-review, or accepted-exception states into a pass.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers", "security", "stakeholders"],
+  "components": ["cli", "engine"],
+  "issues": [27],
+  "breaking": false,
+  "internal_only": false
+}

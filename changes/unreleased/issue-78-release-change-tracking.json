@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-78-release-change-tracking",
+  "summary": "Track one product version and generate audience-aware changelogs from validated, durable change records.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers", "security", "stakeholders"],
+  "components": ["cli", "engine", "plugin", "release"],
+  "issues": [78],
+  "breaking": false,
+  "internal_only": false
+}

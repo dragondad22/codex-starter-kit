@@ -255,6 +255,14 @@ A release trigger may be outcome-, time-, event-, or hybrid-bound, but it starts
 evaluation and never bypasses a gate. No release publishes automatically. Milestone
 progress is planning information, not release evidence.
 
+The root schema-v1 `product-version.json` is the product release identity for same-release distribution surfaces;
+protocol, schema, policy, baseline, and managed-state versions remain independent. A
+material pull request adds one validated JSON change record or an explicit internal-only
+disposition. These human-owned records generate the Unreleased changelog and audience
+views. Release preparation archives exact record bytes and digests, synchronizes product
+version surfaces, and records `prepared` with `published: false`. It is not publication,
+approval, a Release Candidate pass, or evidence that a tag or GitHub Release exists.
+
 1. Select merged scope and release adapter.
 2. Resolve change records and proposed identifier.
 3. Freeze candidate source, engine, policy, dependencies, and environment facts.

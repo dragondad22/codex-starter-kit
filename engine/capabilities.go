@@ -1,6 +1,10 @@
 package engine
 
-import "runtime/debug"
+import (
+	"runtime/debug"
+
+	starterkit "github.com/dragondad22/codex-starter-kit"
+)
 
 // ProvenanceStatus is the engine's bounded self-report. External retained evidence must
 // establish verification; an executable cannot make itself trusted by assertion.
@@ -39,13 +43,10 @@ type CapabilityReport struct {
 func (e *Engine) Capabilities() CapabilityReport {
 	identity := EngineIdentity{
 		Name:       "starter-kit",
-		Version:    "devel",
+		Version:    starterkit.Version(),
 		Provenance: ProvenanceUnverified,
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
-		if info.Main.Version != "" && info.Main.Version != "(devel)" {
-			identity.Version = info.Main.Version
-		}
 		for _, setting := range info.Settings {
 			switch setting.Key {
 			case "vcs.revision":

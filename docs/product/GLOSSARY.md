@@ -60,6 +60,13 @@ native-environment, approval, and authority facts for one requested workflow. It
 unknown and conflicting facts and selects a workflow capability mode; it does not install,
 upgrade, grant authority, or establish conformance.
 
+### Change record
+
+A validated, human-owned structured description of one material change, including its
+category, audiences or internal-only disposition, affected product components, breaking
+state, and durable issue or pull-request references. Generated changelogs and release
+summaries derive from it.
+
 ### Conformance
 
 An evidence-backed result for an explicit scope, policy version, source revision, and
@@ -216,6 +223,12 @@ Evidence that an end-to-end product route—including the AI client, connected t
 services, environment, authority, and data flow—provides required handling guarantees for
 an explicit scope. User acknowledgment or tool availability is not product assurance.
 
+### Product version
+
+The SemVer identity shared by same-release Codex Starter Kit distribution surfaces. It is
+distinct from lifecycle protocol, JSON schema, policy-pack, baseline, managed-state, and
+other compatibility versions.
+
 ### Professional engineering baseline
 
 The universal applicability-aware quality bar for every supported deliverable, regardless
@@ -293,6 +306,12 @@ limitations, approvals, publication, rollback, communication, and completion.
 The explicit treatment of discovered work for a named release: admitted, present but
 internal or non-user-visible, isolated or reverted, excluded with truthful disclosure, or
 blocking. Source presence and Milestone membership remain distinct facts.
+
+### Release preparation
+
+The local transaction that archives admitted change records, synchronizes product version
+surfaces, and generates dated communication while explicitly remaining unpublished. It
+does not create or approve a tag, GitHub Release, artifact, deployment, or release claim.
 
 ### Release readiness
 

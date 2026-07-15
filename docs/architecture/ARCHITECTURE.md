@@ -103,7 +103,11 @@ transport.
 ### Release Manager
 
 Selects release adapters, composes change records, runs release gates, versions
-transactionally, records provenance, and generates audience-specific communication.
+transactionally, records provenance, and generates audience-specific communication. The
+implemented foundation reads validated human-owned JSON records, enforces the root product
+version against same-release component manifests, renders deterministic communication,
+and prepares digest-bound local archives without Git or publication effects. Tagging,
+GitHub Release creation, artifacts, signing, and deployment remain later adapters.
 
 ### Upgrade Manager
 

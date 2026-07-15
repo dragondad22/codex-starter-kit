@@ -12,6 +12,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = (
     "README.md",
+    "CHANGELOG.md",
+    "product-version.json",
     "LICENSE",
     "AGENTS.md",
     "CONTRIBUTING.md",
@@ -20,6 +22,7 @@ REQUIRED = (
     "docs/product/PRD.md",
     "docs/product/PERSONAS.md",
     "docs/product/GLOSSARY.md",
+    "docs/product/RELEASES.md",
     "docs/architecture/SUPPORT_MATRIX.md",
     "docs/decisions/INDEX.md",
     "docs/agents/domain.md",
@@ -32,6 +35,9 @@ REQUIRED = (
     ".github/ISSUE_TEMPLATE/task.yml",
     ".github/labels.yml",
     ".github/workflows/documentation.yml",
+    "changes/README.md",
+    "changes/schema-v1.json",
+    "changes/release-admission-schema-v1.json",
 )
 LINK = re.compile(r"(?<!!)\[[^]]*]\(([^)]+)\)")
 DECISION_ROUTE = re.compile(
@@ -208,6 +214,7 @@ def validate_workflow(root: Path) -> list[str]:
         "python scripts/validate_docs.py",
         "python -m unittest discover -s tests",
         "go test ./...",
+        "go run ./cmd/starter-kit changes check --repository .",
         "go run ./cmd/phase1-evidence capture --output phase1-native-evidence.json",
         "go run ./cmd/phase1-evidence compare --directory phase1-native-evidence",
     ):
