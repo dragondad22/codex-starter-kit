@@ -9,7 +9,6 @@ sub-issues without implementation-time invention
 
 Blocked by: None
 Type: Grilling
-GitHub work item: [#70](https://github.com/dragondad22/codex-starter-kit/issues/70)
 GitHub work item: [#62](https://github.com/dragondad22/codex-starter-kit/issues/62)
 
 ### Question
@@ -162,6 +161,7 @@ claims.
 
 Blocked by: None
 Type: Grilling
+GitHub work item: [#70](https://github.com/dragondad22/codex-starter-kit/issues/70)
 
 ### Question
 

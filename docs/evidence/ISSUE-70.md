@@ -16,6 +16,10 @@ question or research ticket. The accepted answer is promoted into decision-map t
 Issues #71–#76 are two-layer tracer-bullet children of feature #4. Each has an end-to-end
 human outcome, production brief, acceptance and negative paths, verification,
 documentation/evidence impact, milestone, executor routing, and explicit blockers.
+Each body also records current context; stable governing decisions, personas, policy, and
+specifications; scope and exclusions; dependencies/human actions; and both checked
+readiness assertions from the executable-work template. Existing #15 and #46 were
+retrofitted to the same current contract before their future dependency promotion.
 
 The graph is:
 
@@ -32,6 +36,9 @@ The graph is:
 well as governed-work behavior. #74 consumes existing #15 and #46 instead of duplicating
 their closed-state reconciliation and Phase work. Closed #16 remains the governing input
 for sparse question/research forms, readiness, promotion, and completion.
+Within that boundary, #73 owns built-in close-to-Done bootstrap/configuration and fixture
+proof; #15 distinctly owns the production reconciliation/audit backstop for automation
+that is absent, delayed, missed, denied, or partial.
 
 ## Project reconciliation
 
@@ -40,8 +47,8 @@ for sparse question/research forms, readiness, promotion, and completion.
   explicit #73 provisioning authority gate.
 - #15 and #46 are Status `Backlog` / Readiness `Blocked` by #73 before their live
   integration into #74.
-- #4 remains Status `In progress`; once this promotion merges, its decomposition is
-  complete and its Readiness becomes `Ready` as the delivery container.
+- #4 is Status `In progress` / Readiness `Ready` as the decomposed delivery container;
+  child Readiness still controls which work may execute.
 - #70 is Status `In progress` while this documentation/evidence promotion is delivered;
   its completing PR closes it and moves it to `Done`.
 
