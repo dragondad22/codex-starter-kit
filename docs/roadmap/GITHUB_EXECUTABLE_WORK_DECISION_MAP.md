@@ -87,14 +87,40 @@ embedding policy in the adapter.
 
 ### Answer
 
-Unresolved. Issue #64 is a native child of #4 and is `Backlog` / `Blocked`. Its #62
-dependency is complete; #63 remains its active native blocker. The prototype must use the
-lifecycle-engine seam and incorporate existing children #15, #16, and #46 rather than
-duplicating or bypassing them.
+Resolved on 2026-07-14 by the throwaway logic prototype and durable notes delivered
+through issue #64. Use four versioned boundaries behind the lifecycle-engine `plan` and
+`apply` seam:
+
+1. a credential-free `DesiredIntent` owned by the Work Manager, bound to governed source
+   identity and containing stable managed IDs, desired lifecycle/relationship/review
+   state, and immutable GitHub target identities;
+2. adapter-reported `Capability` and `Observation` values containing the explicit actor,
+   mode, minimum permissions, budgets, limitations, immutable GitHub identities,
+   configuration revision, and normalized current state;
+3. an immutable `Plan` bound to desired-source, observation, repository, Project, field,
+   and option identities and containing only the current semantic delta; and
+4. per-effect receipts that preserve explicit applied, ambiguous, denied, rate-limited,
+   and recovery outcomes across partial failure.
+
+The Work Manager derives readiness, hierarchy, dependency, phase, review, question or
+research promotion, and completion policy. The adapter observes and executes effects but
+does not choose policy, credentials, or broader authority. Stable non-secret markers
+reconcile ambiguous creates; immutable IDs and semantic comparison reconcile updates.
+Offline and rate-limited queues retain desired intent, source hashes, and expiry rather
+than credentials or raw transport requests. Reconnect always repeats identity,
+capability, and precondition checks.
+
+The prototype seeds #15's closed-item Project drift, #16's promoted question result,
+#46's inherited Phase context, and #64's distinct review requirement. Its conclusion and
+deletion/absorption boundary are recorded in
+[`NOTES.md`](../../internal/prototype/workmanager/NOTES.md) and
+[`ISSUE-64.md`](../evidence/ISSUE-64.md). Production schema, persistence, adapter, and
+sandbox qualification remain downstream work; the prototype JSON and synthetic IDs are
+not compatibility promises.
 
 ## #4: How will live GitHub behavior be qualified safely?
 
-Blocked by: #2, #3
+Blocked by: None
 Type: Research
 
 ### Question
@@ -105,15 +131,17 @@ without contaminating an operational repository or overstating unsupported behav
 
 ### Answer
 
-A dedicated Starter Kit sandbox repository and Project is the agreed proposed boundary;
-most behavior remains covered by the in-memory adapter. Exact ownership, visibility,
-plan-dependent features, identity, permissions, fixture retention, cost, cleanup, and
-fallback remain unresolved until #2 and #3 complete. Provisioning is a separate external
-action requiring explicit approval after those implications are reported.
+A dedicated Starter Kit sandbox repository and Project remains the agreed proposed
+boundary; most behavior remains covered by the in-memory adapter. Authentication and
+Work Manager inputs are now resolved. The next bounded research ticket must turn them
+into an exact live matrix covering ownership, visibility, plan-dependent features,
+identity, permissions, negative paths, fixture retention, cost, cleanup, and fallback.
+Provisioning remains a separate external action requiring explicit approval after those
+implications are reported.
 
 ## #5: Is the path clear enough to decompose and execute feature #4?
 
-Blocked by: #3, #4
+Blocked by: #4
 Type: Grilling
 
 ### Question
