@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-26-engine-create",
+  "summary": "Create managed repositories through reviewable, immutable plans and an evidence-backed apply operation.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers", "stakeholders"],
+  "components": ["cli", "engine"],
+  "issues": [26],
+  "breaking": false,
+  "internal_only": false
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "issue-64-work-manager-prototype",
+  "summary": "Prototype deterministic GitHub Work Manager reconciliation under drift and failure.",
+  "category": "added",
+  "audiences": [],
+  "components": ["github", "prototype"],
+  "issues": [64],
+  "breaking": false,
+  "internal_only": true,
+  "internal_disposition": "Throwaway design evidence only; no supported user, operator, or integration surface was released."
+}

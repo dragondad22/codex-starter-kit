@@ -29,10 +29,12 @@ Closes #
 - Human-owned records updated:
 - Generated views updated:
 - User/operator/developer/stakeholder communication:
+- Change record added, or internal-only disposition and rationale:
 
 ## Completion
 
 - [ ] The primary issue was Ready before implementation.
 - [ ] Required tests and controls pass or have an approved, permitted exception.
 - [ ] No result is represented as passing without sufficient current evidence.
+- [ ] Product/component versions and the generated changelog pass the release-change check.
 - [ ] GitHub issue and Project state can be reconciled on merge.

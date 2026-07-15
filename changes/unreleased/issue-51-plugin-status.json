@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-51-plugin-status",
+  "summary": "Add an installable Codex plugin status tracer that fails closed when engine compatibility or provenance is insufficient.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers"],
+  "components": ["plugin"],
+  "issues": [51],
+  "breaking": false,
+  "internal_only": false
+}

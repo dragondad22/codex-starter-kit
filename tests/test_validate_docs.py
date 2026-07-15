@@ -300,6 +300,7 @@ class FoundationManifestValidationTests(unittest.TestCase):
                     "run: python scripts/validate_docs.py",
                     "run: python -m unittest discover -s tests",
                     "run: go test ./...",
+                    "run: go run ./cmd/starter-kit changes check --repository .",
                     "run: go run ./cmd/phase1-evidence capture --output phase1-native-evidence.json",
                     "run: go run ./cmd/phase1-evidence compare --directory phase1-native-evidence",
                 )

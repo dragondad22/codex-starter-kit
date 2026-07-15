@@ -97,6 +97,12 @@
     limitations, and final-decomposition handoff for the live contract matrix.
 47. `evidence/ISSUE-70.md` — product-owner approval, tracer-bullet dependency graph,
     Project reconciliation, verification, and limitations for the Phase 3 decomposition.
+48. `decisions/DEC-0021-product-version-and-change-records.md` — approved unified product
+    version, structured change-source, generated-view, and preparation/publication contract.
+49. `product/RELEASES.md` — maintainer and user guide for product identity, change records,
+    generated communication, local preparation, and publication separation.
+50. `evidence/ISSUE-78.md` — implementation, validation, preparation, verification,
+    limitation, and downstream publication-adapter record.
 
 ## Document lifecycle
 

@@ -22,6 +22,9 @@ before implementation.
 - Link it with `Closes #N` when the PR completes the work.
 - Explain deviations and follow-up work rather than rewriting history.
 - Update applicable product, architecture, persona, policy, and public documentation.
+- Add a validated change record under `changes/unreleased/`, using an explicit
+  internal-only disposition when no external audience should see the change.
+- Regenerate `CHANGELOG.md` and require `starter-kit changes check --repository .` to pass.
 - Include verification evidence and coverage limits.
 - Use a Conventional Commit-style PR title; squash merge is the default.
 - Use draft status only while more implementation, verification, or internal review is

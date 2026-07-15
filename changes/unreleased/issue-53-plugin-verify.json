@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-53-plugin-verify",
+  "summary": "Guide truthful verification through immutable plans, explicit evidence effects, redaction, and preserved control states in the Codex plugin.",
+  "category": "added",
+  "audiences": ["users", "operators", "developers", "security"],
+  "components": ["plugin"],
+  "issues": [53],
+  "breaking": false,
+  "internal_only": false
+}

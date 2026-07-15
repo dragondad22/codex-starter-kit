@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-29-create-recovery",
+  "summary": "Make managed-repository creation safe to replay, interrupt, recover, and reconcile without deleting ambiguous user content.",
+  "category": "changed",
+  "audiences": ["users", "operators", "developers", "security"],
+  "components": ["engine"],
+  "issues": [29],
+  "breaking": false,
+  "internal_only": false
+}

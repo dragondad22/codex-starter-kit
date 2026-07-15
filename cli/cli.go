@@ -10,7 +10,9 @@ import (
 	"io"
 	"os"
 
+	starterkit "github.com/dragondad22/codex-starter-kit"
 	"github.com/dragondad22/codex-starter-kit/engine"
+	"github.com/dragondad22/codex-starter-kit/releasechange"
 )
 
 // Run executes one CLI request and returns a process-style exit code.
@@ -20,6 +22,113 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "release":
+		if len(args) < 2 || args[1] != "prepare" && args[1] != "recover" {
+			fmt.Fprintln(stderr, "release prepare or recover operation is required")
+			return 2
+		}
+		flags := flag.NewFlagSet("release "+args[1], flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		repository := flags.String("repository", "", "repository root containing release records")
+		if args[1] == "recover" {
+			if err := flags.Parse(args[2:]); err != nil {
+				return 2
+			}
+			if *repository == "" || flags.NArg() != 0 {
+				fmt.Fprintln(stderr, "--repository is required and positional arguments are unsupported")
+				return 2
+			}
+			result, err := releasechange.Recover(*repository)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+			return writeJSON(stdout, stderr, result)
+		}
+		version := flags.String("version", "", "explicit next stable semantic version")
+		date := flags.String("date", "", "explicit release date in YYYY-MM-DD form")
+		admission := flags.String("admission", "", "approved release-admission JSON path")
+		if err := flags.Parse(args[2:]); err != nil {
+			return 2
+		}
+		if *repository == "" || *version == "" || *date == "" || *admission == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--repository, --version, --date, and --admission are required; positional arguments are unsupported")
+			return 2
+		}
+		result, err := releasechange.Prepare(*repository, *version, *date, *admission)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, result)
+	case "changes":
+		if len(args) < 2 {
+			fmt.Fprintln(stderr, "changes check, validate, or render operation is required")
+			return 2
+		}
+		flags := flag.NewFlagSet("changes "+args[1], flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		repository := flags.String("repository", "", "repository root containing change records")
+		var audience *string
+		var release *string
+		if args[1] == "render" {
+			audience = flags.String("audience", "", "optional audience filter")
+			release = flags.String("release", "", "optional prepared release version")
+		} else if args[1] != "validate" && args[1] != "check" {
+			fmt.Fprintln(stderr, "changes check, validate, or render operation is required")
+			return 2
+		}
+		if err := flags.Parse(args[2:]); err != nil {
+			return 2
+		}
+		if *repository == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--repository is required and positional arguments are unsupported")
+			return 2
+		}
+		if args[1] == "validate" || args[1] == "check" {
+			var result releasechange.ValidationResult
+			var err error
+			if args[1] == "check" {
+				result, err = releasechange.Check(*repository)
+			} else {
+				result, err = releasechange.Validate(*repository)
+			}
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+			return writeJSON(stdout, stderr, result)
+		}
+		var document string
+		var err error
+		if *release == "" {
+			document, err = releasechange.Render(*repository, *audience)
+		} else {
+			document, err = releasechange.RenderRelease(*repository, *release, *audience)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if _, err := io.WriteString(stdout, document); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	case "version":
+		flags := flag.NewFlagSet("version", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "version accepts no arguments")
+			return 2
+		}
+		return writeJSON(stdout, stderr, struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		}{Name: "codex-starter-kit", Version: starterkit.Version()})
 	case "capabilities":
 		flags := flag.NewFlagSet("capabilities", flag.ContinueOnError)
 		flags.SetOutput(stderr)
