@@ -66,6 +66,23 @@ records, ten external records, and one internal-only record; and the diff check 
 Distinct review and native CI results on the completing revision supersede this local
 Linux evidence if the source changes.
 
+## Distinct review
+
+Two independent review axes examined the implementation diff from `origin/main` through
+commit `9b52b0d`:
+
+- Standards review: passed with no remaining violations of repository instructions,
+  issue-tracker policy, or the Work Manager contract.
+- Specification review: passed with no remaining mismatch against issue #71's acceptance
+  criteria and the absorbed issue #64 scenarios.
+
+Initial findings included untrusted adapter persistence, missing lifecycle serialization,
+incomplete capability/configuration binding, insufficient verification capability,
+unresolved ambiguous-create handling, incomplete schema validation, erased non-pass
+outcomes, and incomplete question/promotion and managed-identity checks. Commits
+`ebfdf2e` and `9b52b0d` resolved those findings, and both reviewers re-ran focused engine
+and CLI tests before passing the exact implementation source.
+
 ## Limitations and downstream work
 
 - No GitHub request, credential, repository, Project, paid feature, or external resource
@@ -81,5 +98,6 @@ Linux evidence if the source changes.
 
 Issue #71 was Project `Ready` and `Next` before implementation. Work began on the
 issue-named branch and moved #71 to `In progress`; parent #4 remained `In progress`, and
-direct dependent #72 remained `Backlog` / `Blocked`. Completion reconciliation occurs
-after implementation, verification, distinct review, and commit evidence are known.
+direct dependent #72 remained `Backlog` / `Blocked`. Local implementation, verification,
+distinct review, and commit evidence are complete. Issue #71 remains `In progress` until
+the normal pull-request gates and squash merge complete; therefore #72 remains blocked.
