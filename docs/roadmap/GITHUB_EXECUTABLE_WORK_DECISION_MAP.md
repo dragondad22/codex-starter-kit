@@ -36,6 +36,7 @@ removes one dependency from #64, which remains `Backlog` / `Blocked` by #63.
 
 Blocked by: None
 Type: Research
+GitHub work item: [#68](https://github.com/dragondad22/codex-starter-kit/issues/68)
 GitHub work item: [#63](https://github.com/dragondad22/codex-starter-kit/issues/63)
 
 ### Question
@@ -131,17 +132,34 @@ without contaminating an operational repository or overstating unsupported behav
 
 ### Answer
 
-A dedicated Starter Kit sandbox repository and Project remains the agreed proposed
-boundary; most behavior remains covered by the in-memory adapter. Authentication and
-Work Manager inputs are now resolved. The next bounded research ticket must turn them
-into an exact live matrix covering ownership, visibility, plan-dependent features,
-identity, permissions, negative paths, fixture retention, cost, cleanup, and fallback.
-Provisioning remains a separate external action requiring explicit approval after those
-implications are reported.
+Resolved on 2026-07-15 by
+[`GITHUB_LIVE_CONTRACT_TEST_MATRIX.md`](../research/GITHUB_LIVE_CONTRACT_TEST_MATRIX.md).
+The minimum honest topology has two public/free live routes—an organization repository
+and organization-owned Project for App-installation support, plus a personal repository
+and user-owned Project for the explicit classic user-token fallback—one repository-local
+Actions route, and a deterministic fault harness. Live GitHub evidence covers exact
+identities, minimum and one-less permissions, semantic Issues/Project/PR/rules effects,
+API headers, recovery lookup, and cleanup. The fault harness covers conditions that are
+unsafe or non-repeatable to provoke live, including rate exhaustion, partial GraphQL
+data, offline operation, and webhook replay; those results never masquerade as live
+evidence.
+
+The base matrix uses synthetic public fixtures, standard runners, a selected-repository
+private test App, no paid feature, and no live webhook receiver. It specifies immutable
+target allowlists, stable run markers, serialized mutation, reverse cleanup, a 24-hour
+fixture-cleanup target, proposed 30-day raw evidence, durable redacted summaries, explicit
+limitations, and invalidation triggers. Private/paid targets, hosted webhooks, GitHub
+Enterprise Server, and App-based user-owned Project mutation remain unqualified.
+
+Provisioning is still a separate external action. Approval must name both sandbox owners
+and plans; App owner/managers, permissions, selected repository, secret store,
+rotation/revocation and incident owner; acceptance or rejection of the broad classic
+personal token; optional targets; retention/cleanup; budget guardrails; and fallback
+claims.
 
 ## #5: Is the path clear enough to decompose and execute feature #4?
 
-Blocked by: #4
+Blocked by: None
 Type: Grilling
 
 ### Question

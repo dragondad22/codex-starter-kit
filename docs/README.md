@@ -90,6 +90,11 @@
     downstream prototype record for the authentication/transport evaluation.
 44. `evidence/ISSUE-64.md` — Work Manager prototype boundary, scenario conclusions,
     verification state, limitations, and downstream sandbox handoff.
+45. `research/GITHUB_LIVE_CONTRACT_TEST_MATRIX.md` — smallest safe live/in-memory GitHub
+    qualification topology, permission matrix, fixtures, evidence, cleanup, cost, and
+    provisioning gate.
+46. `evidence/ISSUE-68.md` — research authority, topology conclusion, read-only evidence,
+    limitations, and final-decomposition handoff for the live contract matrix.
 
 ## Document lifecycle
 
