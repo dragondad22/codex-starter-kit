@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dragondad22/codex-starter-kit/cli"
 	"github.com/dragondad22/codex-starter-kit/engine"
@@ -33,6 +34,54 @@ func TestCreateCommandEmitsLanguageNeutralPlan(t *testing.T) {
 	}
 	if plan.Operation != engine.CreateOperation || plan.ID == "" {
 		t.Fatalf("unexpected create plan: %#v", plan)
+	}
+}
+
+func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
+	repository := t.TempDir()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize managed-task Git repository: %v: %s", err, output)
+	}
+	now := time.Now().UTC()
+	target := engine.WorkTarget{
+		Host: "memory.local", RepositoryID: "repository:fixture", ProjectID: "project:fixture",
+		FieldIDs:  map[string]string{"readiness": "field:readiness", "status": "field:status"},
+		OptionIDs: map[string]string{"readiness:ready": "option:ready", "status:next": "option:next"},
+	}
+	input := struct {
+		Request     engine.ManagedTaskRequest `json:"request"`
+		Capability  engine.WorkCapability     `json:"capability"`
+		Observation engine.WorkObservation    `json:"observation"`
+	}{
+		Request: engine.ManagedTaskRequest{Repository: repository, Intent: engine.WorkDesiredIntent{
+			SchemaVersion: 1, OperationID: "operation:issue-71", SourceRevision: "issue-71:v1", OperatingProfileRevision: "operating-profile:v1",
+			InputDigests: map[string]string{"issue": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, Credential: engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"}, Target: target,
+			Task: engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}}},
+		}},
+		Capability:  engine.WorkCapability{SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Observation: engine.WorkObservation{SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1", Target: target},
+	}
+	content, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(t.TempDir(), "managed-task.json")
+	if err := os.WriteFile(inputPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"manage-task", "--input", inputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var journey engine.ManagedTaskLifecycleResult
+	if err := json.Unmarshal(stdout.Bytes(), &journey); err != nil {
+		t.Fatalf("decode lifecycle journey: %v: %s", err, stdout.String())
+	}
+	if journey.Plan.ID == "" || journey.Apply.Status != engine.WorkApplyApplied || journey.Verification.OverallState != engine.ControlPass || journey.Status.Disposition != "converged" {
+		t.Fatalf("unexpected managed-task journey: %#v", journey)
 	}
 }
 

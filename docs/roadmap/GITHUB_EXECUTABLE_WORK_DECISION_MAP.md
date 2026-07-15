@@ -113,10 +113,11 @@ capability, and precondition checks.
 The prototype seeds #15's closed-item Project drift, #16's promoted question result,
 #46's inherited Phase context, and #64's distinct review requirement. Its conclusion and
 deletion/absorption boundary are recorded in
-[`NOTES.md`](../../internal/prototype/workmanager/NOTES.md) and
-[`ISSUE-64.md`](../evidence/ISSUE-64.md). Production schema, persistence, adapter, and
-sandbox qualification remain downstream work; the prototype JSON and synthetic IDs are
-not compatibility promises.
+[`ISSUE-64.md`](../evidence/ISSUE-64.md). Issue #71 later absorbed and deleted the
+prototype package; [its production evidence](../evidence/ISSUE-71.md) records the
+versioned schema, persistence, in-memory adapter, and scenario coverage. Live adapter and
+sandbox qualification remain downstream work; the prototype JSON and synthetic IDs were
+never compatibility promises.
 
 ## #4: How will live GitHub behavior be qualified safely?
 

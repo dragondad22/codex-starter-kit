@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-71-managed-task-lifecycle",
+  "summary": "Manage and verify one task deterministically through a credential-free lifecycle request and in-memory adapter.",
+  "category": "added",
+  "audiences": ["operators", "developers"],
+  "components": ["cli", "engine", "github"],
+  "issues": [71],
+  "breaking": false,
+  "internal_only": false
+}

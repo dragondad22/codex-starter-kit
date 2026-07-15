@@ -1,7 +1,8 @@
-# Phase 1 Lifecycle-Engine Support Matrix
+# Lifecycle-Engine Support Matrix
 
 **Status:** Initial source-runtime support
-**Scope:** Empty-repository `create` and seed `verify` through the standalone engine seam
+**Scope:** Empty-repository `create`, seed `verify`, and the credential-free in-memory
+managed-task route through the standalone engine seam
 **Evidence:** Native CI reports and aggregate semantic comparison retained by the
 completing [Issue #30](../evidence/ISSUE-30.md) pull request
 
@@ -49,7 +50,21 @@ filesystems that do not provide those behaviors are unsupported until separately
 | Shell | No Bash, PowerShell, WSL, Git Bash, container, or universal shell is required by the engine |
 | Package | Source build is supported; no signed installer, package-manager formula, or prebuilt binary is published yet |
 | Codex | Direct engine use does not require a Codex client; plugin/client compatibility belongs to Phase 2 |
-| Network | Create, inspect, plan, apply, status, and seed verify operate locally and do not require network access |
+| Network | Create, inspect, plan, apply, status, seed verify, and in-memory `manage-task` operate locally and do not require network access |
+
+## Phase 3 managed-task development boundary
+
+The issue #71 source adds a strict JSON `manage-task` request and direct engine operations
+for one task through an in-memory adapter. Deterministic tests cover complete lifecycle,
+replay, restart, staleness, configuration migration, partial and ambiguous effects,
+denied authority, offline/reconnect, expiry, bounded retry/reset, policy derivation,
+schema/secret rejection, and state integrity. See
+[the Work Manager contract](WORK_MANAGER.md) and [issue evidence](../evidence/ISSUE-71.md).
+
+This does not expand the historical Phase 1 native evidence snapshot above. Linux local
+results are development evidence only until the exact completing revision passes the
+Linux, macOS, and Windows CI matrix. The in-memory adapter is not live GitHub evidence;
+production transport and sandbox claims remain `not-configured` until #72–#76.
 
 ## Native proof contract
 
@@ -114,7 +129,8 @@ authority, ownership, evidence meaning, or conformance state.
   must supply that provenance before the control can pass.
 - Multi-file local mutation uses staging, state-last commit, replay, and compensation; it
   is not claimed as one crash-atomic filesystem transaction.
-- External effects are absent from Phase 1. Later adapters must define their own
+- External effects remain absent from the implemented create/verify and in-memory
+  managed-task routes. #72 and later adapters must qualify their own identity,
   idempotency, evidence, and compensation.
 - Windows ACL enforcement, code signing, installer behavior, package-manager behavior,
   minimum Git versions, non-hosted-runner OS versions, additional CPU architectures, and

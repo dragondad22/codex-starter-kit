@@ -113,6 +113,7 @@ managed-file manifest.
 | `.starter-kit/layout.json` | managed | Logical role-to-path mapping |
 | `.starter-kit/managed-files.json` | managed | Ownership, provenance digest, and path manifest |
 | `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
+| `.starter-kit/work-manager/state.json` | managed | Self-digested credential-free managed-task intent, plan, receipts, retry, verification, and status |
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
 | `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
 | Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts plus content-addressed stale-lease, abandoned-stage, and replay observations |
@@ -184,6 +185,14 @@ An operation event found before authoritative state is a reconciliation boundary
 than trusted as an automatically resumable artifact.
 
 ## Current limits
+
+The Phase 3 one-task Work Manager slice now adds credential-free
+`InspectManagedTask`, `PlanManagedTask`, `ApplyManagedTask`, `VerifyManagedTask`, and
+`ManagedTaskStatus` operations plus one composite `ManageTask` request. Its strict JSON
+CLI route, versioned values, self-digested state, replay, freshness, partial-effect,
+offline, retry, and explicit non-pass contract are documented in
+[WORK_MANAGER.md](WORK_MANAGER.md). This is in-memory evidence only; the production GitHub
+adapter and live qualification remain #72–#76.
 
 - Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
 - Phase 1 uses the Go standard library and the structured `git`

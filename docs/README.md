@@ -103,6 +103,10 @@
     generated communication, local preparation, and publication separation.
 50. `evidence/ISSUE-78.md` — implementation, validation, preparation, verification,
     limitation, and downstream publication-adapter record.
+51. `architecture/WORK_MANAGER.md` — implemented one-task desired-state, adapter,
+    plan, receipt, persistence, recovery, and evidence contract.
+52. `evidence/ISSUE-71.md` — implementation, scenario, prototype-absorption,
+    verification, limitation, and GitHub-state record for the managed-task slice.
 
 ## Document lifecycle
 
