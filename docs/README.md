@@ -88,6 +88,8 @@
     resolving the remaining GitHub executable-work design frontier.
 43. `evidence/ISSUE-63.md` — research scope, provenance, GitHub-state, verification, and
     downstream prototype record for the authentication/transport evaluation.
+44. `evidence/ISSUE-64.md` — Work Manager prototype boundary, scenario conclusions,
+    verification state, limitations, and downstream sandbox handoff.
 
 ## Document lifecycle
 
