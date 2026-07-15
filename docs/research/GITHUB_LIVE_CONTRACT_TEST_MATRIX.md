@@ -82,8 +82,9 @@ evidence.
 | O rules applier | One-operation selected-repository token; Metadata read and Administration write | Inspector token cannot mutate; token is destroyed after disable/delete cleanup |
 | P reconciler classic user token | Expected personal actor; classic scopes exactly `public_repo` and `project` | Separately omit `public_repo` and `project`; fine-grained, App-user, and App-installation tokens must be rejected for the documented user-owned Project item route |
 | A issue job | `contents: read`, `issues: write`, every other job permission `none` | Project and other-repository access denied; a second job with `issues: read` cannot mutate |
-| A observation job | `contents: read`, `pull-requests: read`, `checks: read`, `actions: read`, every other job permission `none` | No issue, Project, ruleset, merge, contents-write, or workflow-write authority |
-| Fixture seeder | Separate approved user/App identity with Metadata read, Contents write, Pull requests write, Actions write, and Issues write only in the sandbox | Seeder credential is unavailable to Work Manager and contract jobs |
+| A observation job | `contents: read`, `pull-requests: read`, `checks: read`, `statuses: read`, `actions: read`, every other job permission `none` | No issue, Project, ruleset, review submission, merge, contents-write, or workflow-write authority |
+| Fixture seeder App installation | Separate private App installed only on O and P sandbox repositories; Metadata read, Contents write, Pull requests write, Workflows write, and Issues write | Seeder installation credential is unavailable to Work Manager, Actions jobs, and reviewer; omitted Workflows permission cannot seed/change the fixture workflow |
+| Distinct test reviewer | Dedicated user account, different from sandbox owner, seeder App managers, and implementation actor; repository role Write; selected-repository fine-grained token with Metadata/Contents read and Pull requests write | Pull requests read cannot submit a review; same-actor or stale-head review is observed but cannot satisfy distinct review |
 | Optional webhook manager | Separate one-operation identity with Metadata read and Webhooks write | Omitted by default; built-in `GITHUB_TOKEN` cannot configure it |
 
 | Endpoint family | Allowed operations |
@@ -223,6 +224,10 @@ it is not a claim that the behavior has already been observed.
   targets only `contract/<run-id>/**`; its temporary activation and deletion are isolated
   `GH-RULE-01` effects. Create/replay and lost-response cases may create one additional
   issue each and must close them during case cleanup.
+- The distinct test reviewer submits exactly one approval on the success-path PR and one
+  changes-requested review on the failing PR. The seeder and Work Manager never submit a
+  qualifying review. The run records reviewer account ID, repository role, credential
+  permission facts, reviewed head SHA, and review ID without retaining the token.
 - Project workflow configuration is asserted, not silently created by the adapter. If the
   named views or workflows cannot be provisioned exactly, their cases remain
   `not-configured`; another mechanism is not substituted.
@@ -279,15 +284,18 @@ approve the exact run manifest and confirm:
 
 1. organization and personal sandbox owners, administrators, public visibility, and
    GitHub plan;
-2. App owner/managers, selected repository, exact permission manifest, key/secret store,
-   expiry, rotation, suspension/revocation, and incident responsibility;
+2. reconciler and seeder App owners/managers, selected repositories, exact permission
+   manifests, key/secret stores, expiry, rotation, suspension/revocation, and incident
+   responsibility;
 3. whether the classic personal token fallback is accepted and, if so, its exact scopes,
    expiry, storage, and revocation path;
-4. whether optional live webhooks or any private/paid target are included, with hosting,
+4. the distinct reviewer account owner, repository role, exact fine-grained permission,
+   token lifecycle, independence from seeding/implementation, and availability;
+5. whether optional live webhooks or any private/paid target are included, with hosting,
    data, retention, and cost implications;
-5. fixture prefix, lease, 24-hour cleanup, 30-day raw evidence retention, and residual
+6. fixture prefix, lease, 24-hour cleanup, 30-day raw evidence retention, and residual
    resource owner; and
-6. spending/budget guardrails and the fallback/support claim if any target is declined.
+7. spending/budget guardrails and the fallback/support claim if any target is declined.
 
 If approval is declined, decomposition can still implement the in-memory Work Manager and
 adapter boundary, but App, personal-Project, or optional webhook claims remain explicitly

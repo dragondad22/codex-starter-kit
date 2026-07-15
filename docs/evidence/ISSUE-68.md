@@ -51,10 +51,12 @@ fixture cleanup target, proposed 30-day raw CI evidence, durable redacted summar
 no secrets in plans or artifacts. It never intentionally exhausts GitHub rate limits.
 
 Provisioning remains a separate human approval. The approval must identify sandbox
-owners/admins and plans; App owner/managers, selected repository, permissions, secret
-store, rotation/revocation, and incident owner; acceptance or rejection of the classic
-personal token; optional webhook/private targets; retention/cleanup; spending guardrails;
-and the fallback/support limitation if any route is declined.
+owners/admins and plans; reconciler and fixture-seeder App owners/managers, selected
+repositories, permissions, secret stores, rotation/revocation, and incident owner; the
+distinct test-reviewer account, role, fine-grained permission, token lifecycle, and
+independence; acceptance or rejection of the classic personal token; optional
+webhook/private targets; retention/cleanup; spending guardrails; and the fallback/support
+limitation if any route is declined.
 
 ## Read-only evidence
 
