@@ -1,7 +1,7 @@
 # GitHub Executable-Work Decision Map
 
 **Scope:** GitHub feature [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
-**Status:** Active planning aid; not product, architecture, policy, or Project authority
+**Status:** Resolved planning record; not product, architecture, policy, or Project authority
 **Finish line:** Enough decisions and evidence to decompose #4 into sequenced Ready
 sub-issues without implementation-time invention
 
@@ -9,6 +9,7 @@ sub-issues without implementation-time invention
 
 Blocked by: None
 Type: Grilling
+GitHub work item: [#70](https://github.com/dragondad22/codex-starter-kit/issues/70)
 GitHub work item: [#62](https://github.com/dragondad22/codex-starter-kit/issues/62)
 
 ### Question
@@ -170,6 +171,29 @@ evidence, documentation impact, and readiness—while preserving #15, #16, and #
 
 ### Answer
 
-Unresolved. If yes, publish the decomposition to GitHub, reconcile every child and the
-parent Project fields, remove `needs-triage`, and drive one Ready issue at a time. If no,
-add only the newly discovered frontier tickets to this map.
+Resolved yes on 2026-07-15. Tickets #1–#4 and their promoted records cover every Phase 3
+outcome and negative path without requiring implementation-time product, architecture,
+policy, regulatory, or risk invention. The product owner approved six tracer-bullet
+slices, published as native children of #4:
+
+1. [#71](https://github.com/dragondad22/codex-starter-kit/issues/71) — manage one task
+   deterministically through the lifecycle engine;
+2. [#72](https://github.com/dragondad22/codex-starter-kit/issues/72) — reconcile one
+   managed task through GitHub;
+3. [#73](https://github.com/dragondad22/codex-starter-kit/issues/73) — bootstrap an
+   isolated GitHub executable-work sandbox after explicit provisioning approval;
+4. [#74](https://github.com/dragondad22/codex-starter-kit/issues/74) — govern executable
+   work from intake through readiness;
+5. [#75](https://github.com/dragondad22/codex-starter-kit/issues/75) — deliver one Ready
+   issue through squash completion; and
+6. [#76](https://github.com/dragondad22/codex-starter-kit/issues/76) — qualify the GitHub
+   executable-work contract and publish truthful evidence.
+
+The dependency order is #71 → #72 → #73; existing #15 and #46 then join #73 as blockers
+of #74; #72 and #74 block #75; and #73–#75 block #76. Provisioning within #73 remains a
+named human-owned external authority gate. Closed #16 governs question/research semantics
+rather than becoming duplicate work. #71 is the single selected Ready item; other
+incomplete slices remain Backlog/Blocked until reconciliation promotes them.
+
+This resolves the design frontier. The operational Project and native issue hierarchy
+now govern delivery; this document preserves only the reasoning and reciprocal routes.

@@ -95,6 +95,8 @@
     provisioning gate.
 46. `evidence/ISSUE-68.md` — research authority, topology conclusion, read-only evidence,
     limitations, and final-decomposition handoff for the live contract matrix.
+47. `evidence/ISSUE-70.md` — product-owner approval, tracer-bullet dependency graph,
+    Project reconciliation, verification, and limitations for the Phase 3 decomposition.
 
 ## Document lifecycle
 
