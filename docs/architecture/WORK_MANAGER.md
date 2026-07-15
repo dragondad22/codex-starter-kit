@@ -51,6 +51,9 @@ as a side effect of that promotion, inherits Phase from the parent when direct P
 absent, maps a closed task to Status `done`, and preserves parent, blocker, promotion, and
 distinct-review facts. The adapter observes and attempts semantic effects; it cannot
 select policy, credentials, broader authority, or a passing result.
+Closed questions require either a durable promotion route or an explicit no-promotion
+resolution; closed research requires a durable promoted output. Implementation work
+requires a named distinct-context review role.
 
 For the selected task, the immutable plan also reports derived parent status/closure from
 the supplied parent and sibling facts. This represents the #64 rule that a started child

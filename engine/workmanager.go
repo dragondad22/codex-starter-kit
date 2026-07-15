@@ -61,19 +61,20 @@ type WorkParentContext struct {
 
 // DesiredManagedTask is the Work Manager-owned desired state for one task.
 type DesiredManagedTask struct {
-	ManagedID       string                  `json:"managed_id"`
-	IssueType       string                  `json:"issue_type"`
-	Title           string                  `json:"title"`
-	ParentManagedID string                  `json:"parent_managed_id,omitempty"`
-	Blockers        []WorkDependency        `json:"blockers"`
-	Readiness       string                  `json:"readiness"`
-	Status          string                  `json:"status"`
-	Phase           string                  `json:"phase,omitempty"`
-	ParentPhase     string                  `json:"parent_phase,omitempty"`
-	PromotionRecord string                  `json:"promotion_record,omitempty"`
-	Review          []WorkReviewRequirement `json:"review"`
-	Closed          bool                    `json:"closed"`
-	ParentContext   *WorkParentContext      `json:"parent_context,omitempty"`
+	ManagedID           string                  `json:"managed_id"`
+	IssueType           string                  `json:"issue_type"`
+	Title               string                  `json:"title"`
+	ParentManagedID     string                  `json:"parent_managed_id,omitempty"`
+	Blockers            []WorkDependency        `json:"blockers"`
+	Readiness           string                  `json:"readiness"`
+	Status              string                  `json:"status"`
+	Phase               string                  `json:"phase,omitempty"`
+	ParentPhase         string                  `json:"parent_phase,omitempty"`
+	PromotionRecord     string                  `json:"promotion_record,omitempty"`
+	NoPromotionRequired bool                    `json:"no_promotion_required"`
+	Review              []WorkReviewRequirement `json:"review"`
+	Closed              bool                    `json:"closed"`
+	ParentContext       *WorkParentContext      `json:"parent_context,omitempty"`
 }
 
 // WorkDesiredIntent is credential-free, source-bound managed-task intent.
@@ -621,7 +622,7 @@ func (e *Engine) VerifyManagedTask(ctx context.Context, repository string) (Work
 }
 
 func preserveManagedTaskNonPass(disposition string) bool {
-	return slices.Contains([]string{"queued-offline", "handshake-required", "denied", "ambiguous", "retry-pending", "retry-exhausted", "stale", "needs-review"}, disposition)
+	return slices.Contains([]string{"queued-offline", "handshake-required", "denied", "ambiguous", "offline", "failed", "retry-pending", "retry-exhausted", "stale", "needs-review"}, disposition)
 }
 
 // ManagedTaskStatus returns durable state without contacting the adapter.
@@ -662,6 +663,12 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 		if !distinctReview {
 			return errors.New("managed implementation work requires a distinct review role")
 		}
+	}
+	if intent.Task.Closed && intent.Task.IssueType == "question" && intent.Task.PromotionRecord == "" && !intent.Task.NoPromotionRequired {
+		return errors.New("closed question requires a promotion record or explicit no-promotion resolution")
+	}
+	if intent.Task.Closed && intent.Task.IssueType == "research" && intent.Task.PromotionRecord == "" {
+		return errors.New("closed research requires a durable promoted output")
 	}
 	if intent.Task.ParentContext != nil {
 		if intent.Task.ParentContext.ManagedID == "" || intent.Task.ParentContext.ManagedID != intent.Task.ParentManagedID || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, intent.Task.ParentContext.Status) {
@@ -741,7 +748,7 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	if observation.Revision == "" || observation.ConfigurationRevision == "" || observation.Target.Host == "" || observation.Target.RepositoryID == "" || observation.Target.ProjectID == "" {
 		problems = append(problems, "adapter observation lacks stable revision or target provenance")
 	}
-	if observation.Task != nil && (observation.Task.ManagedID == "" || observation.Task.IssueNodeID == "" || observation.Task.Title == "" || observation.Task.IssueType == "") {
+	if observation.Task != nil && (observation.Task.ManagedID == "" || observation.Task.ManagedID != intent.Task.ManagedID || observation.Task.IssueNodeID == "" || observation.Task.Title == "" || observation.Task.IssueType == "") {
 		problems = append(problems, "adapter observation contains an invalid task identity")
 	}
 	if capability.ConfigurationRevision != observation.ConfigurationRevision || !equalWorkTarget(intent.Target, observation.Target) {

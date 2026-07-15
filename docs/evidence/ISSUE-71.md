@@ -30,6 +30,8 @@ facts; separate review requirements; lifecycle-lease serialization; full capabil
 freshness at apply and verify; unresolved ambiguous-create blocking; invalid adapter-result
 `needs-review`; strict schema and secret-shaped input/observation rejection before state;
 adapter-detail redaction; and state-integrity failure after tamper.
+Question/research completion validation keeps promotion outputs distinct from issue and
+Project state, and mismatched observed managed IDs stop before planning.
 
 The production policy owns desired lifecycle and relationship facts. The adapter owns
 normalized observation and effect attempts only. Missing evidence and every failure remain

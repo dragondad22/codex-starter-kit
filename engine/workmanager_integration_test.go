@@ -466,6 +466,24 @@ func TestManageTaskPreservesExplicitDeniedDisposition(t *testing.T) {
 	}
 }
 
+func TestManageTaskPreservesOfflineAndFailedDispositions(t *testing.T) {
+	for _, outcome := range []string{"offline", "failed"} {
+		outcome := outcome
+		t.Run(outcome, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: outcome, Attempt: 1, Recoverable: true, Detail: outcome + " effect"}, false)
+			journey, err := lifecycle.ManageTask(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if journey.Status.Disposition != outcome || journey.Verification.OverallState == engine.ControlPass {
+				t.Fatalf("composite request erased %s: %#v", outcome, journey)
+			}
+		})
+	}
+}
+
 func TestManagedTaskPartialSuccessResumesOnlyRemainingEffect(t *testing.T) {
 	t.Parallel()
 
@@ -727,6 +745,49 @@ func TestManagedTaskUnblockedReadinessDoesNotSelectStatus(t *testing.T) {
 	derived := plan.Effects[len(plan.Effects)-1].Desired
 	if derived.Readiness != "ready" || derived.Status != "next" {
 		t.Fatalf("unblocking may promote readiness but must preserve independently selected status: %#v", derived)
+	}
+}
+
+func TestManagedQuestionCompletionRequiresPromotionResolution(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.IssueType = "question"
+	request.Intent.Task.Closed = true
+	request.Intent.Task.Status = "done"
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+		t.Fatal("closed question without promotion resolution must be rejected")
+	}
+	request.Intent.Task.PromotionRecord = "docs/decisions/DEC-0013-question-and-research-work.md"
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DerivedFacts.Completion != "complete" || plan.DerivedFacts.PromotionRecord != request.Intent.Task.PromotionRecord {
+		t.Fatalf("question completion must retain its distinct promotion route: %#v", plan.DerivedFacts)
+	}
+}
+
+func TestManagedTaskInspectionRejectsDifferentObservedManagedIdentity(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{ManagedID: "issue:other", IssueNodeID: "memory:issue:other", Title: "Other task", IssueType: "task"}
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition == "inspected" {
+		t.Fatalf("different managed identity must be non-pass, got %#v", inspection)
+	}
+	if _, err := lifecycle.PlanManagedTask(context.Background(), inspection); err == nil {
+		t.Fatal("different observed managed identity must not produce a plan")
 	}
 }
 
