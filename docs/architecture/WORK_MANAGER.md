@@ -35,6 +35,11 @@ Every boundary is schema version 1:
 - `WorkEffectReceipt` preserves each applied or non-pass effect with plan, operation,
   actor, authority, source, observation, target, attempt, retry, recovery, and time facts.
 
+Capability, observation, plan, and effect-result schemas validate required identities,
+timestamps, permissions, revisions, outcomes, attempts, and bounded retry ranges. All
+adapter data is untrusted; secret-shaped normalized data is rejected before state, and
+secret-shaped adapter diagnostics are redacted before receipts.
+
 Go type names are implementation labels, not compatibility authority. Compatibility is
 the emitted JSON plus black-box behavior through the CLI and engine seam.
 
@@ -47,11 +52,18 @@ absent, maps a closed task to Status `done`, and preserves parent, blocker, prom
 distinct-review facts. The adapter observes and attempts semantic effects; it cannot
 select policy, credentials, broader authority, or a passing result.
 
+For the selected task, the immutable plan also reports derived parent status/closure from
+the supplied parent and sibling facts. This represents the #64 rule that a started child
+keeps an incomplete parent `in-progress` and all closed children close it `done`; the
+one-task route does not apply a second parent effect. Multi-item reconciliation remains
+#74.
+
 Creating a missing task and reconciling its Project/relationship state are separate
 effects. A completed create receipt therefore survives a denied or interrupted Project
 effect, and the next observation/plan contains only the remaining semantic difference.
 An ambiguous create may be re-observed through its stable non-secret marker; discovery
 prevents a duplicate create but does not falsely report unobserved Project state complete.
+If lookup remains inconclusive, disposition stays `ambiguous` and planning is blocked.
 
 ## Persistence, replay, and recovery
 
@@ -59,6 +71,8 @@ The credential-free request, normalized inspection, active plan, receipts, verif
 retry schedule, and disposition are atomically replaced at
 `.starter-kit/work-manager/state.json`. The document has its own SHA-256 state digest and
 fails closed if altered. It stores neither credentials nor raw transport requests.
+Apply first acquires the repository lifecycle lease, so create/verify/work operations and
+concurrent work applies cannot race effects or overwrite receipts.
 
 An unchanged refreshed observation produces an effect-free no-change plan while retaining
 prior receipts. Apply re-observes capability and task state immediately before effects.

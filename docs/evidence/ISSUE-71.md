@@ -25,8 +25,11 @@ status; semantic no-change replay; governed-source, operating-profile, observati
 configuration/option migration staleness; denied authority; ambiguous create recovery;
 partial create/Project success and remaining-effect resume; offline/reconnect handshake;
 expiry; bounded rate retry and reset; blocker-driven Readiness without Status selection;
-parent Phase inheritance; completion-to-Done; separate review requirements; strict schema
-and secret-shaped input rejection before state; and state-integrity failure after tamper.
+parent Phase inheritance and incomplete-parent status; completion-to-Done and promotion
+facts; separate review requirements; lifecycle-lease serialization; full capability
+freshness at apply and verify; unresolved ambiguous-create blocking; invalid adapter-result
+`needs-review`; strict schema and secret-shaped input/observation rejection before state;
+adapter-detail redaction; and state-integrity failure after tamper.
 
 The production policy owns desired lifecycle and relationship facts. The adapter owns
 normalized observation and effect attempts only. Missing evidence and every failure remain

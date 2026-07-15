@@ -3,8 +3,11 @@ package engine_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +18,7 @@ func TestManagedTaskLifecycleConvergesThroughInMemoryAdapter(t *testing.T) {
 	t.Parallel()
 
 	repository := t.TempDir()
+	initializeWorkGit(t, repository)
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	adapter := engine.NewInMemoryWorkAdapter(engine.WorkCapability{
 		SchemaVersion:         1,
@@ -49,7 +53,7 @@ func TestManagedTaskLifecycleConvergesThroughInMemoryAdapter(t *testing.T) {
 			OperationID:              "operation:issue-71",
 			SourceRevision:           "issue-71:v1",
 			OperatingProfileRevision: "operating-profile:v1",
-			InputDigests:             map[string]string{"issue": "sha256:issue-71-v1"},
+			InputDigests:             map[string]string{"issue": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 			Credential:               engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"},
 			Target:                   adapter.Observation().Target,
 			Task: engine.DesiredManagedTask{
@@ -154,6 +158,7 @@ func TestManagedTaskReplayProducesNoEffectsAndPreservesReceipts(t *testing.T) {
 func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAdapter, engine.ManagedTaskRequest, time.Time) {
 	t.Helper()
 	repository := t.TempDir()
+	initializeWorkGit(t, repository)
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	adapter := engine.NewInMemoryWorkAdapter(engine.WorkCapability{
 		SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer",
@@ -172,7 +177,7 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 		Intent: engine.WorkDesiredIntent{
 			SchemaVersion: 1, OperationID: "operation:issue-71", SourceRevision: "issue-71:v1",
 			OperatingProfileRevision: "operating-profile:v1",
-			InputDigests:             map[string]string{"issue": "sha256:issue-71-v1"},
+			InputDigests:             map[string]string{"issue": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 			Credential:               engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"},
 			Target:                   adapter.Observation().Target,
 			Task: engine.DesiredManagedTask{
@@ -183,6 +188,14 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 		},
 	}
 	return engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter)), adapter, request, now
+}
+
+func initializeWorkGit(t *testing.T, repository string) {
+	t.Helper()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize managed-task Git repository: %v: %s", err, output)
+	}
 }
 
 func TestManagedTaskApplyRejectsChangedGovernedSource(t *testing.T) {
@@ -198,7 +211,7 @@ func TestManagedTaskApplyRejectsChangedGovernedSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Intent.SourceRevision = "issue-71:v2"
-	request.Intent.InputDigests["issue"] = "sha256:issue-71-v2"
+	request.Intent.InputDigests["issue"] = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
@@ -240,6 +253,33 @@ func TestManagedTaskApplyRejectsChangedObservation(t *testing.T) {
 	}
 	if status.Disposition != "stale" {
 		t.Fatalf("observation drift must remain explicit, got %#v", status)
+	}
+}
+
+func TestManagedTaskApplyRejectsChangedCapability(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, _ := adapter.Capability(context.Background())
+	capability.Permissions = append(capability.Permissions, "metadata:read")
+	adapter.SetCapability(capability)
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("expected changed capability manifest to reject retained plan")
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Disposition != "stale" {
+		t.Fatalf("changed capability must remain explicit stale state, got %#v", status)
 	}
 }
 
@@ -381,6 +421,48 @@ func TestManagedTaskAmbiguousCreateReconcilesWithoutDuplicate(t *testing.T) {
 	}
 	if verification.OverallState != engine.ControlPass {
 		t.Fatalf("expected recovered task to verify, got %#v", verification)
+	}
+}
+
+func TestManagedTaskUnresolvedAmbiguousCreateCannotPlanDuplicate(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "ambiguous", Attempt: 1, Recoverable: true, Detail: "response lost and marker lookup is not yet conclusive"}, false)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	unresolved, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unresolved.Disposition != "ambiguous" {
+		t.Fatalf("expected unresolved marker lookup to remain ambiguous, got %#v", unresolved)
+	}
+	if _, err := lifecycle.PlanManagedTask(context.Background(), unresolved); err == nil {
+		t.Fatal("unresolved ambiguous create must not produce a duplicate create plan")
+	}
+}
+
+func TestManageTaskPreservesExplicitDeniedDisposition(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "denied", Attempt: 1, Recoverable: true, Detail: "Project write denied"}, false)
+	journey, err := lifecycle.ManageTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journey.Apply.Status != engine.WorkApplyNonPass || journey.Verification.OverallState == engine.ControlPass || journey.Status.Disposition != "denied" {
+		t.Fatalf("composite request erased explicit denied state: %#v", journey)
 	}
 }
 
@@ -583,12 +665,17 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 
 	lifecycle, _, request, _ := newManagedTaskFixture(t)
 	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{
+		ManagedID: "issue:4", Status: "in-progress",
+		OtherChildren: []engine.WorkRelatedTask{{ManagedID: "issue:72", Status: "backlog", Closed: false}},
+	}
 	request.Intent.Task.Phase = ""
 	request.Intent.Task.ParentPhase = "Phase 3"
 	request.Intent.Task.Readiness = "blocked"
 	request.Intent.Task.Blockers = []engine.WorkDependency{{ManagedID: "issue:64", Closed: true}}
 	request.Intent.Task.Status = "next"
 	request.Intent.Task.Closed = true
+	request.Intent.Task.PromotionRecord = "docs/decisions/DEC-0013-question-and-research-work.md"
 	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -606,6 +693,9 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 	}
 	if len(derived.Review) != 1 || !derived.Review[0].DistinctContext {
 		t.Fatalf("review requirement must remain distinct: %#v", derived.Review)
+	}
+	if plan.DerivedFacts.ParentStatus != "in-progress" || plan.DerivedFacts.ParentClosed || plan.DerivedFacts.Completion != "complete" || plan.DerivedFacts.PromotionRecord != request.Intent.Task.PromotionRecord {
+		t.Fatalf("expected incomplete parent and separate promoted completion facts, got %#v", plan.DerivedFacts)
 	}
 	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
 		t.Fatal(err)
@@ -720,5 +810,144 @@ func TestManagedTaskStateRejectsReservedDirectorySymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "work-manager", "state.json")); !os.IsNotExist(err) {
 		t.Fatalf("managed-task state escaped repository through symlink: %v", err)
+	}
+}
+
+func TestManagedTaskVerifyRequiresFreshMatchingCapability(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	capability, _ := adapter.Capability(context.Background())
+	capability.Online = false
+	capability.Fresh = false
+	adapter.SetCapability(capability)
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.OverallState == engine.ControlPass {
+		t.Fatalf("offline stale capability must not verify as pass: %#v", verification)
+	}
+}
+
+func TestManagedTaskApplyHonorsRepositoryLifecycleLease(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, now := newManagedTaskFixture(t)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitDirectoryOutput, err := exec.Command("git", "-C", request.Repository, "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(strings.TrimSpace(string(gitDirectoryOutput)), "starter-kit.lock")
+	lease := fmt.Sprintf("{\"schema_version\":1,\"token\":\"%032x\",\"plan_id\":%q,\"pid\":%d,\"created_at\":%q}\n", 1, plan.ID, os.Getpid(), now.Format(time.RFC3339Nano))
+	if err := os.WriteFile(lockPath, []byte(lease), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(lockPath) })
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("expected active repository lifecycle lease to serialize managed-task apply")
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Receipts) != 0 {
+		t.Fatalf("locked apply must not attempt effects: %#v", status)
+	}
+}
+
+func TestManagedTaskReceiptRedactsSecretShapedAdapterDetail(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	secret := "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "denied", Attempt: 1, Recoverable: true, Detail: "denied token " + secret}, false)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Receipts[0].Detail, secret) {
+		t.Fatalf("secret-shaped adapter detail escaped receipt redaction: %q", result.Receipts[0].Detail)
+	}
+	content, err := os.ReadFile(filepath.Join(request.Repository, ".starter-kit", "work-manager", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(content, []byte(secret)) {
+		t.Fatal("secret-shaped adapter detail persisted in durable state")
+	}
+}
+
+func TestManagedTaskRejectsSecretShapedObservationWithoutState(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	secret := "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{ManagedID: "issue:71", Title: secret, IssueType: "task"}
+	adapter.SetObservation(observation)
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+		t.Fatal("expected secret-shaped normalized observation rejection")
+	} else if strings.Contains(err.Error(), secret) {
+		t.Fatalf("rejection diagnostic echoed secret: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(request.Repository, ".starter-kit", "work-manager", "state.json")); !os.IsNotExist(err) {
+		t.Fatalf("rejected observation must not create state, got %v", err)
+	}
+}
+
+func TestManagedTaskInvalidAdapterResultBecomesNeedsReview(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "mystery", Attempt: 0, Detail: "unversioned adapter result"}, false)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan)
+	if err == nil {
+		t.Fatal("invalid adapter result must fail the accepted apply")
+	}
+	if result.Status != engine.WorkApplyNonPass || len(result.Receipts) != 1 || result.Receipts[0].Outcome != "needs-review" {
+		t.Fatalf("invalid result must persist an explicit needs-review receipt: %#v", result)
+	}
+	status, statusErr := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if statusErr != nil {
+		t.Fatal(statusErr)
+	}
+	if status.Disposition != "needs-review" {
+		t.Fatalf("invalid adapter result must remain needs-review, got %#v", status)
 	}
 }

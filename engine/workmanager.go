@@ -44,6 +44,21 @@ type WorkDependency struct {
 	Closed    bool   `json:"closed"`
 }
 
+// WorkRelatedTask is sibling context used to derive parent completion without managing that sibling.
+type WorkRelatedTask struct {
+	ManagedID string `json:"managed_id"`
+	Status    string `json:"status"`
+	Closed    bool   `json:"closed"`
+}
+
+// WorkParentContext supplies the current parent and other-child facts for one managed task.
+type WorkParentContext struct {
+	ManagedID     string            `json:"managed_id"`
+	Status        string            `json:"status"`
+	Closed        bool              `json:"closed"`
+	OtherChildren []WorkRelatedTask `json:"other_children"`
+}
+
 // DesiredManagedTask is the Work Manager-owned desired state for one task.
 type DesiredManagedTask struct {
 	ManagedID       string                  `json:"managed_id"`
@@ -58,6 +73,7 @@ type DesiredManagedTask struct {
 	PromotionRecord string                  `json:"promotion_record,omitempty"`
 	Review          []WorkReviewRequirement `json:"review"`
 	Closed          bool                    `json:"closed"`
+	ParentContext   *WorkParentContext      `json:"parent_context,omitempty"`
 }
 
 // WorkDesiredIntent is credential-free, source-bound managed-task intent.
@@ -150,6 +166,7 @@ type WorkPlan struct {
 	InspectionID             string                    `json:"inspection_id"`
 	ObservationRevision      string                    `json:"observation_revision"`
 	ConfigurationRevision    string                    `json:"configuration_revision"`
+	CapabilityDigest         string                    `json:"capability_digest"`
 	Target                   WorkTarget                `json:"target"`
 	ExpectedCredential       WorkCredentialExpectation `json:"credential_expectation"`
 	Preconditions            []string                  `json:"preconditions"`
@@ -158,6 +175,19 @@ type WorkPlan struct {
 	ExpiresAt                time.Time                 `json:"expires_at"`
 	Effects                  []WorkEffect              `json:"effects"`
 	NoChange                 bool                      `json:"no_change"`
+	DerivedFacts             WorkDerivedFacts          `json:"derived_facts"`
+}
+
+// WorkDerivedFacts exposes policy results without adding a second managed item.
+type WorkDerivedFacts struct {
+	Readiness       string                  `json:"readiness"`
+	Status          string                  `json:"status"`
+	Phase           string                  `json:"phase,omitempty"`
+	PromotionRecord string                  `json:"promotion_record,omitempty"`
+	Review          []WorkReviewRequirement `json:"review"`
+	Completion      string                  `json:"completion"`
+	ParentStatus    string                  `json:"parent_status,omitempty"`
+	ParentClosed    bool                    `json:"parent_closed"`
 }
 
 // WorkEffectResult is the adapter's explicit result for one attempted semantic effect.
@@ -221,12 +251,14 @@ type WorkApplyResult struct {
 
 // WorkVerificationResult reports semantic convergence without claiming live evidence.
 type WorkVerificationResult struct {
-	SchemaVersion  int             `json:"schema_version"`
-	VerificationID string          `json:"verification_id"`
-	OverallState   ControlState    `json:"overall_state"`
-	Controls       []ControlResult `json:"controls"`
-	EvidencePath   string          `json:"evidence_path"`
-	VerifiedAt     time.Time       `json:"verified_at"`
+	SchemaVersion       int             `json:"schema_version"`
+	VerificationID      string          `json:"verification_id"`
+	OverallState        ControlState    `json:"overall_state"`
+	Controls            []ControlResult `json:"controls"`
+	EvidencePath        string          `json:"evidence_path"`
+	VerifiedAt          time.Time       `json:"verified_at"`
+	Capability          WorkCapability  `json:"capability"`
+	ObservationRevision string          `json:"observation_revision"`
 }
 
 // ManagedTaskStatus is durable local state returned after interruption or restart.
@@ -338,10 +370,18 @@ func (e *Engine) InspectManagedTask(ctx context.Context, request ManagedTaskRequ
 	receipts := []WorkEffectReceipt{}
 	var priorVerification *WorkVerificationResult
 	var retry *WorkRetryState
+	priorDisposition := ""
+	priorRecovery := []string{}
 	if prior, readErr := readManagedTaskState(root); readErr == nil && prior.Request.Intent.OperationID == request.Intent.OperationID && prior.Request.Intent.Task.ManagedID == request.Intent.Task.ManagedID {
 		receipts = slices.Clone(prior.Receipts)
 		priorVerification = prior.Verification
 		retry = cloneWorkRetry(prior.Retry)
+		priorDisposition = prior.Disposition
+		priorRecovery = slices.Clone(prior.Recovery)
+	}
+	if priorDisposition == "ambiguous" && observation.Task == nil {
+		disposition = "ambiguous"
+		problems = append(problems, "ambiguous create remains unresolved by stable-marker observation")
 	}
 	if retry != nil {
 		if !now.Before(retry.ResetAt) {
@@ -357,7 +397,7 @@ func (e *Engine) InspectManagedTask(ctx context.Context, request ManagedTaskRequ
 	sort.Strings(problems)
 	inspection := WorkInspection{SchemaVersion: 1, Repository: root, Intent: request.Intent, Capability: capability, Observation: observation, Disposition: disposition, Problems: problems}
 	inspection.ID = digestJSON(workInspectionWithoutID(inspection))
-	state := managedTaskState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: receipts, Verification: priorVerification, Disposition: disposition, Problems: problems, Recovery: []string{}, Retry: retry}
+	state := managedTaskState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: receipts, Verification: priorVerification, Disposition: disposition, Problems: problems, Recovery: priorRecovery, Retry: retry}
 	if err := writeManagedTaskState(root, state); err != nil {
 		return WorkInspection{}, err
 	}
@@ -368,6 +408,9 @@ func (e *Engine) InspectManagedTask(ctx context.Context, request ManagedTaskRequ
 func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (WorkPlan, error) {
 	if inspection.ID == "" || inspection.ID != digestJSON(workInspectionWithoutID(inspection)) {
 		return WorkPlan{}, errors.New("managed-task inspection identity is invalid")
+	}
+	if inspection.SchemaVersion != 1 || validateWorkIntent(inspection.Intent) != nil || len(validateWorkHandshake(inspection.Intent, inspection.Capability, inspection.Observation, e.clock.Now())) != 0 {
+		return WorkPlan{}, errors.New("managed-task inspection schema or provenance is invalid")
 	}
 	if inspection.Disposition != "inspected" || len(inspection.Problems) != 0 {
 		return WorkPlan{}, errors.New("managed-task inspection contains non-pass results")
@@ -388,10 +431,12 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		OperatingProfileRevision: inspection.Intent.OperatingProfileRevision,
 		InspectionID:             inspection.ID, ObservationRevision: inspection.Observation.Revision,
 		ConfigurationRevision: inspection.Capability.ConfigurationRevision, Target: cloneWorkTarget(inspection.Intent.Target), ExpectedCredential: inspection.Intent.Credential,
-		Preconditions: []string{"unchanged desired source", "fresh expected actor", "minimum declared permissions", "matching immutable target and configuration identities", "unexpired capability and plan"},
-		Impact:        []string{"reconcile one managed task in the selected issue and Project target"},
-		Recovery:      []string{"retain completed receipts", "refresh capability and observation", "create a new immutable plan for remaining semantic differences"},
-		ExpiresAt:     inspection.Capability.ExpiresAt, Effects: effects, NoChange: len(effects) == 0,
+		CapabilityDigest: digestJSON(inspection.Capability),
+		Preconditions:    []string{"unchanged desired source", "fresh expected actor", "minimum declared permissions", "matching immutable target and configuration identities", "unexpired capability and plan"},
+		Impact:           []string{"reconcile one managed task in the selected issue and Project target"},
+		Recovery:         []string{"retain completed receipts", "refresh capability and observation", "create a new immutable plan for remaining semantic differences"},
+		ExpiresAt:        inspection.Capability.ExpiresAt, Effects: effects, NoChange: len(effects) == 0,
+		DerivedFacts: deriveManagedTaskFacts(desired),
 	}
 	plan.ID = digestJSON(workPlanWithoutID(plan))
 	state, err := readManagedTaskState(inspection.Repository)
@@ -417,11 +462,29 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 	if expectedPlanID == "" || expectedPlanID != plan.ID || plan.ID != digestJSON(workPlanWithoutID(plan)) {
 		return WorkApplyResult{}, errors.New("managed-task plan identity is invalid")
 	}
+	if err := validateManagedTaskPlan(plan); err != nil {
+		return WorkApplyResult{}, err
+	}
+	root, err := cleanRepositoryRoot(plan.Repository)
+	if err != nil || root != plan.Repository {
+		return WorkApplyResult{}, errors.New("managed-task plan repository is invalid")
+	}
+	lockPath, err := lifecycleLockPath(ctx, root)
+	if err != nil {
+		return WorkApplyResult{}, err
+	}
+	lease, leaseRecovery, leaseEvidence, err := acquireLifecycleLock(lockPath, plan.ID, e.clock.Now())
+	if err != nil {
+		return WorkApplyResult{}, fmt.Errorf("acquire managed-task lifecycle lease: %w", err)
+	}
+	defer releaseLifecycleLock(lockPath, lease)
 	state, err := readManagedTaskState(plan.Repository)
 	if err != nil {
 		return WorkApplyResult{}, err
 	}
-	if state.Plan == nil || state.Plan.ID != plan.ID || state.Inspection.Intent.SourceRevision != plan.SourceRevision || state.Inspection.Intent.OperatingProfileRevision != plan.OperatingProfileRevision || state.Inspection.Observation.Revision != plan.ObservationRevision {
+	state.Recovery = append(state.Recovery, leaseRecovery...)
+	state.Recovery = append(state.Recovery, leaseEvidence...)
+	if state.Plan == nil || state.Plan.ID != plan.ID || state.Inspection.Intent.SourceRevision != plan.SourceRevision || state.Inspection.Intent.OperatingProfileRevision != plan.OperatingProfileRevision || state.Inspection.Observation.Revision != plan.ObservationRevision || digestJSON(plan.DerivedFacts) != digestJSON(deriveManagedTaskFacts(deriveManagedTask(state.Request.Intent.Task))) {
 		state.Disposition = "stale"
 		state.Problems = []string{"managed-task desired source, observation, or retained plan changed"}
 		state.Recovery = slices.Clone(plan.Recovery)
@@ -437,6 +500,9 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 		return WorkApplyResult{}, fmt.Errorf("refresh managed-task observation: %w", err)
 	}
 	problems := validateWorkHandshake(state.Request.Intent, capability, observation, e.clock.Now())
+	if digestJSON(capability) != plan.CapabilityDigest || capability.ConfigurationRevision != plan.ConfigurationRevision {
+		problems = append(problems, "adapter capability changed after planning")
+	}
 	if observation.Revision != plan.ObservationRevision {
 		problems = append(problems, "adapter observation changed after planning")
 	}
@@ -457,15 +523,23 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 	created := []WorkEffectReceipt{}
 	for _, effect := range plan.Effects {
 		result, applyErr := e.workAdapter.Apply(ctx, effect)
+		if resultErr := validateWorkEffectResult(result); resultErr != nil {
+			applyErr = resultErr
+			result = WorkEffectResult{Outcome: "needs-review", Attempt: max(result.Attempt, 1), Detail: "adapter returned an invalid effect result"}
+		}
 		outcome := result.Outcome
 		if outcome == "" && applyErr != nil {
 			outcome = "failed"
+		}
+		detail := result.Detail
+		if detail != "" {
+			detail = redactDiagnostics([]string{detail})[0]
 		}
 		receipt := WorkEffectReceipt{
 			SchemaVersion: 1, PlanID: plan.ID, OperationID: plan.OperationID, EffectID: effect.ID, EffectKind: effect.Kind, ManagedID: effect.ManagedID,
 			Actor: capability.Actor, CredentialMode: capability.Mode, Authority: slices.Clone(capability.Permissions), SourceRevision: plan.SourceRevision,
 			ObservationRevision: plan.ObservationRevision, RepositoryID: plan.Target.RepositoryID, ProjectID: plan.Target.ProjectID,
-			Outcome: outcome, Attempt: result.Attempt, Recoverable: result.Recoverable, Retry: cloneWorkRetry(result.Retry), Detail: result.Detail, RecordedAt: e.clock.Now(),
+			Outcome: outcome, Attempt: result.Attempt, Recoverable: result.Recoverable, Retry: cloneWorkRetry(result.Retry), Detail: detail, RecordedAt: e.clock.Now(),
 		}
 		state.Receipts = append(state.Receipts, receipt)
 		created = append(created, receipt)
@@ -508,20 +582,33 @@ func (e *Engine) VerifyManagedTask(ctx context.Context, repository string) (Work
 	if err != nil {
 		return WorkVerificationResult{}, err
 	}
+	capability, err := e.workAdapter.Capability(ctx)
+	if err != nil {
+		return WorkVerificationResult{}, fmt.Errorf("verify work capability: %w", err)
+	}
 	observation, err := e.workAdapter.Observe(ctx, state.Request.Intent.Target, state.Request.Intent.Task.ManagedID)
 	if err != nil {
 		return WorkVerificationResult{}, fmt.Errorf("verify managed task observation: %w", err)
 	}
 	desired := deriveManagedTask(state.Request.Intent.Task)
 	control := ControlResult{ID: "WORK-MANAGER-001", State: ControlFail, Summary: "managed task differs from desired state", Rationale: "normalized adapter observation does not match Work Manager policy", Evidence: []EvidenceReference{}, Diagnostics: []string{}}
-	if observedTaskMatches(desired, observation.Task, state.Request.Intent.Target) {
+	capabilityProblems := validateWorkHandshake(state.Request.Intent, capability, observation, e.clock.Now())
+	if observedTaskMatches(desired, observation.Task, state.Request.Intent.Target) && len(capabilityProblems) == 0 {
 		control = ControlResult{ID: "WORK-MANAGER-001", State: ControlPass, Summary: "managed task matches desired state", Evidence: []EvidenceReference{{Kind: "machine-state", Target: workStatePath}}, Diagnostics: []string{}}
+	} else if len(capabilityProblems) != 0 {
+		control.Summary = "managed task capability evidence is non-pass"
+		control.Rationale = "a fresh matching adapter identity, authority, target, and observation are required"
+		control.Diagnostics = redactDiagnostics(capabilityProblems)
 	}
-	verification := WorkVerificationResult{SchemaVersion: 1, OverallState: control.State, Controls: []ControlResult{control}, EvidencePath: workStatePath, VerifiedAt: e.clock.Now()}
+	verification := WorkVerificationResult{SchemaVersion: 1, OverallState: control.State, Controls: []ControlResult{control}, EvidencePath: workStatePath, VerifiedAt: e.clock.Now(), Capability: capability, ObservationRevision: observation.Revision}
 	verification.VerificationID = digestJSON(verification)
 	state.Verification = &verification
 	state.Inspection.Observation = observation
+	priorDisposition := state.Disposition
 	state.Disposition = "non-pass"
+	if preserveManagedTaskNonPass(priorDisposition) {
+		state.Disposition = priorDisposition
+	}
 	if verification.OverallState == ControlPass {
 		state.Disposition = "converged"
 		state.Problems = []string{}
@@ -531,6 +618,10 @@ func (e *Engine) VerifyManagedTask(ctx context.Context, repository string) (Work
 		return WorkVerificationResult{}, err
 	}
 	return verification, nil
+}
+
+func preserveManagedTaskNonPass(disposition string) bool {
+	return slices.Contains([]string{"queued-offline", "handshake-required", "denied", "ambiguous", "retry-pending", "retry-exhausted", "stale", "needs-review"}, disposition)
 }
 
 // ManagedTaskStatus returns durable state without contacting the adapter.
@@ -563,12 +654,34 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 	if !slices.Contains([]string{"task", "bug", "feature", "question", "research"}, intent.Task.IssueType) || !slices.Contains([]string{"intake", "needs-refinement", "ready", "blocked"}, intent.Task.Readiness) || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, intent.Task.Status) {
 		return errors.New("managed-task intent contains an unsupported issue type or lifecycle value")
 	}
+	if slices.Contains([]string{"task", "bug", "feature"}, intent.Task.IssueType) {
+		distinctReview := false
+		for _, review := range intent.Task.Review {
+			distinctReview = distinctReview || review.Role != "" && review.DistinctContext
+		}
+		if !distinctReview {
+			return errors.New("managed implementation work requires a distinct review role")
+		}
+	}
+	if intent.Task.ParentContext != nil {
+		if intent.Task.ParentContext.ManagedID == "" || intent.Task.ParentContext.ManagedID != intent.Task.ParentManagedID || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, intent.Task.ParentContext.Status) {
+			return errors.New("managed-task intent contains invalid parent context")
+		}
+		for _, sibling := range intent.Task.ParentContext.OtherChildren {
+			if sibling.ManagedID == "" || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, sibling.Status) {
+				return errors.New("managed-task intent contains invalid sibling context")
+			}
+		}
+	}
 	derived := deriveManagedTask(intent.Task)
 	if intent.Target.FieldIDs["readiness"] == "" || intent.Target.FieldIDs["status"] == "" || intent.Target.OptionIDs["readiness:"+derived.Readiness] == "" || intent.Target.OptionIDs["status:"+derived.Status] == "" {
 		return errors.New("managed-task intent lacks required lifecycle field or option identities")
 	}
 	values := []string{intent.OperationID, intent.SourceRevision, intent.OperatingProfileRevision, intent.Credential.Actor, intent.Task.ManagedID, intent.Task.Title, intent.Task.ParentManagedID, intent.Task.Phase, intent.Task.ParentPhase, intent.Task.PromotionRecord, intent.Target.Host, intent.Target.RepositoryID, intent.Target.ProjectID}
 	for key, value := range intent.InputDigests {
+		if key == "" || !validSHA256Digest(value) {
+			return errors.New("managed-task intent contains an invalid input digest")
+		}
 		values = append(values, key, value)
 	}
 	for key, value := range intent.Target.FieldIDs {
@@ -583,6 +696,12 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 	for _, review := range intent.Task.Review {
 		values = append(values, review.Role)
 	}
+	if intent.Task.ParentContext != nil {
+		values = append(values, intent.Task.ParentContext.ManagedID, intent.Task.ParentContext.Status)
+		for _, sibling := range intent.Task.ParentContext.OtherChildren {
+			values = append(values, sibling.ManagedID, sibling.Status)
+		}
+	}
 	if containsSensitiveText(strings.Join(values, "\n")) {
 		return errors.New("managed-task intent contains sensitive-looking material")
 	}
@@ -593,6 +712,9 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	problems := []string{}
 	if capability.SchemaVersion != 1 || observation.SchemaVersion != 1 {
 		problems = append(problems, "unsupported capability or observation schema")
+	}
+	if capability.Mode == "" || capability.Actor == "" || capability.ConfigurationRevision == "" || capability.ObservedAt.IsZero() || capability.ExpiresAt.IsZero() || !capability.ExpiresAt.After(capability.ObservedAt) {
+		problems = append(problems, "adapter capability lacks valid identity, configuration, or freshness provenance")
 	}
 	if !capability.Online {
 		problems = append(problems, "adapter is offline")
@@ -608,11 +730,58 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 			problems = append(problems, "adapter lacks required permission: "+permission)
 		}
 	}
+	seenPermissions := map[string]bool{}
+	for _, permission := range capability.Permissions {
+		if permission == "" || seenPermissions[permission] {
+			problems = append(problems, "adapter capability contains an empty or duplicate permission")
+			break
+		}
+		seenPermissions[permission] = true
+	}
+	if observation.Revision == "" || observation.ConfigurationRevision == "" || observation.Target.Host == "" || observation.Target.RepositoryID == "" || observation.Target.ProjectID == "" {
+		problems = append(problems, "adapter observation lacks stable revision or target provenance")
+	}
+	if observation.Task != nil && (observation.Task.ManagedID == "" || observation.Task.IssueNodeID == "" || observation.Task.Title == "" || observation.Task.IssueType == "") {
+		problems = append(problems, "adapter observation contains an invalid task identity")
+	}
 	if capability.ConfigurationRevision != observation.ConfigurationRevision || !equalWorkTarget(intent.Target, observation.Target) {
 		problems = append(problems, "adapter target or configuration identities changed")
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+func validateManagedTaskPlan(plan WorkPlan) error {
+	if plan.SchemaVersion != 1 || plan.OperationID == "" || plan.SourceRevision == "" || plan.OperatingProfileRevision == "" || plan.InspectionID == "" || plan.ObservationRevision == "" || plan.ConfigurationRevision == "" || !validSHA256Digest(plan.CapabilityDigest) || plan.ExpiresAt.IsZero() {
+		return errors.New("managed-task plan schema or provenance is invalid")
+	}
+	if plan.NoChange != (len(plan.Effects) == 0) {
+		return errors.New("managed-task plan no-change state conflicts with effects")
+	}
+	for _, effect := range plan.Effects {
+		if effect.Kind != "create-task" && effect.Kind != "reconcile-task" {
+			return errors.New("managed-task plan contains an unsupported effect kind")
+		}
+		expectedID := digestJSON(struct{ Kind, ManagedID, Source string }{effect.Kind, effect.ManagedID, plan.SourceRevision})
+		if effect.ID != expectedID || effect.ManagedID == "" || effect.Marker != "starter-kit-managed:"+effect.ManagedID || effect.Desired.ManagedID != effect.ManagedID {
+			return errors.New("managed-task plan contains invalid effect identity or marker provenance")
+		}
+	}
+	return nil
+}
+
+func validateWorkEffectResult(result WorkEffectResult) error {
+	if !slices.Contains([]string{"applied", "ambiguous", "denied", "rate-limited", "failed", "offline"}, result.Outcome) || result.Attempt <= 0 {
+		return errors.New("work adapter returned an invalid outcome or attempt")
+	}
+	if result.Outcome == "rate-limited" {
+		if result.Retry == nil || result.Retry.Attempt != result.Attempt || result.Retry.MaxAttempts <= 0 || result.Retry.Attempt > result.Retry.MaxAttempts || result.Retry.RetryAt.IsZero() || result.Retry.ResetAt.IsZero() || result.Retry.ResetAt.Before(result.Retry.RetryAt) {
+			return errors.New("work adapter returned invalid bounded retry evidence")
+		}
+	} else if result.Retry != nil {
+		return errors.New("work adapter returned retry evidence for a non-rate outcome")
+	}
+	return nil
 }
 
 func deriveManagedTask(task DesiredManagedTask) DesiredManagedTask {
@@ -637,6 +806,32 @@ func deriveManagedTask(task DesiredManagedTask) DesiredManagedTask {
 		derived.Status = "done"
 	}
 	return derived
+}
+
+func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
+	facts := WorkDerivedFacts{Readiness: task.Readiness, Status: task.Status, Phase: task.Phase, PromotionRecord: task.PromotionRecord, Review: slices.Clone(task.Review), Completion: "incomplete"}
+	if task.Closed {
+		facts.Completion = "complete"
+	}
+	if task.ParentContext == nil {
+		return facts
+	}
+	facts.ParentStatus = task.ParentContext.Status
+	facts.ParentClosed = task.ParentContext.Closed
+	allClosed := task.Closed
+	anyStarted := task.Closed || task.Status == "in-progress" || task.Status == "done"
+	for _, sibling := range task.ParentContext.OtherChildren {
+		allClosed = allClosed && sibling.Closed
+		anyStarted = anyStarted || sibling.Closed || sibling.Status == "in-progress" || sibling.Status == "done"
+	}
+	if allClosed {
+		facts.ParentStatus = "done"
+		facts.ParentClosed = true
+	} else if anyStarted {
+		facts.ParentStatus = "in-progress"
+		facts.ParentClosed = false
+	}
+	return facts
 }
 
 func observedTaskMatches(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) bool {
@@ -673,6 +868,9 @@ func writeManagedTaskState(root string, state managedTaskState) error {
 	content, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode managed-task state: %w", err)
+	}
+	if containsSensitiveText(string(content)) {
+		return errors.New("managed-task state contains sensitive-looking material")
 	}
 	content = append(content, '\n')
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".state-*.tmp")

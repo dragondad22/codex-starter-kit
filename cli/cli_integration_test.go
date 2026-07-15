@@ -39,6 +39,10 @@ func TestCreateCommandEmitsLanguageNeutralPlan(t *testing.T) {
 
 func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	repository := t.TempDir()
+	command := exec.Command("git", "init", "--quiet", repository)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("initialize managed-task Git repository: %v: %s", err, output)
+	}
 	now := time.Now().UTC()
 	target := engine.WorkTarget{
 		Host: "memory.local", RepositoryID: "repository:fixture", ProjectID: "project:fixture",
@@ -52,8 +56,8 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	}{
 		Request: engine.ManagedTaskRequest{Repository: repository, Intent: engine.WorkDesiredIntent{
 			SchemaVersion: 1, OperationID: "operation:issue-71", SourceRevision: "issue-71:v1", OperatingProfileRevision: "operating-profile:v1",
-			InputDigests: map[string]string{"issue": "sha256:issue-71-v1"}, Credential: engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"}, Target: target,
-			Task: engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next"},
+			InputDigests: map[string]string{"issue": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, Credential: engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"}, Target: target,
+			Task: engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}}},
 		}},
 		Capability:  engine.WorkCapability{SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
 		Observation: engine.WorkObservation{SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1", Target: target},
