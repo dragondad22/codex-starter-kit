@@ -89,10 +89,12 @@ func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) 
 	t.Parallel()
 	var repositoryPages, fieldPages int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("X-RateLimit-Limit", "5000")
-		writer.Header().Set("X-RateLimit-Remaining", "4990")
-		writer.Header().Set("X-RateLimit-Used", "10")
-		writer.Header().Set("X-RateLimit-Reset", "1784163600")
+		if request.URL.Path != "/app/installations/42" {
+			writer.Header().Set("X-RateLimit-Limit", "5000")
+			writer.Header().Set("X-RateLimit-Remaining", "4990")
+			writer.Header().Set("X-RateLimit-Used", "10")
+			writer.Header().Set("X-RateLimit-Reset", "1784163600")
+		}
 		switch {
 		case request.URL.Path == "/app/installations/42":
 			if request.Header.Get("Authorization") != "Bearer app-jwt" {
@@ -135,6 +137,9 @@ func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) 
 	}
 	if repositoryPages != 2 || fieldPages != 2 {
 		t.Fatalf("pagination counts = repositories %d, fields %d", repositoryPages, fieldPages)
+	}
+	if capability.RESTRate == nil || capability.RESTRate.Limit != 5000 || capability.RESTRate.Used != 10 {
+		t.Fatalf("REST budget did not come from installation-token authority: %#v", capability.RESTRate)
 	}
 }
 

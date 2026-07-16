@@ -841,11 +841,10 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 		}
 		identityCredential := credential
 		identityCredential.Token = credential.IdentityToken
-		response, err := adapter.rest(ctx, identityCredential, http.MethodGet, "/app/installations/"+url.PathEscape(adapter.config.InstallationID), nil, &installationIdentity)
+		_, err := adapter.rest(ctx, identityCredential, http.MethodGet, "/app/installations/"+url.PathEscape(adapter.config.InstallationID), nil, &installationIdentity)
 		if err != nil {
 			return adapter.failedCapability(capability, err), nil
 		}
-		actorResponse = response
 		if strconv.FormatInt(installationIdentity.ID, 10) != adapter.config.InstallationID || installationIdentity.AppSlug != adapter.config.Actor || installationIdentity.Account.Login != adapter.config.Account || !strings.EqualFold(installationIdentity.TargetType, adapter.config.ProjectOwnerKind) {
 			capability.Disposition = "needs-review"
 			capability.Problems = []string{"GitHub API App installation identity does not match the selected installation"}
@@ -862,6 +861,9 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 			response, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &installation)
 			if err != nil {
 				return adapter.failedCapability(capability, err), nil
+			}
+			if actorResponse == nil {
+				actorResponse = response
 			}
 			for _, repository := range installation.Repositories {
 				selected = selected || repository.NodeID == adapter.config.RepositoryID
