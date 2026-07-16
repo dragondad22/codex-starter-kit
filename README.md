@@ -8,9 +8,10 @@ development feel coherent: standards, testing, security, compliance, documentati
 decisions, GitHub work, stakeholder communication, releases, and upgrades are coordinated
 behind a guided workflow and backed by evidence.
 
-> **Project status: Phase 2 development slice.** Empty-repository create, seed
-> verification, and skills-only plugin status/create/verify workflows are implemented for
-> development. No verified packaged engine or baseline policy pack is published, so full
+> **Project status: Phase 3 development slice.** Empty-repository create, seed
+> verification, skills-only plugin status/create/verify workflows, and deterministic
+> one-task GitHub transport are implemented for development. No approved live sandbox,
+> verified packaged engine, or baseline policy pack is published, so full
 > plugin execution remains unavailable; secret scanning, retrofit, upgrades, and broader
 > policy/release capabilities are also incomplete. Do not use this repository as a
 > production compliance control today.
@@ -48,10 +49,13 @@ preferred Codex experience; it is not the sole conformance authority.
 
 The current development CLI implements a read-only `capabilities` handshake plus
 `inspect`, `create`, `plan`, `apply`, `status`, seed `verify`, and credential-free
-in-memory `manage-task`.
+in-memory `manage-task`. A native Go GitHub adapter implements the same engine seam for
+deterministic integration; live use remains `not-configured` pending #73.
 See the [Phase 1 engine interface](docs/architecture/LIFECYCLE_ENGINE.md) for its JSON
 contract, ownership model, and explicit limitations, and the
-[Work Manager contract](docs/architecture/WORK_MANAGER.md) for the one-task route.
+[Work Manager contract](docs/architecture/WORK_MANAGER.md) for the one-task route. The
+[GitHub adapter contract](docs/architecture/GITHUB_ADAPTER.md) defines identity,
+transport, permission, recovery, and current live-evidence limitations.
 
 The repository also contains installable development status, create, and verify skills.
 See the [plugin status guide](docs/product/PLUGIN_STATUS.md) and

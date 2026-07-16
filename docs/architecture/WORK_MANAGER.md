@@ -1,8 +1,10 @@
 # Work Manager — Managed-Task Lifecycle Contract
 
-**Status:** Implemented credential-free production slice  
-**Issue:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71)  
-**Live adapter and sandbox qualification:** Deferred to #72–#76
+**Status:** Implemented credential-free lifecycle and deterministic GitHub transport
+
+**Issue:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71)
+
+**GitHub adapter:** [#72 contract](GITHUB_ADAPTER.md); live sandbox deferred to #73/#76
 
 ## Public lifecycle seam
 
@@ -25,7 +27,8 @@ Every boundary is schema version 1:
   operating-profile revision, input digests, expected actor, immutable target IDs,
   relationships, lifecycle values, Phase, promotion route, review requirements, and
   desired completion state.
-- `WorkCapability` reports online/fresh state, actor, mode, exact permissions,
+- `WorkCapability` reports online/fresh state, actor/mode, immutable target ownership,
+  API version, exact permissions, rate budgets, limitations, evidence mode,
   configuration revision, observation time, and expiry.
 - `WorkObservation` contains normalized immutable IDs and semantic task state. Raw HTTP,
   GraphQL, tokens, and transport requests are not retained.
@@ -91,13 +94,19 @@ the recorded reset passes.
 
 ## Evidence boundary and limitations
 
-The in-memory adapter is a production contract double and deterministic development
-route. It is not live GitHub evidence. #72 owns the native Go GitHub transport and
-identity modes; #73 owns separately approved sandbox provisioning; #74 owns full intake,
-hierarchy, subtype, Horizon, Phase, and Project governance; #75 owns branch/PR/review/gate
-delivery; and #76 owns aggregate live qualification.
+The in-memory adapter remains the credential-free contract double. The production
+`githubadapter` implements the same interface with native REST/GraphQL, an injected
+ephemeral credential provider, immutable target IDs, bounded pagination, explicit
+transport outcomes, and simulated/live receipt separation. See the
+[GitHub adapter contract](GITHUB_ADAPTER.md).
 
-The current route manages one task at a time. It does not create credentials, call
-GitHub, provision repositories or Projects, configure rules or workflows, publish a
-release, or claim private/paid/GHES support. Native Linux, macOS, and Windows support is
-claimed only after the exact completing revision passes the repository matrix.
+Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
+owns separately approved sandbox provisioning; #74 owns full intake, hierarchy, subtype,
+Horizon, Phase, and Project governance; #75 owns branch/PR/review/gate delivery; and #76
+owns aggregate live qualification.
+
+The current route manages one task at a time. It does not create credentials, provision
+repositories or Projects, configure rules or workflows, publish a release, or claim
+private/paid/GHES support. Live GitHub mutation is `not-configured` until #73 supplies the
+approved target and authority. Native Linux, macOS, and Windows support is claimed only
+after the exact completing revision passes the repository matrix.

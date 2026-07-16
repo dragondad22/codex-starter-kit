@@ -107,6 +107,10 @@
     plan, receipt, persistence, recovery, and evidence contract.
 52. `evidence/ISSUE-71.md` — implementation, scenario, prototype-absorption,
     verification, limitation, and GitHub-state record for the managed-task slice.
+53. `architecture/GITHUB_ADAPTER.md` — production GitHub identity, native transport,
+    target, effect, recovery, and evidence-mode contract.
+54. `evidence/ISSUE-72.md` — deterministic adapter behavior, security, verification,
+    limitation, and GitHub-state record for the first real transport slice.
 
 ## Document lifecycle
 

@@ -97,15 +97,40 @@ type ManagedTaskRequest struct {
 
 // WorkCapability is the adapter-reported, expiring authority and availability snapshot.
 type WorkCapability struct {
-	SchemaVersion         int       `json:"schema_version"`
-	Online                bool      `json:"online"`
-	Fresh                 bool      `json:"fresh"`
-	Mode                  string    `json:"mode"`
-	Actor                 string    `json:"actor"`
-	Permissions           []string  `json:"permissions"`
-	ConfigurationRevision string    `json:"configuration_revision"`
-	ObservedAt            time.Time `json:"observed_at"`
-	ExpiresAt             time.Time `json:"expires_at"`
+	SchemaVersion         int             `json:"schema_version"`
+	Online                bool            `json:"online"`
+	Fresh                 bool            `json:"fresh"`
+	Mode                  string          `json:"mode"`
+	Actor                 string          `json:"actor"`
+	ActorKind             string          `json:"actor_kind,omitempty"`
+	Account               string          `json:"account,omitempty"`
+	InstallationID        string          `json:"installation_id,omitempty"`
+	Host                  string          `json:"host,omitempty"`
+	APIVersion            string          `json:"api_version,omitempty"`
+	EvidenceMode          string          `json:"evidence_mode,omitempty"`
+	Disposition           string          `json:"disposition,omitempty"`
+	Problems              []string        `json:"problems,omitempty"`
+	RepositoryID          string          `json:"repository_id,omitempty"`
+	RepositoryOwner       string          `json:"repository_owner,omitempty"`
+	ProjectID             string          `json:"project_id,omitempty"`
+	ProjectOwner          string          `json:"project_owner,omitempty"`
+	ProjectOwnerKind      string          `json:"project_owner_kind,omitempty"`
+	Permissions           []string        `json:"permissions"`
+	RequiredPermissions   []string        `json:"required_permissions,omitempty"`
+	Limitations           []string        `json:"limitations,omitempty"`
+	RESTRate              *WorkRateBudget `json:"rest_rate,omitempty"`
+	GraphQLRate           *WorkRateBudget `json:"graphql_rate,omitempty"`
+	ConfigurationRevision string          `json:"configuration_revision"`
+	ObservedAt            time.Time       `json:"observed_at"`
+	ExpiresAt             time.Time       `json:"expires_at"`
+}
+
+// WorkRateBudget is a credential-free snapshot of one GitHub API rate budget.
+type WorkRateBudget struct {
+	Resource  string    `json:"resource"`
+	Limit     int       `json:"limit"`
+	Remaining int       `json:"remaining"`
+	ResetAt   time.Time `json:"reset_at"`
 }
 
 // WorkObservedTask is normalized adapter state; raw transport requests are never retained.
@@ -132,6 +157,8 @@ type WorkObservation struct {
 	ConfigurationRevision string            `json:"configuration_revision"`
 	Target                WorkTarget        `json:"target"`
 	Task                  *WorkObservedTask `json:"task,omitempty"`
+	Disposition           string            `json:"disposition,omitempty"`
+	Problems              []string          `json:"problems,omitempty"`
 }
 
 // WorkInspection binds desired policy, capability, and normalized observation.
@@ -218,6 +245,7 @@ type WorkEffectReceipt struct {
 	ManagedID           string          `json:"managed_id"`
 	Actor               string          `json:"actor"`
 	CredentialMode      string          `json:"credential_mode"`
+	EvidenceMode        string          `json:"evidence_mode,omitempty"`
 	Authority           []string        `json:"authority"`
 	SourceRevision      string          `json:"source_revision"`
 	ObservationRevision string          `json:"observation_revision"`
@@ -353,9 +381,23 @@ func (e *Engine) InspectManagedTask(ctx context.Context, request ManagedTaskRequ
 	if err != nil {
 		return WorkInspection{}, fmt.Errorf("inspect work capability: %w", err)
 	}
-	observation, err := e.workAdapter.Observe(ctx, request.Intent.Target, request.Intent.Task.ManagedID)
-	if err != nil {
-		return WorkInspection{}, fmt.Errorf("inspect managed task observation: %w", err)
+	var observation WorkObservation
+	if capability.Disposition != "" && capability.Disposition != "available" {
+		observation = WorkObservation{
+			SchemaVersion: 1, ConfigurationRevision: capability.ConfigurationRevision,
+			Target: cloneWorkTarget(request.Intent.Target), Disposition: capability.Disposition,
+			Problems: slices.Clone(capability.Problems),
+		}
+		observation.Revision = digestJSON(struct {
+			ManagedID   string
+			Disposition string
+			Problems    []string
+		}{request.Intent.Task.ManagedID, observation.Disposition, observation.Problems})
+	} else {
+		observation, err = e.workAdapter.Observe(ctx, request.Intent.Target, request.Intent.Task.ManagedID)
+		if err != nil {
+			return WorkInspection{}, fmt.Errorf("inspect managed task observation: %w", err)
+		}
 	}
 	now := e.clock.Now()
 	problems := validateWorkHandshake(request.Intent, capability, observation, now)
@@ -538,7 +580,7 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 		}
 		receipt := WorkEffectReceipt{
 			SchemaVersion: 1, PlanID: plan.ID, OperationID: plan.OperationID, EffectID: effect.ID, EffectKind: effect.Kind, ManagedID: effect.ManagedID,
-			Actor: capability.Actor, CredentialMode: capability.Mode, Authority: slices.Clone(capability.Permissions), SourceRevision: plan.SourceRevision,
+			Actor: capability.Actor, CredentialMode: capability.Mode, EvidenceMode: capability.EvidenceMode, Authority: slices.Clone(capability.Permissions), SourceRevision: plan.SourceRevision,
 			ObservationRevision: plan.ObservationRevision, RepositoryID: plan.Target.RepositoryID, ProjectID: plan.Target.ProjectID,
 			Outcome: outcome, Attempt: result.Attempt, Recoverable: result.Recoverable, Retry: cloneWorkRetry(result.Retry), Detail: detail, RecordedAt: e.clock.Now(),
 		}
@@ -720,8 +762,14 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	if capability.SchemaVersion != 1 || observation.SchemaVersion != 1 {
 		problems = append(problems, "unsupported capability or observation schema")
 	}
-	if capability.Mode == "" || capability.Actor == "" || capability.ConfigurationRevision == "" || capability.ObservedAt.IsZero() || capability.ExpiresAt.IsZero() || !capability.ExpiresAt.After(capability.ObservedAt) {
+	if capability.Mode == "" || capability.Actor == "" || capability.ConfigurationRevision == "" || capability.ObservedAt.IsZero() || capability.ExpiresAt.IsZero() {
 		problems = append(problems, "adapter capability lacks valid identity, configuration, or freshness provenance")
+	}
+	if capability.Disposition != "" && capability.Disposition != "available" {
+		problems = append(problems, capability.Problems...)
+		if len(capability.Problems) == 0 {
+			problems = append(problems, "adapter capability is "+capability.Disposition)
+		}
 	}
 	if !capability.Online {
 		problems = append(problems, "adapter is offline")
@@ -747,6 +795,12 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	}
 	if observation.Revision == "" || observation.ConfigurationRevision == "" || observation.Target.Host == "" || observation.Target.RepositoryID == "" || observation.Target.ProjectID == "" {
 		problems = append(problems, "adapter observation lacks stable revision or target provenance")
+	}
+	if observation.Disposition != "" && observation.Disposition != "observed" {
+		problems = append(problems, observation.Problems...)
+		if len(observation.Problems) == 0 {
+			problems = append(problems, "adapter observation is "+observation.Disposition)
+		}
 	}
 	if observation.Task != nil && (observation.Task.ManagedID == "" || observation.Task.ManagedID != intent.Task.ManagedID || observation.Task.IssueNodeID == "" || observation.Task.Title == "" || observation.Task.IssueType == "") {
 		problems = append(problems, "adapter observation contains an invalid task identity")
@@ -980,6 +1034,9 @@ func (adapter *InMemoryWorkAdapter) Capability(context.Context) (WorkCapability,
 	defer adapter.mu.Unlock()
 	value := adapter.capability
 	value.Permissions = slices.Clone(value.Permissions)
+	value.RequiredPermissions = slices.Clone(value.RequiredPermissions)
+	value.Limitations = slices.Clone(value.Limitations)
+	value.Problems = slices.Clone(value.Problems)
 	return value, nil
 }
 
@@ -1038,6 +1095,9 @@ func (adapter *InMemoryWorkAdapter) SetCapability(capability WorkCapability) {
 	adapter.mu.Lock()
 	defer adapter.mu.Unlock()
 	capability.Permissions = slices.Clone(capability.Permissions)
+	capability.RequiredPermissions = slices.Clone(capability.RequiredPermissions)
+	capability.Limitations = slices.Clone(capability.Limitations)
+	capability.Problems = slices.Clone(capability.Problems)
 	adapter.capability = capability
 }
 

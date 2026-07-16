@@ -153,6 +153,15 @@ handshake. Partial, ambiguous, denied, rate-limited, exhausted, and stale result
 receipts and recovery rather than advancing the lifecycle. See
 [the managed-task lifecycle contract](WORK_MANAGER.md).
 
+The production GitHub adapter performs the same sequence through a fixed target manifest
+and ephemeral credential provider. Its handshake binds API actor, credential mode,
+installation/account where applicable, repository and Project owner/IDs, pinned API
+version, permissions, budgets, expiry, and evidence mode. Stable-marker reads precede
+creates; one match recovers, multiple matches are ambiguous, and GraphQL partial data is
+`needs-review`. Deterministic HTTP receipts remain `simulated`; live effects remain
+`not-configured` until the separately approved sandbox exists. See
+[the GitHub adapter contract](GITHUB_ADAPTER.md).
+
 ## Professional Engineering Baseline
 
 Every supported delivery path applies the same professional engineering baseline even
