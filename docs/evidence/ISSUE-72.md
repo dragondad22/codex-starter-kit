@@ -53,18 +53,39 @@ are re-read before the next immutable plan.
 
 ## Verification
 
-Focused development checks passed after the red/green slices:
+The exact reviewed candidate passed:
 
 ```text
-go test ./githubadapter ./engine
-go test -race ./githubadapter ./engine
+python3 -m unittest discover -s tests -p "test_*.py"
+  33 tests passed
+python3 scripts/validate_docs.py
+  Documentation validation passed.
+go test -count=1 ./...
+  all packages passed
+go test -race -count=1 ./engine ./githubadapter
+  both packages passed
 go vet ./...
+  passed
+starter-kit changes validate --repository .
+starter-kit changes check --repository .
+  product 0.3.0; 12 Unreleased; 11 external; 1 internal
+git diff --check
+  passed
 ```
 
-The completing revision must additionally pass the repository Python suite,
-documentation validation, every Go package, release-change validation, diff hygiene, and
-the Linux/macOS/Windows GitHub Actions matrix. Exact final results and distinct review are
-recorded before merge.
+The completing PR must additionally pass the repository Linux/macOS/Windows GitHub
+Actions matrix on this exact source before merge.
+
+## Distinct review
+
+Two independent reviewers compared `origin/main...6c978fb`. The standards review and the
+issue #72 specification review both passed the exact candidate. Earlier review rounds
+identified preservation of human-owned issue content, authoritative mutation re-reads,
+redaction, rate evidence, no-op replay, distinct transport outcomes, durable exponential
+attempts, partial recovery, API-observed App installation identity, explicit-state
+preservation, and effect-authority rate provenance. Commits `8ca7ca2`, `29a51b4`, and
+`6c978fb` resolved those findings, and the final reviewers reported no remaining blocker
+or scope regression.
 
 ## Explicit limitations
 
