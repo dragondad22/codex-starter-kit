@@ -48,8 +48,11 @@ credential-free facts:
 3. repository node ID and owner;
 4. Project node ID, owner login, and owner kind;
 5. pinned REST version `2026-03-10` and a successful GraphQL compatibility query;
-6. required versus granted permissions; and
-7. REST and GraphQL budgets, limitations, configuration digest, evidence mode, and
+6. required versus granted permissions, using observed classic-user scopes or the
+   App-installation mint response bound to its permission revision;
+7. current Project lifecycle field and option identities before any effect; and
+8. REST and GraphQL limit, used, remaining, and reset budgets, limitations,
+   configuration digest, evidence mode, and
    freshness.
 
 Wrong actor, account, installation, owner, immutable ID, permission, API version, expired
@@ -69,14 +72,17 @@ The adapter accepts only the two semantic effects produced by Work Manager:
 
 - `create-task` re-reads the marker before POST. One existing match recovers a lost
   response; multiple matches remain ambiguous.
-- `reconcile-task` updates the marked issue, adds it to the fixed Project if absent, and
-  sets fixed Readiness and Status option IDs serially. Completed sub-effects remain safe
-  to replay after a later partial failure.
+- `reconcile-task` carries an ordered list containing only the remaining semantic
+  operations: issue metadata, Project membership, Readiness, and Status. It preserves
+  human-authored body text and unrelated labels, skips already-converged operations, and
+  re-reads every mutation before reporting it applied.
 
-Hidden-resource 404, authentication/authorization denial, validation failure, offline
-transport, GraphQL partial errors, bounded pagination exhaustion, and rate delay remain
-distinct outcomes. Rate receipts retain attempt, maximum attempts, retry time, and reset
-time without response bodies or credentials.
+Expired/invalid authentication, insufficient authorization, hidden-resource 404,
+validation failure, offline transport, GraphQL partial errors, bounded pagination
+exhaustion, and rate delay remain distinct outcomes. Rate receipts retain durable attempt,
+maximum attempts, exponential retry time, and reset time without response bodies or
+credentials. Mutation calls are adapter-serialized; live mode enforces at least one
+second between them.
 
 ## Evidence boundary
 

@@ -11,7 +11,8 @@
 - Added native Go `githubadapter` transport behind the issue #71 `WorkAdapter` seam.
 - Added a credential-free allowlisted target manifest and injected ephemeral credential
   contract for App installation, user-token, and repository-local Actions modes.
-- Added actor/repository/Project/API/permission/rate handshake evidence.
+- Added actor/repository/Project/API/granted-permission/configuration/rate handshake
+  evidence before mutation.
 - Added bounded REST/GraphQL observation, stable-marker create recovery, issue and
   Project reconciliation, immutable lifecycle-field updates, and verified replay.
 - Extended capability and receipt schemas with identity, owner, API, rate, limitation,
@@ -25,8 +26,10 @@ repository, Project, field, option, item, and issue IDs; REST and GraphQL pagina
 one-less permission; App installation/account binding; App/user-owner incompatibility;
 Actions Project limitation; expiry/reconnect; marker ambiguity; lost-create-response
 recovery without duplication; hidden 404 denial; validation failure; GraphQL partial
-data; bounded rate evidence; simulated receipt mode; and absence of the ephemeral token
-from durable Work Manager state.
+data; distinct authentication/authorization/not-found/validation results; durable
+exponential rate attempts; human body/label preservation; partial recovery containing
+only remaining semantic operations; mutation postcondition re-reads; simulated receipt
+mode; and absence of the ephemeral credential from durable Work Manager state.
 
 The in-memory and GitHub adapters use the same `WorkAdapter` interface and Work Manager
 policy, plan, receipt, verification, and state implementation. Adapter results do not
@@ -37,7 +40,8 @@ credential.
 
 The adapter pins REST version `2026-03-10`, uses native Go HTTP without shell strings,
 limits response decoding, bounds pagination, prevents cross-host REST pagination,
-serializes Project mutations, and redacts transport detail at the receipt seam. Tokens
+serializes and paces live mutations, and redacts provider/transport detail at the receipt
+seam. Credentials
 are omitted from JSON and never persisted. Live mode rejects non-HTTPS or non-GitHub.com
 endpoints and requires an approved-target assertion.
 

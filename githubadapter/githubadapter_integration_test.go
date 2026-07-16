@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -33,14 +34,16 @@ func TestUserTokenHandshakeReturnsBoundCapabilityWithoutExposingCredential(t *te
 		}
 		writer.Header().Set("X-RateLimit-Limit", "5000")
 		writer.Header().Set("X-RateLimit-Remaining", "4990")
+		writer.Header().Set("X-RateLimit-Used", "10")
 		writer.Header().Set("X-RateLimit-Reset", "1784163600")
+		writer.Header().Set("X-OAuth-Scopes", "repo, project")
 		switch request.URL.Path {
 		case "/user":
 			writeJSON(t, writer, map[string]any{"login": "octocat", "type": "User"})
 		case "/repos/octocat/example":
 			writeJSON(t, writer, map[string]any{"node_id": "R_repo", "owner": map[string]any{"login": "octocat"}, "visibility": "public"})
 		case "/graphql":
-			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": "P_project", "owner": map[string]any{"login": "octocat", "__typename": "User"}}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": "P_project", "owner": map[string]any{"login": "octocat", "__typename": "User"}, "fields": fixtureProjectFields()}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
 		default:
 			http.NotFound(writer, request)
 		}
@@ -79,6 +82,54 @@ func TestUserTokenHandshakeReturnsBoundCapabilityWithoutExposingCredential(t *te
 	}
 	if strings.Contains(string(encoded), "top-secret-token") {
 		t.Fatalf("capability exposed credential: %s", encoded)
+	}
+}
+
+func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) {
+	t.Parallel()
+	var repositoryPages, fieldPages int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("X-RateLimit-Limit", "5000")
+		writer.Header().Set("X-RateLimit-Remaining", "4990")
+		writer.Header().Set("X-RateLimit-Used", "10")
+		writer.Header().Set("X-RateLimit-Reset", "1784163600")
+		switch {
+		case request.URL.Path == "/installation/repositories" && request.URL.Query().Get("page") == "":
+			repositoryPages++
+			writer.Header().Set("Link", "<"+"http://"+request.Host+"/installation/repositories?page=2>; rel=\"next\"")
+			writeJSON(t, writer, map[string]any{"repositories": []any{map[string]any{"node_id": "R_other"}}})
+		case request.URL.Path == "/installation/repositories" && request.URL.Query().Get("page") == "2":
+			repositoryPages++
+			writeJSON(t, writer, map[string]any{"repositories": []any{map[string]any{"node_id": "R_org"}}})
+		case request.URL.Path == "/repos/acme/example":
+			writeJSON(t, writer, map[string]any{"node_id": "R_org", "owner": map[string]any{"login": "acme"}})
+		case request.URL.Path == "/graphql":
+			fieldPages++
+			fields := map[string]any{"nodes": []any{map[string]any{"id": "F_readiness", "options": []any{map[string]any{"id": "O_ready"}}}}, "pageInfo": map[string]any{"hasNextPage": true, "endCursor": "fields-2"}}
+			if fieldPages == 2 {
+				fields = map[string]any{"nodes": []any{map[string]any{"id": "F_status", "options": []any{map[string]any{"id": "O_next"}}}}, "pageInfo": map[string]any{"hasNextPage": false}}
+			}
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": "P_org", "owner": map[string]any{"login": "acme", "__typename": "Organization"}, "fields": fields}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "acme", "organization", "P_org")
+	config.InstallationID = "installation-42"
+	config.Account = "acme"
+	adapter, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Disposition != "available" {
+		t.Fatalf("paginated App capability = %#v, %v", capability, err)
+	}
+	if repositoryPages != 2 || fieldPages != 2 {
+		t.Fatalf("pagination counts = repositories %d, fields %d", repositoryPages, fieldPages)
 	}
 }
 
@@ -291,9 +342,11 @@ func TestApplyDistinguishesHiddenResourceAndRateLimit(t *testing.T) {
 		headers      map[string]string
 		outcome      string
 	}{
-		{name: "hidden resource", listStatus: http.StatusNotFound, outcome: "denied"},
+		{name: "hidden resource", listStatus: http.StatusNotFound, outcome: "not-found"},
+		{name: "expired authentication", listStatus: http.StatusUnauthorized, outcome: "unauthenticated"},
+		{name: "insufficient permission", listStatus: http.StatusForbidden, outcome: "denied"},
 		{name: "rate limited", listStatus: http.StatusOK, createStatus: http.StatusTooManyRequests, headers: map[string]string{"Retry-After": "60", "X-RateLimit-Remaining": "0"}, outcome: "rate-limited"},
-		{name: "validation failure", listStatus: http.StatusOK, createStatus: http.StatusUnprocessableEntity, outcome: "failed"},
+		{name: "validation failure", listStatus: http.StatusOK, createStatus: http.StatusUnprocessableEntity, outcome: "validation-failed"},
 	}
 	for _, test := range tests {
 		test := test
@@ -322,6 +375,124 @@ func TestApplyDistinguishesHiddenResourceAndRateLimit(t *testing.T) {
 				t.Fatal("rate limit did not retain bounded retry evidence")
 			}
 		})
+	}
+}
+
+func TestRateRetryUsesImmutableAttemptAndExponentialBound(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			writeFixtureJSON(writer, []any{})
+			return
+		}
+		writer.Header().Set("X-RateLimit-Remaining", "0")
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	effect := engine.WorkEffect{Kind: "create-task", Attempt: 2, ManagedID: "task-72", Marker: "starter-kit-managed:task-72", Desired: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "task"}}
+	result, _ := newUserAdapter(t, server, now).Apply(context.Background(), effect)
+	if result.Outcome != "rate-limited" || result.Attempt != 2 || result.Retry == nil || result.Retry.MaxAttempts != 3 || result.Retry.RetryAt.Sub(now) != 2*time.Minute {
+		t.Fatalf("unexpected exponential retry: %#v", result)
+	}
+}
+
+func TestReconcilePreservesHumanBodyAndUnmanagedLabels(t *testing.T) {
+	t.Parallel()
+	desired := engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Updated title", Readiness: "ready", Status: "next"}
+	fixture := &lifecycleFixture{fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", issue: &githubFixtureIssue{
+		Number: 17, NodeID: "I_issue", Title: "Old title", State: "open",
+		Body:   "## Human summary\n\nKeep this brief.\n\n<!-- starter-kit-managed:task-72 -->",
+		Labels: []string{"area:github", "ready-for-agent", "type:bug"},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	result, err := newUserAdapter(t, server, now).Apply(context.Background(), engine.WorkEffect{Kind: "reconcile-task", Operations: []string{"issue"}, Attempt: 1, ManagedID: "task-72", Marker: "starter-kit-managed:task-72", Desired: desired})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("reconcile = %#v, %v", result, err)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if !strings.Contains(fixture.issue.Body, "Keep this brief.") || !strings.Contains(fixture.issue.Body, "starter-kit-managed-metadata") {
+		t.Fatalf("human body was not preserved: %q", fixture.issue.Body)
+	}
+	joined := strings.Join(fixture.issue.Labels, ",")
+	if !strings.Contains(joined, "area:github") || !strings.Contains(joined, "ready-for-agent") || !strings.Contains(joined, "type:task") || strings.Contains(joined, "type:bug") {
+		t.Fatalf("labels were not reconciled safely: %v", fixture.issue.Labels)
+	}
+}
+
+func TestStaleProjectConfigurationStopsBeforeMutation(t *testing.T) {
+	t.Parallel()
+	server := handshakeServer(t, "octocat", "User", "octocat", "R_repo", "octocat", "P_project")
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	config := adapterConfig(server, "user-token", "octocat", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.OptionIDs["status:next"] = "O_deleted"
+	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Disposition != "needs-review" || !strings.Contains(strings.Join(capability.Problems, " "), "stale") {
+		t.Fatalf("stale configuration capability = %#v, %v", capability, err)
+	}
+}
+
+func TestPartialProjectResultPlansOnlyRemainingSemanticOperations(t *testing.T) {
+	t.Parallel()
+	fixture := &lifecycleFixture{fields: map[string]string{}, failProjectAdd: true}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	adapter := newUserAdapter(t, server, now)
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", repository).CombinedOutput(); err != nil {
+		t.Fatalf("initialize fixture repository: %v: %s", err, output)
+	}
+	request := engine.ManagedTaskRequest{Repository: repository, Intent: engine.WorkDesiredIntent{
+		SchemaVersion: 1, OperationID: "partial-72", SourceRevision: "source-72", OperatingProfileRevision: "profile-1",
+		InputDigests: map[string]string{"brief": fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("partial")))},
+		Credential:   engine.WorkCredentialExpectation{Mode: "user-token", Actor: "octocat"}, Target: managedTarget(),
+		Task: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Partial task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
+	}}
+	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithWorkAdapter(adapter))
+	first, err := lifecycle.ManageTask(context.Background(), request)
+	if err != nil || first.Apply.Status != engine.WorkApplyNonPass {
+		t.Fatalf("partial lifecycle = %#v, %v", first, err)
+	}
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || slices.Contains(plan.Effects[0].Operations, "issue") || slices.Contains(plan.Effects[0].Operations, "project") || !slices.Equal(plan.Effects[0].Operations, []string{"readiness", "status"}) {
+		t.Fatalf("partial recovery did not contain only remaining operations: %#v", plan.Effects)
+	}
+}
+
+func TestCredentialProviderDiagnosticsAreRedactedAtTheAdapterBoundary(t *testing.T) {
+	t.Parallel()
+	server := handshakeServer(t, "octocat", "User", "octocat", "R_repo", "octocat", "P_project")
+	defer server.Close()
+	config := adapterConfig(server, "user-token", "octocat", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	adapter, err := githubadapter.New(config, githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
+		return githubadapter.Credential{}, fmt.Errorf("provider leaked ghp_1234567890abcdefghijklmnopqrstuvwxyz")
+	}), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || strings.Contains(strings.Join(capability.Problems, " "), "ghp_") {
+		t.Fatalf("capability leaked provider diagnostics: %#v, %v", capability, err)
+	}
+	result, applyErr := adapter.Apply(context.Background(), engine.WorkEffect{Kind: "create-task", Attempt: 1, ManagedID: "task-72", Marker: "starter-kit-managed:task-72", Desired: engine.DesiredManagedTask{ManagedID: "task-72"}})
+	if applyErr == nil || strings.Contains(applyErr.Error(), "ghp_") || strings.Contains(result.Detail, "ghp_") {
+		t.Fatalf("apply leaked provider diagnostics: %#v, %v", result, applyErr)
 	}
 }
 
@@ -446,6 +617,8 @@ func credentialProvider(now time.Time, mode, actor string, permissions []string)
 		if mode == "app-installation" {
 			credential.Account = "acme"
 			credential.InstallationID = "installation-42"
+			credential.PermissionSource = "installation-token-response"
+			credential.PermissionRevision = "sha256:fixture-installation-permissions"
 		}
 		return credential, nil
 	}
@@ -466,12 +639,14 @@ func handshakeServer(t *testing.T, actor, actorType, repositoryOwner, repository
 	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("X-RateLimit-Limit", "5000")
 		writer.Header().Set("X-RateLimit-Remaining", "4990")
+		writer.Header().Set("X-RateLimit-Used", "10")
 		writer.Header().Set("X-RateLimit-Reset", "1784163600")
+		writer.Header().Set("X-OAuth-Scopes", "repo, project")
 		switch request.URL.Path {
 		case "/user":
 			writeJSON(t, writer, map[string]any{"login": actor, "type": actorType})
-		case "/app":
-			writeJSON(t, writer, map[string]any{"slug": actor})
+		case "/installation/repositories":
+			writeJSON(t, writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 		case "/repos/" + repositoryOwner + "/example":
 			writeJSON(t, writer, map[string]any{"node_id": repositoryID, "owner": map[string]any{"login": repositoryOwner}})
 		case "/graphql":
@@ -479,7 +654,7 @@ func handshakeServer(t *testing.T, actor, actorType, repositoryOwner, repository
 			if actorType == "App" {
 				ownerKind = "Organization"
 			}
-			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}, "fields": fixtureProjectFields()}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
 		default:
 			http.NotFound(writer, request)
 		}
@@ -498,6 +673,7 @@ type lifecycleFixture struct {
 	createCount        int
 	mutationCount      int
 	loseCreateResponse bool
+	failProjectAdd     bool
 	app                bool
 	actor              string
 	repositoryOwner    string
@@ -541,12 +717,14 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 	issuesPath := "/repos/" + repositoryOwner + "/example/issues"
 	writer.Header().Set("X-RateLimit-Limit", "5000")
 	writer.Header().Set("X-RateLimit-Remaining", "4990")
+	writer.Header().Set("X-RateLimit-Used", "10")
 	writer.Header().Set("X-RateLimit-Reset", "1784163600")
+	writer.Header().Set("X-OAuth-Scopes", "repo, project")
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/user" && !fixture.app:
 		writeFixtureJSON(writer, map[string]any{"login": actor, "type": "User"})
-	case request.Method == http.MethodGet && request.URL.Path == "/app" && fixture.app:
-		writeFixtureJSON(writer, map[string]any{"slug": actor})
+	case request.Method == http.MethodGet && request.URL.Path == "/installation/repositories" && fixture.app:
+		writeFixtureJSON(writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example":
 		writeFixtureJSON(writer, map[string]any{"node_id": repositoryID, "owner": map[string]any{"login": repositoryOwner}})
 	case request.Method == http.MethodGet && request.URL.Path == issuesPath:
@@ -602,7 +780,7 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 			if fixture.app {
 				ownerKind = "Organization"
 			}
-			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
+			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}, "fields": fixtureProjectFields()}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
 		case strings.Contains(input.Query, "ManagedTaskObservation"):
 			nodes := []any{}
 			if fixture.projectItemID != "" {
@@ -616,6 +794,11 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 		case strings.Contains(input.Query, "addProjectV2ItemById"):
 			fixture.projectItemID = "PVTI_item"
 			fixture.mutationCount++
+			if fixture.failProjectAdd {
+				fixture.failProjectAdd = false
+				writeFixtureJSON(writer, map[string]any{"data": map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": fixture.projectItemID}}}, "errors": []any{map[string]any{"message": "partial Project response"}}})
+				return
+			}
 			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": fixture.projectItemID}}}})
 		case strings.Contains(input.Query, "updateProjectV2ItemFieldValue"):
 			fieldID, _ := input.Variables["field"].(string)
@@ -634,6 +817,13 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 func writeFixtureJSON(writer http.ResponseWriter, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(writer).Encode(value)
+}
+
+func fixtureProjectFields() map[string]any {
+	return map[string]any{"nodes": []any{
+		map[string]any{"id": "F_readiness", "options": []any{map[string]any{"id": "O_ready"}}},
+		map[string]any{"id": "F_status", "options": []any{map[string]any{"id": "O_next"}}},
+	}}
 }
 
 func newUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *githubadapter.Adapter {

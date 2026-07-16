@@ -129,6 +129,7 @@ type WorkCapability struct {
 type WorkRateBudget struct {
 	Resource  string    `json:"resource"`
 	Limit     int       `json:"limit"`
+	Used      int       `json:"used"`
 	Remaining int       `json:"remaining"`
 	ResetAt   time.Time `json:"reset_at"`
 }
@@ -175,11 +176,13 @@ type WorkInspection struct {
 
 // WorkEffect is one semantic adapter effect derived by Work Manager policy.
 type WorkEffect struct {
-	ID        string             `json:"effect_id"`
-	Kind      string             `json:"kind"`
-	ManagedID string             `json:"managed_id"`
-	Marker    string             `json:"marker"`
-	Desired   DesiredManagedTask `json:"desired"`
+	ID         string             `json:"effect_id"`
+	Kind       string             `json:"kind"`
+	Operations []string           `json:"operations,omitempty"`
+	Attempt    int                `json:"attempt"`
+	ManagedID  string             `json:"managed_id"`
+	Marker     string             `json:"marker"`
+	Desired    DesiredManagedTask `json:"desired"`
 }
 
 // WorkPlan is immutable and bound to every source, target, actor, and observation precondition.
@@ -459,14 +462,19 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		return WorkPlan{}, errors.New("managed-task inspection contains non-pass results")
 	}
 	desired := deriveManagedTask(inspection.Intent.Task)
+	state, err := readManagedTaskState(inspection.Repository)
+	if err != nil {
+		return WorkPlan{}, err
+	}
 	effects := []WorkEffect{}
-	newEffect := func(kind string) WorkEffect {
-		return WorkEffect{ID: digestJSON(struct{ Kind, ManagedID, Source string }{kind, desired.ManagedID, inspection.Intent.SourceRevision}), Kind: kind, ManagedID: desired.ManagedID, Marker: "starter-kit-managed:" + desired.ManagedID, Desired: desired}
+	newEffect := func(kind string, operations []string) WorkEffect {
+		id := digestJSON(struct{ Kind, ManagedID, Source string }{kind, desired.ManagedID, inspection.Intent.SourceRevision})
+		return WorkEffect{ID: id, Kind: kind, Operations: slices.Clone(operations), Attempt: nextWorkEffectAttempt(state.Receipts, id, e.clock.Now()), ManagedID: desired.ManagedID, Marker: "starter-kit-managed:" + desired.ManagedID, Desired: desired}
 	}
 	if inspection.Observation.Task == nil {
-		effects = append(effects, newEffect("create-task"), newEffect("reconcile-task"))
-	} else if !observedTaskMatches(desired, inspection.Observation.Task, inspection.Intent.Target) {
-		effects = append(effects, newEffect("reconcile-task"))
+		effects = append(effects, newEffect("create-task", nil), newEffect("reconcile-task", []string{"issue", "project", "readiness", "status"}))
+	} else if operations := remainingWorkOperations(desired, inspection.Observation.Task, inspection.Intent.Target); len(operations) != 0 {
+		effects = append(effects, newEffect("reconcile-task", operations))
 	}
 	plan := WorkPlan{
 		SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Intent.OperationID,
@@ -482,10 +490,6 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		DerivedFacts: deriveManagedTaskFacts(desired),
 	}
 	plan.ID = digestJSON(workPlanWithoutID(plan))
-	state, err := readManagedTaskState(inspection.Repository)
-	if err != nil {
-		return WorkPlan{}, err
-	}
 	state.Plan = &plan
 	state.Disposition = "planned"
 	if plan.NoChange {
@@ -569,6 +573,10 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 		if resultErr := validateWorkEffectResult(result); resultErr != nil {
 			applyErr = resultErr
 			result = WorkEffectResult{Outcome: "needs-review", Attempt: max(result.Attempt, 1), Detail: "adapter returned an invalid effect result"}
+		}
+		if result.Attempt != effect.Attempt {
+			applyErr = errors.New("work adapter returned an attempt that does not match the immutable effect")
+			result = WorkEffectResult{Outcome: "needs-review", Attempt: effect.Attempt, Detail: "adapter returned mismatched attempt evidence"}
 		}
 		outcome := result.Outcome
 		if outcome == "" && applyErr != nil {
@@ -824,15 +832,18 @@ func validateManagedTaskPlan(plan WorkPlan) error {
 			return errors.New("managed-task plan contains an unsupported effect kind")
 		}
 		expectedID := digestJSON(struct{ Kind, ManagedID, Source string }{effect.Kind, effect.ManagedID, plan.SourceRevision})
-		if effect.ID != expectedID || effect.ManagedID == "" || effect.Marker != "starter-kit-managed:"+effect.ManagedID || effect.Desired.ManagedID != effect.ManagedID {
+		if effect.ID != expectedID || effect.Attempt <= 0 || effect.ManagedID == "" || effect.Marker != "starter-kit-managed:"+effect.ManagedID || effect.Desired.ManagedID != effect.ManagedID {
 			return errors.New("managed-task plan contains invalid effect identity or marker provenance")
+		}
+		if effect.Kind == "create-task" && len(effect.Operations) != 0 || effect.Kind == "reconcile-task" && !validWorkOperations(effect.Operations) {
+			return errors.New("managed-task plan contains invalid semantic operations")
 		}
 	}
 	return nil
 }
 
 func validateWorkEffectResult(result WorkEffectResult) error {
-	if !slices.Contains([]string{"applied", "ambiguous", "denied", "rate-limited", "failed", "offline"}, result.Outcome) || result.Attempt <= 0 {
+	if !slices.Contains([]string{"applied", "ambiguous", "unauthenticated", "denied", "not-found", "validation-failed", "needs-review", "rate-limited", "failed", "offline"}, result.Outcome) || result.Attempt <= 0 {
 		return errors.New("work adapter returned an invalid outcome or attempt")
 	}
 	if result.Outcome == "rate-limited" {
@@ -896,14 +907,55 @@ func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
 }
 
 func observedTaskMatches(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) bool {
+	return len(remainingWorkOperations(desired, observed, target)) == 0
+}
+
+func remainingWorkOperations(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) []string {
 	if observed == nil {
-		return false
+		return []string{"issue", "project", "readiness", "status"}
 	}
 	blockedBy := make([]string, 0, len(desired.Blockers))
 	for _, blocker := range desired.Blockers {
 		blockedBy = append(blockedBy, blocker.ManagedID)
 	}
-	return observed.ManagedID == desired.ManagedID && observed.Title == desired.Title && observed.IssueType == desired.IssueType && observed.ParentManagedID == desired.ParentManagedID && slices.Equal(observed.BlockedBy, blockedBy) && observed.ReadinessOption == target.OptionIDs["readiness:"+desired.Readiness] && observed.StatusOption == target.OptionIDs["status:"+desired.Status] && observed.Phase == desired.Phase && observed.PromotionRecord == desired.PromotionRecord && slices.Equal(observed.Review, desired.Review) && observed.Closed == desired.Closed
+	operations := []string{}
+	if observed.ManagedID != desired.ManagedID || observed.Title != desired.Title || observed.IssueType != desired.IssueType || observed.ParentManagedID != desired.ParentManagedID || !slices.Equal(observed.BlockedBy, blockedBy) || observed.Phase != desired.Phase || observed.PromotionRecord != desired.PromotionRecord || !slices.Equal(observed.Review, desired.Review) || observed.Closed != desired.Closed {
+		operations = append(operations, "issue")
+	}
+	if observed.ProjectItemID == "" {
+		operations = append(operations, "project")
+	}
+	if observed.ReadinessOption != target.OptionIDs["readiness:"+desired.Readiness] {
+		operations = append(operations, "readiness")
+	}
+	if observed.StatusOption != target.OptionIDs["status:"+desired.Status] {
+		operations = append(operations, "status")
+	}
+	return operations
+}
+
+func validWorkOperations(operations []string) bool {
+	if len(operations) == 0 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, operation := range operations {
+		if !slices.Contains([]string{"issue", "project", "readiness", "status"}, operation) || seen[operation] {
+			return false
+		}
+		seen[operation] = true
+	}
+	return true
+}
+
+func nextWorkEffectAttempt(receipts []WorkEffectReceipt, effectID string, now time.Time) int {
+	attempt := 1
+	for _, receipt := range receipts {
+		if receipt.EffectID == effectID && receipt.Outcome == "rate-limited" && receipt.Retry != nil && now.Before(receipt.Retry.ResetAt) && receipt.Attempt >= attempt {
+			attempt = receipt.Attempt + 1
+		}
+	}
+	return attempt
 }
 
 func workInspectionWithoutID(value WorkInspection) WorkInspection { value.ID = ""; return value }
@@ -1058,7 +1110,7 @@ func (adapter *InMemoryWorkAdapter) Apply(_ context.Context, effect WorkEffect) 
 		return queued.result, nil
 	}
 	adapter.applyObservedEffect(effect)
-	return WorkEffectResult{Outcome: "applied", Attempt: 1, Detail: "in-memory semantic effect applied"}, nil
+	return WorkEffectResult{Outcome: "applied", Attempt: effect.Attempt, Detail: "in-memory semantic effect applied"}, nil
 }
 
 func (adapter *InMemoryWorkAdapter) applyObservedEffect(effect WorkEffect) {
