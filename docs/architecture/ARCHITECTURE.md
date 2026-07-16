@@ -128,7 +128,7 @@ redaction rules.
 | Adapter | Category | Test approach |
 |---|---|---|
 | Filesystem/Git | Local-substitutable | Temporary real repositories on native OS runners |
-| GitHub | True external | Implemented in-memory managed-task adapter; production transport and sandbox qualification in #72–#76 |
+| GitHub | True external | In-memory contract double plus native REST/GraphQL adapter; deterministic fixtures in #72, approved sandbox/live qualification in #73–#76 |
 | Policy registry/signature | Remote but owned | Local registry/signing fixture + production contract tests |
 | Clock/identity/approval | In-process | Deterministic fakes |
 | Process/tool runner | Local-substitutable | Fake runner plus allowlisted native integration fixtures |

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-72-github-adapter",
+  "summary": "Reconcile one managed task through a native, identity-bound GitHub REST and GraphQL adapter with explicit recovery evidence.",
+  "category": "added",
+  "audiences": ["operators", "developers", "security"],
+  "components": ["engine", "github"],
+  "issues": [72],
+  "breaking": false,
+  "internal_only": false
+}

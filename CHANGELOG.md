@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:989596438fd93871b2776578fc9847279bf40fad655fba1ebd8cb189039ef48e -->
+<!-- source-digest: sha256:b52d638a6d5715229c10608f396b26c8b4381470c623d795346e50a46810cfad -->
 
 ## [Unreleased]
 
@@ -14,6 +14,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 - Guide managed-repository creation through separate input, notice, plan, effect-approval, and recovery steps in the Codex plugin. (#52)
 - Guide truthful verification through immutable plans, explicit evidence effects, redaction, and preserved control states in the Codex plugin. (#53)
 - Manage and verify one task deterministically through a credential-free lifecycle request and in-memory adapter. (#71)
+- Reconcile one managed task through a native, identity-bound GitHub REST and GraphQL adapter with explicit recovery evidence. (#72)
 - Track one product version and generate audience-aware changelogs from validated, durable change records. (#78)
 
 ### Changed

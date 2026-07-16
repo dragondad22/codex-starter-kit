@@ -1,8 +1,8 @@
 # Lifecycle-Engine Support Matrix
 
 **Status:** Initial source-runtime support
-**Scope:** Empty-repository `create`, seed `verify`, and the credential-free in-memory
-managed-task route through the standalone engine seam
+**Scope:** Empty-repository `create`, seed `verify`, credential-free in-memory managed-task,
+and deterministic native GitHub-adapter routes through the standalone engine seam
 **Evidence:** Native CI reports and aggregate semantic comparison retained by the
 completing [Issue #30](../evidence/ISSUE-30.md) pull request
 
@@ -61,10 +61,18 @@ denied authority, offline/reconnect, expiry, bounded retry/reset, policy derivat
 schema/secret rejection, and state integrity. See
 [the Work Manager contract](WORK_MANAGER.md) and [issue evidence](../evidence/ISSUE-71.md).
 
+Issue #72 adds a native Go REST/GraphQL adapter behind the same seam. Deterministic tests
+cover organization-App and personal user-token routes, identity/owner/permission/API/rate
+handshake, pagination, one-task issue/Project convergence and replay, Actions scoping,
+ambiguity, lost response, partial GraphQL data, validation, expiry/reconnect, denial,
+rate recovery, redaction, and evidence-mode separation. See the
+[GitHub adapter contract](GITHUB_ADAPTER.md) and [issue evidence](../evidence/ISSUE-72.md).
+
 This does not expand the historical Phase 1 native evidence snapshot above. Linux local
 results are development evidence only until the exact completing revision passes the
-Linux, macOS, and Windows CI matrix. The in-memory adapter is not live GitHub evidence;
-production transport and sandbox claims remain `not-configured` until #72–#76.
+Linux, macOS, and Windows CI matrix. In-memory and deterministic HTTP fixtures are not
+live GitHub evidence; sandbox mutation and support claims remain `not-configured` until
+#73–#76.
 
 ## Native proof contract
 
@@ -129,9 +137,10 @@ authority, ownership, evidence meaning, or conformance state.
   must supply that provenance before the control can pass.
 - Multi-file local mutation uses staging, state-last commit, replay, and compensation; it
   is not claimed as one crash-atomic filesystem transaction.
-- External effects remain absent from the implemented create/verify and in-memory
-  managed-task routes. #72 and later adapters must qualify their own identity,
-  idempotency, evidence, and compensation.
+- External effects remain absent from the implemented create/verify and deterministic
+  managed-task evidence. The #72 production adapter is implemented but no live target is
+  configured; #73 and #76 must qualify identity, permission, effects, cleanup, evidence,
+  and compensation before support is claimed.
 - Windows ACL enforcement, code signing, installer behavior, package-manager behavior,
   minimum Git versions, non-hosted-runner OS versions, additional CPU architectures, and
   non-default filesystems remain `needs-review`.
