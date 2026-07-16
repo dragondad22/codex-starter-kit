@@ -94,6 +94,11 @@ func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) 
 		writer.Header().Set("X-RateLimit-Used", "10")
 		writer.Header().Set("X-RateLimit-Reset", "1784163600")
 		switch {
+		case request.URL.Path == "/app/installations/42":
+			if request.Header.Get("Authorization") != "Bearer app-jwt" {
+				t.Fatalf("App identity authorization = %q", request.Header.Get("Authorization"))
+			}
+			writeJSON(t, writer, map[string]any{"id": 42, "app_slug": "octo-work-manager", "account": map[string]any{"login": "acme"}, "target_type": "Organization"})
 		case request.URL.Path == "/installation/repositories" && request.URL.Query().Get("page") == "":
 			repositoryPages++
 			writer.Header().Set("Link", "<"+"http://"+request.Host+"/installation/repositories?page=2>; rel=\"next\"")
@@ -118,7 +123,7 @@ func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) 
 
 	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
 	config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "acme", "organization", "P_org")
-	config.InstallationID = "installation-42"
+	config.InstallationID = "42"
 	config.Account = "acme"
 	adapter, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
@@ -256,7 +261,7 @@ func TestOrganizationAppRunsTheSameManagedTaskLifecycle(t *testing.T) {
 	defer server.Close()
 	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
 	config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "acme", "organization", "P_org")
-	config.InstallationID = "installation-42"
+	config.InstallationID = "42"
 	config.Account = "acme"
 	adapter, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
@@ -527,7 +532,7 @@ func TestIdentityModesPermissionExpiryAndUnsupportedCombinationsRemainDistinct(t
 		server := handshakeServer(t, "octo-work-manager", "App", "acme", "R_org", "acme", "P_org")
 		defer server.Close()
 		config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "acme", "organization", "P_org")
-		config.InstallationID = "installation-42"
+		config.InstallationID = "42"
 		config.Account = "acme"
 		adapter, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 		if err != nil {
@@ -537,8 +542,34 @@ func TestIdentityModesPermissionExpiryAndUnsupportedCombinationsRemainDistinct(t
 		if err != nil {
 			t.Fatal(err)
 		}
-		if capability.ActorKind != "app" || capability.InstallationID != "installation-42" || capability.ProjectOwnerKind != "organization" || capability.EvidenceMode != "simulated" {
+		if capability.ActorKind != "app" || capability.InstallationID != "42" || capability.ProjectOwnerKind != "organization" || capability.EvidenceMode != "simulated" {
 			t.Fatalf("unexpected App capability: %#v", capability)
+		}
+	})
+
+	t.Run("API installation identity mismatch", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.Header().Set("X-RateLimit-Limit", "5000")
+			writer.Header().Set("X-RateLimit-Remaining", "4990")
+			writer.Header().Set("X-RateLimit-Used", "10")
+			writer.Header().Set("X-RateLimit-Reset", "1784163600")
+			if request.URL.Path != "/app/installations/42" {
+				http.NotFound(writer, request)
+				return
+			}
+			writeJSON(t, writer, map[string]any{"id": 99, "app_slug": "other-app", "account": map[string]any{"login": "other-account"}, "target_type": "Organization"})
+		}))
+		defer server.Close()
+		config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "acme", "organization", "P_org")
+		config.InstallationID = "42"
+		config.Account = "acme"
+		adapter, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		capability, err := adapter.Capability(context.Background())
+		if err != nil || capability.Disposition != "needs-review" || !strings.Contains(strings.Join(capability.Problems, " "), "identity") {
+			t.Fatalf("wrong API installation identity = %#v, %v", capability, err)
 		}
 	})
 
@@ -599,7 +630,7 @@ func TestIdentityModesPermissionExpiryAndUnsupportedCombinationsRemainDistinct(t
 		server := handshakeServer(t, "octo-work-manager", "App", "acme", "R_org", "octocat", "P_user")
 		defer server.Close()
 		config := adapterConfig(server, "app-installation", "octo-work-manager", "app", "acme", "example", "R_org", "octocat", "user", "P_user")
-		config.InstallationID = "installation-42"
+		config.InstallationID = "42"
 		config.Account = "acme"
 		if _, err := githubadapter.New(config, credentialProvider(now, "app-installation", "octo-work-manager", allPermissions()), server.Client()); err == nil || !strings.Contains(err.Error(), "organization-owned") {
 			t.Fatalf("unsupported combination error = %v", err)
@@ -616,7 +647,8 @@ func credentialProvider(now time.Time, mode, actor string, permissions []string)
 		credential := githubadapter.Credential{Token: "token", Mode: mode, Actor: actor, Permissions: permissions, ExpiresAt: now.Add(time.Hour)}
 		if mode == "app-installation" {
 			credential.Account = "acme"
-			credential.InstallationID = "installation-42"
+			credential.InstallationID = "42"
+			credential.IdentityToken = "app-jwt"
 			credential.PermissionSource = "installation-token-response"
 			credential.PermissionRevision = "sha256:fixture-installation-permissions"
 		}
@@ -645,6 +677,8 @@ func handshakeServer(t *testing.T, actor, actorType, repositoryOwner, repository
 		switch request.URL.Path {
 		case "/user":
 			writeJSON(t, writer, map[string]any{"login": actor, "type": actorType})
+		case "/app/installations/42":
+			writeJSON(t, writer, map[string]any{"id": 42, "app_slug": actor, "account": map[string]any{"login": projectOwner}, "target_type": "Organization"})
 		case "/installation/repositories":
 			writeJSON(t, writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 		case "/repos/" + repositoryOwner + "/example":
@@ -723,6 +757,8 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/user" && !fixture.app:
 		writeFixtureJSON(writer, map[string]any{"login": actor, "type": "User"})
+	case request.Method == http.MethodGet && request.URL.Path == "/app/installations/42" && fixture.app:
+		writeFixtureJSON(writer, map[string]any{"id": 42, "app_slug": actor, "account": map[string]any{"login": projectOwner}, "target_type": "Organization"})
 	case request.Method == http.MethodGet && request.URL.Path == "/installation/repositories" && fixture.app:
 		writeFixtureJSON(writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example":

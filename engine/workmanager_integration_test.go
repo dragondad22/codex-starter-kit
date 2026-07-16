@@ -466,8 +466,8 @@ func TestManageTaskPreservesExplicitDeniedDisposition(t *testing.T) {
 	}
 }
 
-func TestManageTaskPreservesOfflineAndFailedDispositions(t *testing.T) {
-	for _, outcome := range []string{"offline", "failed"} {
+func TestManageTaskPreservesExplicitAdapterDispositions(t *testing.T) {
+	for _, outcome := range []string{"unauthenticated", "not-found", "validation-failed", "offline", "failed"} {
 		outcome := outcome
 		t.Run(outcome, func(t *testing.T) {
 			t.Parallel()

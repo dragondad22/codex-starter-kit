@@ -18,10 +18,11 @@ allowlisted REST/GraphQL effects.
 provider, and a native Go HTTP client. The configuration names the host, pinned REST
 version, expected mode and actor, repository and Project immutable IDs/owners, lifecycle
 field/option IDs, permission manifest, pagination bound, and evidence mode. The provider
-returns an ephemeral token plus expected actor, permission, expiry, account, and
-installation facts.
+returns an ephemeral user or installation token plus expected actor, permission, expiry,
+account, and installation facts. App mode also supplies an ephemeral App JWT solely for
+the non-mutating installation-identity query.
 
-The token has `json:"-"`, is added only to request authorization headers, and never enters
+Both secret values have `json:"-"`, are added only to request authorization headers, and never enter
 desired intent, capability output, observations, plans, receipts, durable state, or
 diagnostics. GitHub CLI, a shell, keychain discovery, and automatic account selection are
 not runtime dependencies.
@@ -30,7 +31,7 @@ not runtime dependencies.
 
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
-| `app-installation` | Expected App slug, installation/account, organization-owned Project, selected repository, permissions, expiry, and API actor are bound before effects | `not-configured` until #73 provisions and approves the organization fixture |
+| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | `not-configured` until #73 provisions and approves the organization fixture |
 | `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | `not-configured` until #73 records token breadth, storage, target, and cleanup authority |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
@@ -44,7 +45,7 @@ GitHub.com HTTPS API host. GHES and `app-user` remain unsupported.
 credential-free facts:
 
 1. expected mode and ephemeral credential identity, expiry, and permissions;
-2. API actor kind and login or App slug;
+2. API actor kind and login, or App slug plus installation ID/account from the authenticated App installation response;
 3. repository node ID and owner;
 4. Project node ID, owner login, and owner kind;
 5. pinned REST version `2026-03-10` and a successful GraphQL compatibility query;

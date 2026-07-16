@@ -672,7 +672,7 @@ func (e *Engine) VerifyManagedTask(ctx context.Context, repository string) (Work
 }
 
 func preserveManagedTaskNonPass(disposition string) bool {
-	return slices.Contains([]string{"queued-offline", "handshake-required", "denied", "ambiguous", "offline", "failed", "retry-pending", "retry-exhausted", "stale", "needs-review"}, disposition)
+	return slices.Contains([]string{"queued-offline", "handshake-required", "unauthenticated", "denied", "not-found", "validation-failed", "ambiguous", "offline", "failed", "retry-pending", "retry-exhausted", "stale", "needs-review"}, disposition)
 }
 
 // ManagedTaskStatus returns durable state without contacting the adapter.

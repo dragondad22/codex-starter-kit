@@ -53,6 +53,7 @@ type Config struct {
 // Credential is an ephemeral authority value supplied at request time. Token is never returned by the adapter.
 type Credential struct {
 	Token              string    `json:"-"`
+	IdentityToken      string    `json:"-"`
 	Mode               string    `json:"mode"`
 	Actor              string    `json:"actor"`
 	Account            string    `json:"account,omitempty"`
@@ -110,6 +111,12 @@ func New(config Config, provider CredentialProvider, client *http.Client, option
 	}
 	if config.Mode == "app-installation" && (config.InstallationID == "" || config.Account == "" || config.ProjectOwnerKind != "organization") {
 		return nil, errors.New("GitHub App installation mode requires an installation and organization-owned Project")
+	}
+	if config.Mode == "app-installation" {
+		installationID, err := strconv.ParseInt(config.InstallationID, 10, 64)
+		if err != nil || installationID <= 0 {
+			return nil, errors.New("GitHub App installation identity must be a positive numeric ID")
+		}
 	}
 	if config.EvidenceMode == "" {
 		config.EvidenceMode = "simulated"
@@ -527,7 +534,7 @@ func (adapter *Adapter) credential(ctx context.Context) (Credential, error) {
 	if credential.Mode == "app-installation" && (credential.InstallationID != adapter.config.InstallationID || credential.Account != adapter.config.Account) {
 		return Credential{}, errors.New("GitHub App credential does not match the selected installation account")
 	}
-	if credential.Mode == "app-installation" && (credential.PermissionSource != "installation-token-response" || credential.PermissionRevision == "") {
+	if credential.Mode == "app-installation" && (credential.PermissionSource != "installation-token-response" || credential.PermissionRevision == "" || credential.IdentityToken == "") {
 		return Credential{}, errors.New("GitHub App credential lacks verified installation permission evidence")
 	}
 	return credential, nil
@@ -816,14 +823,34 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 		capability.Problems = []string{"GitHub App credential does not match the selected installation account"}
 		return capability, nil
 	}
-	if credential.Mode == "app-installation" && (credential.PermissionSource != "installation-token-response" || credential.PermissionRevision == "") {
+	if credential.Mode == "app-installation" && (credential.PermissionSource != "installation-token-response" || credential.PermissionRevision == "" || credential.IdentityToken == "") {
 		capability.Disposition = "needs-review"
-		capability.Problems = []string{"GitHub App credential lacks verified installation permission evidence"}
+		capability.Problems = []string{"GitHub App credential lacks verified installation identity or permission evidence"}
 		return capability, nil
 	}
 
 	var actorResponse *http.Response
 	if credential.Mode == "app-installation" {
+		var installationIdentity struct {
+			ID      int64  `json:"id"`
+			AppSlug string `json:"app_slug"`
+			Account struct {
+				Login string `json:"login"`
+			} `json:"account"`
+			TargetType string `json:"target_type"`
+		}
+		identityCredential := credential
+		identityCredential.Token = credential.IdentityToken
+		response, err := adapter.rest(ctx, identityCredential, http.MethodGet, "/app/installations/"+url.PathEscape(adapter.config.InstallationID), nil, &installationIdentity)
+		if err != nil {
+			return adapter.failedCapability(capability, err), nil
+		}
+		actorResponse = response
+		if strconv.FormatInt(installationIdentity.ID, 10) != adapter.config.InstallationID || installationIdentity.AppSlug != adapter.config.Actor || installationIdentity.Account.Login != adapter.config.Account || !strings.EqualFold(installationIdentity.TargetType, adapter.config.ProjectOwnerKind) {
+			capability.Disposition = "needs-review"
+			capability.Problems = []string{"GitHub API App installation identity does not match the selected installation"}
+			return capability, nil
+		}
 		selected := false
 		path := "/installation/repositories?per_page=100"
 		for page := 0; page < adapter.config.MaxPages && path != ""; page++ {
@@ -835,9 +862,6 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 			response, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &installation)
 			if err != nil {
 				return adapter.failedCapability(capability, err), nil
-			}
-			if actorResponse == nil {
-				actorResponse = response
 			}
 			for _, repository := range installation.Repositories {
 				selected = selected || repository.NodeID == adapter.config.RepositoryID

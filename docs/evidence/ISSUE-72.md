@@ -23,7 +23,8 @@
 Integration tests use native HTTP test servers and the public lifecycle-engine seam. They
 cover full personal user-token and organization-App journeys; no-change replay; immutable
 repository, Project, field, option, item, and issue IDs; REST and GraphQL pagination;
-one-less permission; App installation/account binding; App/user-owner incompatibility;
+one-less permission; App-JWT observation of installation/account/slug and a mismatched
+API installation negative; App/user-owner incompatibility;
 Actions Project limitation; expiry/reconnect; marker ambiguity; lost-create-response
 recovery without duplication; hidden 404 denial; validation failure; GraphQL partial
 data; distinct authentication/authorization/not-found/validation results; durable
@@ -41,8 +42,8 @@ credential.
 The adapter pins REST version `2026-03-10`, uses native Go HTTP without shell strings,
 limits response decoding, bounds pagination, prevents cross-host REST pagination,
 serializes and paces live mutations, and redacts provider/transport detail at the receipt
-seam. Credentials
-are omitted from JSON and never persisted. Live mode rejects non-HTTPS or non-GitHub.com
+seam. The user/installation token and handshake-only App JWT are omitted from JSON and
+never persisted. Live mode rejects non-HTTPS or non-GitHub.com
 endpoints and requires an approved-target assertion.
 
 Create is not treated as generically idempotent. Every attempt first reads the stable
