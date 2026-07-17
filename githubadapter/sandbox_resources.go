@@ -339,7 +339,7 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 				return nil, err
 			}
 			decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(content.Content, "\n", ""))
-			if err != nil || !strings.Contains(string(decoded), desired.Marker) {
+			if err != nil || string(decoded) != desired.Attributes["input:content"] {
 				continue
 			}
 			result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: content.SHA, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"path": path, "content_sha256": sandboxDigest(string(decoded))})})

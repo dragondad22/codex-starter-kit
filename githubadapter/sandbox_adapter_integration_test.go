@@ -2,6 +2,7 @@ package githubadapter_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -161,6 +162,48 @@ func TestSandboxAdapterRoutesRulesAndFixturesToSeparateRoles(t *testing.T) {
 	issue, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: config.Resources[1]})
 	if err != nil || issue.ResourceID != "9" {
 		t.Fatalf("issue result = %#v, %v", issue, err)
+	}
+}
+
+func TestSandboxAdapterClaimsFixtureWorkflowOnlyWhenContentExactlyMatches(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	const approved = "name: Contract fixture checks\non:\n  pull_request:\n"
+	for _, test := range []struct {
+		name       string
+		content    string
+		wantClaims int
+	}{
+		{name: "exact approved content", content: approved, wantClaims: 1},
+		{name: "human-modified content", content: approved + "# modified\n", wantClaims: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/contents/.github/workflows/contract-fixture.yml" {
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+				json.NewEncoder(response).Encode(map[string]any{"sha": "workflow-sha", "content": base64.StdEncoding.EncodeToString([]byte(test.content))})
+			}))
+			defer server.Close()
+
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			config.Resources = []engine.SandboxResourceSpec{{
+				Key: "fixture:workflow", Kind: engine.SandboxResourceFixtureWorkflow, Name: "contract-fixture.yml", Marker: "starter-kit-contract:run:workflow",
+				Attributes: map[string]string{"path": ".github/workflows/contract-fixture.yml", "input:content": approved},
+			}}
+			adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			observation, err := adapter.Observe(context.Background(), target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(observation.Resources) != test.wantClaims {
+				t.Fatalf("resources = %#v, want %d claimed workflows", observation.Resources, test.wantClaims)
+			}
+		})
 	}
 }
 
