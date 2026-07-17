@@ -258,7 +258,7 @@ func TestSandboxAdapterRevokesAppTokenAndRetainsRejectionProof(t *testing.T) {
 	}
 
 	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: proof})
-	if err != nil || result.Outcome != "applied" || result.ResourceID != "http-401" {
+	if err != nil || result.Outcome != "applied" || result.ResourceID != "http-401" || result.Detail != "App installation credential was revoked and rejected" {
 		t.Fatalf("apply = %#v, %v", result, err)
 	}
 	observation, err := adapter.Observe(context.Background(), target)

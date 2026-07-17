@@ -150,7 +150,7 @@ func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect 
 		return engine.SandboxEffectResult{Outcome: "fail", Detail: "revoked App token remained usable or returned an unexpected state"}, nil
 	}
 	adapter.retainEphemeralProof(effect.Resource, "http-401")
-	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-401", Detail: "App installation token revoked and rejected"}, nil
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-401", Detail: "App installation credential was revoked and rejected"}, nil
 }
 
 func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {

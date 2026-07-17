@@ -235,6 +235,49 @@ func TestSandboxPartialApplyPlansOnlyRemainingSemanticDelta(t *testing.T) {
 	}
 }
 
+func TestSandboxStateAcceptsCredentialRevocationEvidence(t *testing.T) {
+	repository := newSandboxRepository(t)
+	plan := SandboxPlan{
+		SchemaVersion: 1,
+		ID:            "revocation-plan",
+		Repository:    repository,
+		OperationID:   "qualification",
+		Effects: []SandboxEffect{{
+			ID: "revoke-seeder-credential",
+			Resource: SandboxResourceSpec{
+				Key:  "proof:token-revocation:seeder",
+				Kind: SandboxResourceTokenRevocation,
+				Name: "seeder credential revocation",
+			},
+		}},
+	}
+	result := SandboxApplyResult{
+		SchemaVersion: 1,
+		PlanID:        plan.ID,
+		Status:        SandboxApplyApplied,
+		Receipts: []SandboxEffectReceipt{{
+			SchemaVersion: 1,
+			PlanID:        plan.ID,
+			EffectID:      plan.Effects[0].ID,
+			ResourceKey:   plan.Effects[0].Resource.Key,
+			ResourceKind:  plan.Effects[0].Resource.Kind,
+			Outcome:       "applied",
+			Detail:        "App installation credential was revoked and rejected",
+		}},
+	}
+
+	if err := writeSandboxApplyState(plan, result); err != nil {
+		t.Fatalf("write revocation evidence: %v", err)
+	}
+	status, err := readSandboxState(repository)
+	if err != nil {
+		t.Fatalf("read revocation evidence: %v", err)
+	}
+	if len(status.Receipts) != 1 || status.Receipts[0].Detail != result.Receipts[0].Detail {
+		t.Fatalf("revocation evidence = %#v", status.Receipts)
+	}
+}
+
 func TestSandboxCleanupRemovesOnlyExactManagedFixture(t *testing.T) {
 	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
 	repository := newSandboxRepository(t)
