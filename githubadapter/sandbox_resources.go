@@ -57,6 +57,8 @@ func (adapter *SandboxAdapter) applyRepositoryResource(ctx context.Context, effe
 			return engine.SandboxEffectResult{}, errors.New("sandbox reconciler credential is unavailable")
 		}
 		return adapter.applyProjectResource(ctx, credential, effect)
+	case engine.SandboxResourceProjectItemProof:
+		return engine.SandboxEffectResult{Outcome: "fail", Detail: "built-in Project workflow proof is observation-only; missing or drifted state is not repaired"}, nil
 	case engine.SandboxResourceRuleset:
 		credential, err := adapter.roleCredential(ctx, SandboxRoleRules)
 		if err != nil {

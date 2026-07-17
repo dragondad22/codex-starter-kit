@@ -294,6 +294,21 @@ type projectGraphQLInventory struct {
 					Enabled bool   `json:"enabled"`
 				} `json:"nodes"`
 			} `json:"workflows"`
+			Items struct {
+				Nodes []struct {
+					ID      string `json:"id"`
+					Content struct {
+						ID     string `json:"id"`
+						Number int    `json:"number"`
+						Title  string `json:"title"`
+						Body   string `json:"body"`
+						State  string `json:"state"`
+					} `json:"content"`
+					Status struct {
+						Name string `json:"name"`
+					} `json:"fieldValueByName"`
+				} `json:"nodes"`
+			} `json:"items"`
 		} `json:"node"`
 	} `json:"data"`
 	Errors []graphQLError `json:"errors"`
@@ -306,7 +321,7 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 		return nil, []string{"Project field inventory is unavailable"}
 	}
 	var inventory projectGraphQLInventory
-	query := `query($id:ID!){node(id:$id){... on ProjectV2{views(first:50){nodes{id name number layout filter}} workflows(first:50){nodes{id name number enabled}}}}}`
+	query := `query($id:ID!){node(id:$id){... on ProjectV2{views(first:50){nodes{id name number layout filter}} workflows(first:50){nodes{id name number enabled}} items(first:100){nodes{id content{... on Issue{id number title body state}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}`
 	if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID}, &inventory); err != nil || len(inventory.Errors) != 0 {
 		return nil, []string{"Project view or workflow inventory is unavailable"}
 	}
@@ -340,6 +355,12 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 			for _, workflow := range inventory.Data.Node.Workflows.Nodes {
 				if workflow.Name == desired.Name {
 					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: workflow.ID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"enabled": strconv.FormatBool(workflow.Enabled), "number": strconv.Itoa(workflow.Number)})})
+				}
+			}
+		case engine.SandboxResourceProjectItemProof:
+			for _, item := range inventory.Data.Node.Items.Nodes {
+				if strings.Contains(item.Content.Body, desired.Marker) {
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: item.ID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"number": strconv.Itoa(item.Content.Number), "state": strings.ToLower(item.Content.State), "status": item.Status.Name, "content_id": item.Content.ID})})
 				}
 			}
 		}

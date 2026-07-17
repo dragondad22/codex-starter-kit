@@ -20,6 +20,7 @@ const (
 	SandboxResourceProjectOption   = "project-option"
 	SandboxResourceProjectView     = "project-view"
 	SandboxResourceProjectWorkflow = "project-workflow"
+	SandboxResourceProjectItemProof = "project-item-proof"
 	SandboxResourceRuleset         = "ruleset"
 	SandboxResourceFixtureIssue    = "fixture-issue"
 	SandboxResourceFixtureBranch   = "fixture-branch"
@@ -39,6 +40,7 @@ var supportedSandboxResourceKinds = map[string]struct{}{
 	SandboxResourceProjectOption:   {},
 	SandboxResourceProjectView:     {},
 	SandboxResourceProjectWorkflow: {},
+	SandboxResourceProjectItemProof: {},
 	SandboxResourceRuleset:         {},
 	SandboxResourceFixtureIssue:    {},
 	SandboxResourceFixtureBranch:   {},
