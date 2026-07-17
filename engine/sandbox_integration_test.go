@@ -28,6 +28,7 @@ func TestSandboxLifecycleReconcilesMissingManagedResourceAndReplays(t *testing.T
 		ConfigurationRevision: "configuration-73",
 		ApprovedBy:            "dragondad22",
 		ApprovedPlan:          "issue-73-bootstrap-v1",
+		RecoveryOwner:         "sandbox-owner",
 		MarkerPrefix:          "starter-kit-contract:",
 		Target:                target,
 		Resources: []SandboxResourceSpec{{
@@ -60,7 +61,7 @@ func TestSandboxLifecycleReconcilesMissingManagedResourceAndReplays(t *testing.T
 	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
 	request := SandboxRequest{Repository: repository, Manifest: manifest}
 
-	first, err := lifecycle.BootstrapSandbox(context.Background(), request)
+	first, err := bootstrapApprovedSandbox(t, lifecycle, request, now)
 	if err != nil {
 		t.Fatalf("bootstrap sandbox: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestSandboxLifecycleReconcilesMissingManagedResourceAndReplays(t *testing.T
 		t.Fatalf("verification/status = %q/%q", first.Verification.OverallState, first.Status.Disposition)
 	}
 
-	second, err := lifecycle.BootstrapSandbox(context.Background(), request)
+	second, err := bootstrapApprovedSandbox(t, lifecycle, request, now)
 	if err != nil {
 		t.Fatalf("replay sandbox: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestSandboxInspectionStopsOnUnrecognizedNameCollision(t *testing.T) {
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task", Attributes: map[string]string{"color": "0075CA"}}},
 	}
 	adapter := NewInMemorySandboxAdapter(
@@ -122,7 +123,7 @@ func TestSandboxApplyRejectsChangedObservationBeforeEffects(t *testing.T) {
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task", Attributes: map[string]string{"color": "0075CA"}}},
 	}
 	adapter := NewInMemorySandboxAdapter(
@@ -143,7 +144,7 @@ func TestSandboxApplyRejectsChangedObservationBeforeEffects(t *testing.T) {
 		Resources: []SandboxObservedResource{{Key: "human:unrelated", Kind: SandboxResourceLabel, Name: "human-label", ID: "human-label", Attributes: map[string]string{"color": "FFFFFF"}}},
 	})
 
-	result, err := lifecycle.ApplySandbox(context.Background(), plan.ID, plan)
+	result, err := lifecycle.ApplySandbox(context.Background(), plan, approveSandbox(plan, now))
 	if err != nil {
 		t.Fatalf("apply sandbox: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestSandboxPartialApplyPlansOnlyRemainingSemanticDelta(t *testing.T) {
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{
 			{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task", Attributes: map[string]string{"color": "0075CA"}},
 			{Key: "label:contract-run", Kind: SandboxResourceLabel, Name: "contract-run", Attributes: map[string]string{"color": "5319E7"}},
@@ -176,7 +177,7 @@ func TestSandboxPartialApplyPlansOnlyRemainingSemanticDelta(t *testing.T) {
 	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
 	request := SandboxRequest{Repository: repository, Manifest: manifest}
 
-	first, err := lifecycle.BootstrapSandbox(context.Background(), request)
+	first, err := bootstrapApprovedSandbox(t, lifecycle, request, now)
 	if err != nil {
 		t.Fatalf("first bootstrap: %v", err)
 	}
@@ -212,7 +213,7 @@ func TestSandboxCleanupRemovesOnlyExactManagedFixture(t *testing.T) {
 	human := SandboxObservedResource{Key: "human:issue:2", Kind: SandboxResourceFixtureIssue, Name: "human issue", ID: "issue-2"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "cleanup-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "cleanup-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "cleanup-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{{Key: managed.Key, Kind: managed.Kind, Name: managed.Name, Marker: managed.Marker, DesiredState: SandboxResourceAbsent}},
 	}
 	adapter := NewInMemorySandboxAdapter(
@@ -221,7 +222,7 @@ func TestSandboxCleanupRemovesOnlyExactManagedFixture(t *testing.T) {
 	)
 	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
 
-	result, err := lifecycle.BootstrapSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	result, err := bootstrapApprovedSandbox(t, lifecycle, SandboxRequest{Repository: repository, Manifest: manifest}, now)
 	if err != nil {
 		t.Fatalf("cleanup sandbox: %v", err)
 	}
@@ -240,7 +241,7 @@ func TestSandboxApplyDoesNotStealActiveLifecycleLease(t *testing.T) {
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task"}},
 	}
 	adapter := NewInMemorySandboxAdapter(
@@ -262,7 +263,7 @@ func TestSandboxApplyDoesNotStealActiveLifecycleLease(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := lifecycle.ApplySandbox(context.Background(), plan.ID, plan); err == nil {
+	if _, err := lifecycle.ApplySandbox(context.Background(), plan, approveSandbox(plan, now)); err == nil {
 		t.Fatal("expected active lifecycle lease to block sandbox apply")
 	}
 	if len(adapter.Effects()) != 0 {
@@ -292,7 +293,7 @@ func TestSandboxManifestRejectsUnsupportedKindsAndSensitiveMaterial(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			manifest := SandboxManifest{
 				SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-				ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+				ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 				Resources: []SandboxResourceSpec{test.resource},
 			}
 			if err := validateSandboxManifest(manifest); err == nil || !strings.Contains(err.Error(), test.want) {
@@ -308,7 +309,7 @@ func TestSandboxApplyPersistsRedactedReceiptWhenAdapterFails(t *testing.T) {
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
 	manifest := SandboxManifest{
 		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
-		ApprovedBy: "owner", ApprovedPlan: "approved-plan", MarkerPrefix: "starter-kit-contract:", Target: target,
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
 		Resources: []SandboxResourceSpec{{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task"}},
 	}
 	adapter := NewInMemorySandboxAdapter(
@@ -326,7 +327,7 @@ func TestSandboxApplyPersistsRedactedReceiptWhenAdapterFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := lifecycle.ApplySandbox(context.Background(), plan.ID, plan)
+	result, err := lifecycle.ApplySandbox(context.Background(), plan, approveSandbox(plan, now))
 	if err != nil {
 		t.Fatalf("apply should return durable non-pass result: %v", err)
 	}
@@ -339,9 +340,83 @@ func TestSandboxApplyPersistsRedactedReceiptWhenAdapterFails(t *testing.T) {
 	}
 }
 
+func TestSandboxApplyRejectsApprovalForDifferentGeneratedPlan(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	repository := newSandboxRepository(t)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	manifest := SandboxManifest{SchemaVersion: 1, OperationID: "operation", SourceRevision: "source", ConfigurationRevision: "config", ApprovedBy: "owner", ApprovedPlan: "provisioning-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target, Resources: []SandboxResourceSpec{{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task"}}}
+	adapter := NewInMemorySandboxAdapter(SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config"})
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := approveSandbox(plan, now)
+	approval.PlanID = "different-plan"
+
+	if _, err := lifecycle.ApplySandbox(context.Background(), plan, approval); err == nil || !strings.Contains(err.Error(), "separate approval") {
+		t.Fatalf("apply error = %v", err)
+	}
+	if len(adapter.Effects()) != 0 {
+		t.Fatalf("mismatched approval produced %d effects", len(adapter.Effects()))
+	}
+}
+
+func TestSandboxVerificationCannotPassWithObservationProblems(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	manifest := SandboxManifest{SchemaVersion: 1, OperationID: "operation", SourceRevision: "source", ConfigurationRevision: "config", ApprovedBy: "owner", ApprovedPlan: "provisioning-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target}
+	adapter := NewInMemorySandboxAdapter(SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config", Problems: []string{"Project inventory unavailable"}})
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+
+	verification, err := lifecycle.VerifySandbox(context.Background(), manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.OverallState == ControlPass || !strings.Contains(verification.Controls[0].Rationale, "inventory unavailable") {
+		t.Fatalf("verification = %#v", verification)
+	}
+}
+
 type sandboxFixedClock struct{ now time.Time }
 
 func (clock sandboxFixedClock) Now() time.Time { return clock.now }
+
+func approveSandbox(plan SandboxPlan, now time.Time) SandboxPlanApproval {
+	return SandboxPlanApproval{SchemaVersion: 1, PlanID: plan.ID, ApprovedBy: "test-owner", ApprovalID: "test-approval:" + plan.ID, ApprovedAt: now}
+}
+
+func bootstrapApprovedSandbox(t *testing.T, lifecycle *Engine, request SandboxRequest, now time.Time) (SandboxLifecycleResult, error) {
+	t.Helper()
+	result := SandboxLifecycleResult{SchemaVersion: 1}
+	inspection, err := lifecycle.InspectSandbox(context.Background(), request)
+	result.Inspection = inspection
+	if err != nil {
+		return result, err
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	result.Plan = plan
+	if err != nil {
+		return result, err
+	}
+	result.Apply, err = lifecycle.ApplySandbox(context.Background(), plan, approveSandbox(plan, now))
+	if err != nil {
+		return result, err
+	}
+	result.Verification, err = lifecycle.VerifySandbox(context.Background(), request.Manifest)
+	if err != nil {
+		return result, err
+	}
+	if err := updateSandboxVerification(plan.Repository, result.Verification); err != nil {
+		return result, err
+	}
+	result.Status, err = lifecycle.SandboxStatus(context.Background(), request.Repository)
+	return result, err
+}
 
 func newSandboxRepository(t *testing.T) string {
 	t.Helper()

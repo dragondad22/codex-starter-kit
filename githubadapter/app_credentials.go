@@ -22,12 +22,13 @@ import (
 
 // AppInstallationConfig identifies one approved GitHub App installation token route.
 type AppInstallationConfig struct {
-	RESTBaseURL    string
-	APIVersion     string
-	AppID          string
-	InstallationID string
-	Actor          string
-	Account        string
+	RESTBaseURL    string `json:"rest_base_url"`
+	APIVersion     string `json:"api_version"`
+	AppID          string `json:"app_id"`
+	InstallationID string `json:"installation_id"`
+	Actor          string `json:"actor"`
+	Account        string `json:"account"`
+	AccountID      string `json:"account_id"`
 }
 
 // PrivateKeyProvider supplies App private-key bytes at request time without durable state.
@@ -60,14 +61,14 @@ type AppInstallationProvider struct {
 }
 
 func NewAppInstallationProvider(config AppInstallationConfig, keys PrivateKeyProvider, client *http.Client, options ...AppCredentialOption) (*AppInstallationProvider, error) {
-	if config.RESTBaseURL == "" || config.APIVersion != "2026-03-10" || config.AppID == "" || config.InstallationID == "" || config.Actor == "" || config.Account == "" || keys == nil || client == nil {
+	if config.RESTBaseURL == "" || config.APIVersion != "2026-03-10" || config.AppID == "" || config.InstallationID == "" || config.Actor == "" || config.Account == "" || config.AccountID == "" || keys == nil || client == nil {
 		return nil, errors.New("GitHub App installation provider configuration is incomplete")
 	}
 	parsed, err := url.Parse(config.RESTBaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, errors.New("GitHub App installation provider endpoint is invalid")
 	}
-	for _, numeric := range []string{config.AppID, config.InstallationID} {
+	for _, numeric := range []string{config.AppID, config.InstallationID, config.AccountID} {
 		if value, err := strconv.ParseInt(numeric, 10, 64); err != nil || value <= 0 {
 			return nil, errors.New("GitHub App and installation IDs must be positive integers")
 		}
@@ -93,37 +94,80 @@ func (provider *AppInstallationProvider) Credential(ctx context.Context) (Creden
 	if err != nil {
 		return Credential{}, errors.New("GitHub App identity token could not be signed")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.config.RESTBaseURL, "/")+"/app/installations/"+provider.config.InstallationID+"/access_tokens", bytes.NewReader([]byte("{}")))
-	if err != nil {
-		return Credential{}, errors.New("GitHub App token request could not be prepared")
+	var app struct {
+		ID    int64  `json:"id"`
+		Slug  string `json:"slug"`
+		Owner struct {
+			Login string `json:"login"`
+			ID    int64  `json:"id"`
+		} `json:"owner"`
 	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("Authorization", "Bearer "+jwt)
-	request.Header.Set("X-GitHub-Api-Version", provider.config.APIVersion)
-	request.Header.Set("User-Agent", "codex-starter-kit")
-	request.Header.Set("Content-Type", "application/json")
-	response, err := provider.client.Do(request)
-	if err != nil {
-		return Credential{}, errors.New("GitHub App token endpoint is offline")
+	if err := provider.appJSON(ctx, jwt, http.MethodGet, "/app", nil, &app); err != nil || strconv.FormatInt(app.ID, 10) != provider.config.AppID || app.Slug != provider.config.Actor || app.Owner.Login != provider.config.Account || strconv.FormatInt(app.Owner.ID, 10) != provider.config.AccountID {
+		return Credential{}, errors.New("GitHub App API identity does not match the approved configuration")
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Credential{}, errors.New("GitHub App token mint was denied")
+	var installation struct {
+		ID      int64  `json:"id"`
+		AppID   int64  `json:"app_id"`
+		AppSlug string `json:"app_slug"`
+		Account struct {
+			Login string `json:"login"`
+			ID    int64  `json:"id"`
+		} `json:"account"`
+		Permissions map[string]string `json:"permissions"`
+	}
+	if err := provider.appJSON(ctx, jwt, http.MethodGet, "/app/installations/"+provider.config.InstallationID, nil, &installation); err != nil || strconv.FormatInt(installation.ID, 10) != provider.config.InstallationID || strconv.FormatInt(installation.AppID, 10) != provider.config.AppID || installation.AppSlug != app.Slug || installation.Account.Login != provider.config.Account || strconv.FormatInt(installation.Account.ID, 10) != provider.config.AccountID {
+		return Credential{}, errors.New("GitHub App installation identity does not match the approved configuration")
 	}
 	var minted struct {
 		Token       string            `json:"token"`
 		ExpiresAt   time.Time         `json:"expires_at"`
 		Permissions map[string]string `json:"permissions"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&minted); err != nil || minted.Token == "" || !now.Before(minted.ExpiresAt) {
+	if err := provider.appJSON(ctx, jwt, http.MethodPost, "/app/installations/"+provider.config.InstallationID+"/access_tokens", []byte("{}"), &minted); err != nil {
+		return Credential{}, err
+	}
+	if minted.Token == "" || !now.Before(minted.ExpiresAt) {
 		return Credential{}, errors.New("GitHub App token response is invalid")
+	}
+	if sandboxDigest(minted.Permissions) != sandboxDigest(installation.Permissions) {
+		return Credential{}, errors.New("GitHub App token permissions differ from the observed installation")
 	}
 	permissions := make([]string, 0, len(minted.Permissions))
 	for name, access := range minted.Permissions {
 		permissions = append(permissions, strings.ReplaceAll(name, "_", "-")+":"+access)
 	}
 	sort.Strings(permissions)
-	return Credential{Token: minted.Token, IdentityToken: jwt, Mode: "app-installation", Actor: provider.config.Actor, Account: provider.config.Account, InstallationID: provider.config.InstallationID, Permissions: permissions, PermissionSource: "installation-token-response", PermissionRevision: sandboxDigest(minted.Permissions), ExpiresAt: minted.ExpiresAt}, nil
+	return Credential{Token: minted.Token, IdentityToken: jwt, Mode: "app-installation", Actor: app.Slug, Account: installation.Account.Login, AccountID: strconv.FormatInt(installation.Account.ID, 10), InstallationID: provider.config.InstallationID, Permissions: permissions, PermissionSource: "installation-token-response", PermissionRevision: sandboxDigest(minted.Permissions), ExpiresAt: minted.ExpiresAt}, nil
+}
+
+func (provider *AppInstallationProvider) appJSON(ctx context.Context, jwt, method, path string, body []byte, output any) error {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(provider.config.RESTBaseURL, "/")+path, reader)
+	if err != nil {
+		return errors.New("GitHub App request could not be prepared")
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("Authorization", "Bearer "+jwt)
+	request.Header.Set("X-GitHub-Api-Version", provider.config.APIVersion)
+	request.Header.Set("User-Agent", "codex-starter-kit")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := provider.client.Do(request)
+	if err != nil {
+		return errors.New("GitHub App endpoint is offline")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return errors.New("GitHub App request was denied")
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(output); err != nil {
+		return errors.New("GitHub App response is invalid")
+	}
+	return nil
 }
 
 func parseRSAPrivateKey(content []byte) (*rsa.PrivateKey, error) {

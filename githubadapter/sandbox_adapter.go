@@ -24,34 +24,36 @@ const (
 	SandboxRoleReconciler = "reconciler"
 	SandboxRoleSeeder     = "seeder"
 	SandboxRoleRules      = "rules"
+	SandboxRoleReviewer   = "reviewer"
 )
 
 var sandboxRoles = []string{SandboxRoleReconciler, SandboxRoleSeeder, SandboxRoleRules}
 
 // SandboxRoleExpectation binds one least-authority credential to its approved App installation.
 type SandboxRoleExpectation struct {
-	Mode                string
-	Actor               string
-	Account             string
-	InstallationID      string
-	RequiredPermissions []string
+	Mode                string   `json:"mode"`
+	Actor               string   `json:"actor"`
+	Account             string   `json:"account"`
+	AccountID           string   `json:"account_id"`
+	InstallationID      string   `json:"installation_id,omitempty"`
+	RequiredPermissions []string `json:"required_permissions"`
 }
 
 // SandboxConfig is the credential-free, immutable allowlist for one contract sandbox.
 type SandboxConfig struct {
-	Host                  string
-	RESTBaseURL           string
-	GraphQLURL            string
-	APIVersion            string
-	ConfigurationRevision string
-	Target                engine.SandboxTarget
-	RepositoryOwner       string
-	RepositoryName        string
-	ProjectNumber         int
-	Resources             []engine.SandboxResourceSpec
-	Roles                 map[string]SandboxRoleExpectation
-	EvidenceMode          string
-	LiveTargetApproved    bool
+	Host                  string                            `json:"host"`
+	RESTBaseURL           string                            `json:"rest_base_url"`
+	GraphQLURL            string                            `json:"graphql_url"`
+	APIVersion            string                            `json:"api_version"`
+	ConfigurationRevision string                            `json:"configuration_revision"`
+	Target                engine.SandboxTarget              `json:"target"`
+	RepositoryOwner       string                            `json:"repository_owner"`
+	RepositoryName        string                            `json:"repository_name"`
+	ProjectNumber         int                               `json:"project_number"`
+	Resources             []engine.SandboxResourceSpec      `json:"resources"`
+	Roles                 map[string]SandboxRoleExpectation `json:"roles"`
+	EvidenceMode          string                            `json:"evidence_mode"`
+	LiveTargetApproved    bool                              `json:"live_target_approved"`
 }
 
 type SandboxOption func(*SandboxAdapter)
@@ -70,9 +72,22 @@ type SandboxAdapter struct {
 	providers map[string]CredentialProvider
 	client    *http.Client
 	now       func() time.Time
+	roles     []string
 }
 
 func NewSandbox(config SandboxConfig, providers map[string]CredentialProvider, client *http.Client, options ...SandboxOption) (*SandboxAdapter, error) {
+	return newSandbox(config, providers, sandboxRolesForConfig(config), client, options...)
+}
+
+// NewSandboxRole builds one role-scoped adapter for secret-isolated workflow jobs.
+func NewSandboxRole(config SandboxConfig, role string, provider CredentialProvider, client *http.Client, options ...SandboxOption) (*SandboxAdapter, error) {
+	if !slices.Contains(append(slices.Clone(sandboxRoles), SandboxRoleReviewer), role) {
+		return nil, errors.New("GitHub sandbox role is unsupported")
+	}
+	return newSandbox(config, map[string]CredentialProvider{role: provider}, []string{role}, client, options...)
+}
+
+func newSandbox(config SandboxConfig, providers map[string]CredentialProvider, requiredRoles []string, client *http.Client, options ...SandboxOption) (*SandboxAdapter, error) {
 	if config.Host == "" || config.RESTBaseURL == "" || config.GraphQLURL == "" || config.APIVersion != "2026-03-10" || config.ConfigurationRevision == "" || config.RepositoryOwner == "" || config.RepositoryName == "" || config.ProjectNumber <= 0 || client == nil {
 		return nil, errors.New("GitHub sandbox adapter configuration is incomplete or unsupported")
 	}
@@ -94,16 +109,20 @@ func NewSandbox(config SandboxConfig, providers map[string]CredentialProvider, c
 			return nil, errors.New("live GitHub sandbox endpoints must use the approved HTTPS API host")
 		}
 	}
-	providerCopy := make(map[string]CredentialProvider, len(sandboxRoles))
-	roleCopy := make(map[string]SandboxRoleExpectation, len(sandboxRoles))
-	for _, role := range sandboxRoles {
+	providerCopy := make(map[string]CredentialProvider, len(requiredRoles))
+	roleCopy := make(map[string]SandboxRoleExpectation, len(requiredRoles))
+	for _, role := range requiredRoles {
 		expectation, exists := config.Roles[role]
 		provider := providers[role]
-		if !exists || expectation.Mode == "" || expectation.Actor == "" || expectation.Account == "" || expectation.InstallationID == "" || len(expectation.RequiredPermissions) == 0 || provider == nil {
+		accountMatchesTarget := role == SandboxRoleReviewer || expectation.AccountID == config.Target.OwnerID
+		installationConfigured := expectation.Mode != "app-installation" || expectation.InstallationID != ""
+		if !exists || expectation.Mode == "" || expectation.Actor == "" || expectation.Account == "" || expectation.AccountID == "" || !accountMatchesTarget || !installationConfigured || len(expectation.RequiredPermissions) == 0 || provider == nil {
 			return nil, fmt.Errorf("GitHub sandbox role %s is not fully configured", role)
 		}
-		if id, err := strconv.ParseInt(expectation.InstallationID, 10, 64); err != nil || id <= 0 {
-			return nil, fmt.Errorf("GitHub sandbox role %s installation is invalid", role)
+		if expectation.Mode == "app-installation" {
+			if id, err := strconv.ParseInt(expectation.InstallationID, 10, 64); err != nil || id <= 0 {
+				return nil, fmt.Errorf("GitHub sandbox role %s installation is invalid", role)
+			}
 		}
 		expectation.RequiredPermissions = slices.Clone(expectation.RequiredPermissions)
 		roleCopy[role] = expectation
@@ -111,17 +130,27 @@ func NewSandbox(config SandboxConfig, providers map[string]CredentialProvider, c
 	}
 	config.Roles = roleCopy
 	config.Resources = cloneSandboxSpecs(config.Resources)
-	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now}
+	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now, roles: requiredRoles}
 	for _, option := range options {
 		option(adapter)
 	}
 	return adapter, nil
 }
 
+func sandboxRolesForConfig(config SandboxConfig) []string {
+	roles := []string{}
+	for _, role := range append(slices.Clone(sandboxRoles), SandboxRoleReviewer) {
+		if _, configured := config.Roles[role]; configured {
+			roles = append(roles, role)
+		}
+	}
+	return roles
+}
+
 func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCapability, error) {
 	now := adapter.now()
-	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: strings.Join(sandboxRoles, "+"), EvidenceMode: adapter.config.EvidenceMode, Target: adapter.config.Target, ConfigurationRevision: adapter.config.ConfigurationRevision, ObservedAt: now}
-	for _, role := range sandboxRoles {
+	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: strings.Join(adapter.roles, "+"), EvidenceMode: adapter.config.EvidenceMode, Target: adapter.config.Target, ConfigurationRevision: adapter.config.ConfigurationRevision, ObservedAt: now}
+	for _, role := range adapter.roles {
 		credential, err := adapter.roleCredential(ctx, role)
 		if err != nil {
 			capability.Available = false
@@ -148,24 +177,29 @@ func (adapter *SandboxAdapter) Observe(ctx context.Context, target engine.Sandbo
 		observation.Revision = sandboxDigest(observation)
 		return observation, nil
 	}
-	credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
-	if err != nil {
-		return observation, errors.New("sandbox reconciler credential is unavailable")
-	}
-	labels, err := adapter.observeLabels(ctx, credential)
-	if err != nil {
-		return observation, err
-	}
-	for _, desired := range adapter.config.Resources {
-		if desired.Kind == engine.SandboxResourceLabel {
-			if label, exists := labels[desired.Name]; exists {
-				observation.Resources = append(observation.Resources, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: label.NodeID, Marker: desired.Marker, Attributes: map[string]string{"color": strings.ToUpper(label.Color), "description": label.Description}})
+	if _, configured := adapter.providers[SandboxRoleReconciler]; configured {
+		credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
+		if err != nil {
+			return observation, errors.New("sandbox reconciler credential is unavailable")
+		}
+		labels, err := adapter.observeLabels(ctx, credential)
+		if err != nil {
+			return observation, err
+		}
+		for _, desired := range adapter.config.Resources {
+			if desired.Kind == engine.SandboxResourceLabel {
+				if label, exists := labels[desired.Name]; exists {
+					observation.Resources = append(observation.Resources, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: label.NodeID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"color": strings.ToUpper(label.Color), "description": label.Description})})
+				}
 			}
 		}
+		projectResources, projectProblems := adapter.observeProject(ctx, credential)
+		observation.Resources = append(observation.Resources, projectResources...)
+		observation.Problems = append(observation.Problems, projectProblems...)
 	}
-	projectResources, projectProblems := adapter.observeProject(ctx, credential)
-	observation.Resources = append(observation.Resources, projectResources...)
-	observation.Problems = append(observation.Problems, projectProblems...)
+	repositoryResources, repositoryProblems := adapter.observeRepositoryResources(ctx)
+	observation.Resources = append(observation.Resources, repositoryResources...)
+	observation.Problems = append(observation.Problems, repositoryProblems...)
 	sort.Slice(observation.Resources, func(i, j int) bool { return observation.Resources[i].Key < observation.Resources[j].Key })
 	observation.Revision = sandboxDigest(observation.Resources)
 	return observation, nil
@@ -176,7 +210,7 @@ func (adapter *SandboxAdapter) Apply(ctx context.Context, effect engine.SandboxE
 		return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "Project workflow configuration is human-owned and must be enabled in the approved Project UI"}, nil
 	}
 	if effect.Resource.Kind != engine.SandboxResourceLabel {
-		return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "sandbox resource kind has no production effect handler"}, nil
+		return adapter.applyRepositoryResource(ctx, effect)
 	}
 	credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
 	if err != nil {
@@ -187,11 +221,24 @@ func (adapter *SandboxAdapter) Apply(ctx context.Context, effect engine.SandboxE
 	}
 	body := map[string]string{"name": effect.Resource.Name, "color": effect.Resource.Attributes["color"], "description": effect.Resource.Attributes["description"]}
 	var label sandboxLabel
-	_, err = adapter.rest(ctx, credential, http.MethodPost, "/repos/"+url.PathEscape(adapter.config.RepositoryOwner)+"/"+url.PathEscape(adapter.config.RepositoryName)+"/labels", body, &label)
+	path := "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName) + "/labels"
+	labels, err := adapter.observeLabels(ctx, credential)
 	if err != nil {
 		return engine.SandboxEffectResult{}, err
 	}
-	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: label.NodeID, Detail: "managed label created"}, nil
+	method := http.MethodPost
+	detail := "managed label created"
+	if _, exists := labels[effect.Resource.Name]; exists {
+		method = http.MethodPatch
+		path += "/" + url.PathEscape(effect.Resource.Name)
+		body["new_name"] = effect.Resource.Name
+		detail = "managed label updated"
+	}
+	_, err = adapter.rest(ctx, credential, method, path, body, &label)
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: label.NodeID, Detail: detail}, nil
 }
 
 type projectField struct {
@@ -269,7 +316,7 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 		case engine.SandboxResourceProjectField:
 			for _, field := range fields {
 				if field.Name == desired.Name {
-					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: field.NodeID, Marker: desired.Marker, Attributes: map[string]string{"data_type": field.DataType}})
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: field.NodeID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"data_type": field.DataType})})
 				}
 			}
 		case engine.SandboxResourceProjectOption:
@@ -279,20 +326,20 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 				}
 				for _, option := range field.Options {
 					if string(option.Name) == desired.Name {
-						result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: option.ID, Marker: desired.Marker, Attributes: map[string]string{"field": field.Name, "color": option.Color, "description": string(option.Description)}})
+						result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: option.ID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"field": field.Name, "color": option.Color, "description": string(option.Description)})})
 					}
 				}
 			}
 		case engine.SandboxResourceProjectView:
 			for _, view := range inventory.Data.Node.Views.Nodes {
 				if view.Name == desired.Name {
-					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: view.ID, Marker: desired.Marker, Attributes: map[string]string{"layout": normalizeProjectLayout(view.Layout), "filter": view.Filter, "number": strconv.Itoa(view.Number)}})
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: view.ID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"layout": normalizeProjectLayout(view.Layout), "filter": view.Filter, "number": strconv.Itoa(view.Number)})})
 				}
 			}
 		case engine.SandboxResourceProjectWorkflow:
 			for _, workflow := range inventory.Data.Node.Workflows.Nodes {
 				if workflow.Name == desired.Name {
-					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: workflow.ID, Marker: desired.Marker, Attributes: map[string]string{"enabled": strconv.FormatBool(workflow.Enabled), "number": strconv.Itoa(workflow.Number)}})
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: workflow.ID, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"enabled": strconv.FormatBool(workflow.Enabled), "number": strconv.Itoa(workflow.Number)})})
 				}
 			}
 		}
@@ -328,10 +375,21 @@ func (adapter *SandboxAdapter) observeLabels(ctx context.Context, credential Cre
 func (adapter *SandboxAdapter) roleCredential(ctx context.Context, role string) (Credential, error) {
 	expectation := adapter.config.Roles[role]
 	credential, err := adapter.providers[role].Credential(ctx)
-	if err != nil || credential.Token == "" || credential.Mode != expectation.Mode || credential.Actor != expectation.Actor || credential.Account != expectation.Account || credential.InstallationID != expectation.InstallationID || !containsAll(credential.Permissions, expectation.RequiredPermissions) || !adapter.now().Before(credential.ExpiresAt) {
+	if err != nil || credential.Token == "" || credential.Mode != expectation.Mode || credential.Actor != expectation.Actor || credential.Account != expectation.Account || credential.AccountID != expectation.AccountID || credential.InstallationID != expectation.InstallationID || !sameStringSet(credential.Permissions, expectation.RequiredPermissions) || !adapter.now().Before(credential.ExpiresAt) {
 		return Credential{}, errors.New("credential does not match approved sandbox role")
 	}
 	return credential, nil
+}
+
+func sameStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	left = slices.Clone(left)
+	right = slices.Clone(right)
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
 }
 
 func (adapter *SandboxAdapter) rest(ctx context.Context, credential Credential, method, path string, body, output any) (*http.Response, error) {

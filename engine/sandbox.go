@@ -25,6 +25,8 @@ const (
 	SandboxResourceFixtureBranch   = "fixture-branch"
 	SandboxResourceFixturePR       = "fixture-pr"
 	SandboxResourceFixtureWorkflow = "fixture-workflow"
+	SandboxResourceFixtureReview   = "fixture-review"
+	SandboxResourceTokenRevocation = "token-revocation"
 	SandboxResourcePresent         = "present"
 	SandboxResourceAbsent          = "absent"
 )
@@ -42,6 +44,8 @@ var supportedSandboxResourceKinds = map[string]struct{}{
 	SandboxResourceFixtureBranch:   {},
 	SandboxResourceFixturePR:       {},
 	SandboxResourceFixtureWorkflow: {},
+	SandboxResourceFixtureReview:   {},
+	SandboxResourceTokenRevocation: {},
 }
 
 // SandboxTarget binds bootstrap work to one approved owner, repository, and Project.
@@ -71,6 +75,7 @@ type SandboxManifest struct {
 	ConfigurationRevision string                `json:"configuration_revision"`
 	ApprovedBy            string                `json:"approved_by"`
 	ApprovedPlan          string                `json:"approved_plan"`
+	RecoveryOwner         string                `json:"recovery_owner"`
 	MarkerPrefix          string                `json:"marker_prefix"`
 	Target                SandboxTarget         `json:"target"`
 	Resources             []SandboxResourceSpec `json:"resources"`
@@ -148,10 +153,19 @@ type SandboxPlan struct {
 	InspectionID          string          `json:"inspection_id"`
 	ObservationRevision   string          `json:"observation_revision"`
 	Target                SandboxTarget   `json:"target"`
-	ApprovedBy            string          `json:"approved_by"`
-	ApprovedPlan          string          `json:"approved_plan"`
+	ProvisioningPlan      string          `json:"provisioning_plan"`
+	RecoveryOwner         string          `json:"recovery_owner"`
 	Effects               []SandboxEffect `json:"effects"`
 	NoChange              bool            `json:"no_change"`
+}
+
+// SandboxPlanApproval separately authorizes one exact generated plan.
+type SandboxPlanApproval struct {
+	SchemaVersion int       `json:"schema_version"`
+	PlanID        string    `json:"plan_id"`
+	ApprovedBy    string    `json:"approved_by"`
+	ApprovalID    string    `json:"approval_id"`
+	ApprovedAt    time.Time `json:"approved_at"`
 }
 
 // SandboxEffectResult is the adapter's explicit result for one semantic effect.
@@ -173,6 +187,7 @@ type SandboxEffectReceipt struct {
 	EvidenceMode  string    `json:"evidence_mode"`
 	Outcome       string    `json:"outcome"`
 	Detail        string    `json:"detail"`
+	RecoveryOwner string    `json:"recovery_owner"`
 	RecordedAt    time.Time `json:"recorded_at"`
 }
 
@@ -227,47 +242,17 @@ type SandboxLifecycleResult struct {
 	Status        SandboxStatus             `json:"status"`
 }
 
+type SandboxPlanningResult struct {
+	SchemaVersion int               `json:"schema_version"`
+	Inspection    SandboxInspection `json:"inspection"`
+	Plan          SandboxPlan       `json:"plan"`
+}
+
 // SandboxAdapter is the external-resource seam; approval and desired policy stay in the engine.
 type SandboxAdapter interface {
 	Capability(context.Context) (SandboxCapability, error)
 	Observe(context.Context, SandboxTarget) (SandboxObservation, error)
 	Apply(context.Context, SandboxEffect) (SandboxEffectResult, error)
-}
-
-// BootstrapSandbox composes inspect, plan, apply, verify, and status for one reviewed manifest.
-func (e *Engine) BootstrapSandbox(ctx context.Context, request SandboxRequest) (SandboxLifecycleResult, error) {
-	result := SandboxLifecycleResult{SchemaVersion: 1}
-	inspection, err := e.InspectSandbox(ctx, request)
-	result.Inspection = inspection
-	if err != nil {
-		return result, err
-	}
-	plan, err := e.PlanSandbox(ctx, inspection)
-	result.Plan = plan
-	if err != nil {
-		return result, err
-	}
-	apply, err := e.ApplySandbox(ctx, plan.ID, plan)
-	result.Apply = apply
-	if err != nil {
-		return result, err
-	}
-	verification, err := e.VerifySandbox(ctx, request.Manifest)
-	result.Verification = verification
-	if err != nil {
-		return result, err
-	}
-	if err := updateSandboxVerification(plan.Repository, verification); err != nil {
-		return result, err
-	}
-	result.Status, err = e.SandboxStatus(ctx, request.Repository)
-	if err != nil {
-		return result, err
-	}
-	if verification.OverallState != ControlPass {
-		result.Status.Disposition = "non-pass"
-	}
-	return result, nil
 }
 
 func (e *Engine) InspectSandbox(ctx context.Context, request SandboxRequest) (SandboxInspection, error) {
@@ -339,21 +324,21 @@ func (e *Engine) PlanSandbox(_ context.Context, inspection SandboxInspection) (S
 		}{inspection.Manifest.OperationID, effect.Resource})
 		effects = append(effects, effect)
 	}
-	plan := SandboxPlan{SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Manifest.OperationID, SourceRevision: inspection.Manifest.SourceRevision, ConfigurationRevision: inspection.Manifest.ConfigurationRevision, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, Target: inspection.Manifest.Target, ApprovedBy: inspection.Manifest.ApprovedBy, ApprovedPlan: inspection.Manifest.ApprovedPlan, Effects: effects, NoChange: len(effects) == 0}
+	plan := SandboxPlan{SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Manifest.OperationID, SourceRevision: inspection.Manifest.SourceRevision, ConfigurationRevision: inspection.Manifest.ConfigurationRevision, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, Target: inspection.Manifest.Target, ProvisioningPlan: inspection.Manifest.ApprovedPlan, RecoveryOwner: inspection.Manifest.RecoveryOwner, Effects: effects, NoChange: len(effects) == 0}
 	plan.ID = digestJSON(plan)
 	return plan, nil
 }
 
-func (e *Engine) ApplySandbox(ctx context.Context, planID string, plan SandboxPlan) (SandboxApplyResult, error) {
+func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval SandboxPlanApproval) (SandboxApplyResult, error) {
 	result := SandboxApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: SandboxApplyNoChange, Receipts: []SandboxEffectReceipt{}, Problems: []string{}}
 	if e.sandboxAdapter == nil {
 		return result, errors.New("sandbox apply requires a sandbox adapter")
 	}
-	if planID == "" || plan.ID != planID || plan.ID != digestJSON(sandboxPlanWithoutID(plan)) {
+	if plan.ID == "" || plan.ID != digestJSON(sandboxPlanWithoutID(plan)) {
 		return result, errors.New("sandbox apply requires the exact plan identifier")
 	}
-	if plan.ApprovedBy == "" || plan.ApprovedPlan == "" {
-		return result, errors.New("sandbox apply requires recorded plan approval")
+	if approval.SchemaVersion != 1 || approval.PlanID != plan.ID || approval.ApprovedBy == "" || approval.ApprovalID == "" || approval.ApprovedAt.IsZero() {
+		return result, errors.New("sandbox apply requires separate approval of the exact generated plan")
 	}
 	root, err := cleanRepositoryRoot(plan.Repository)
 	if err != nil || root != plan.Repository {
@@ -401,10 +386,10 @@ func (e *Engine) ApplySandbox(ctx context.Context, planID string, plan SandboxPl
 		if applyErr != nil {
 			result.Status = SandboxApplyNonPass
 			result.Problems = append(result.Problems, effect.Resource.Key+": adapter effect failed")
-			result.Receipts = append(result.Receipts, SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: "error", Detail: "sandbox adapter effect failed; inspect provider diagnostics outside retained evidence", RecordedAt: e.clock.Now()})
+			result.Receipts = append(result.Receipts, SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: "error", Detail: "sandbox adapter effect failed; inspect provider diagnostics outside retained evidence", RecoveryOwner: plan.RecoveryOwner, RecordedAt: e.clock.Now()})
 			break
 		}
-		receipt := SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, ResourceID: applied.ResourceID, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: applied.Outcome, Detail: applied.Detail, RecordedAt: e.clock.Now()}
+		receipt := SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, ResourceID: applied.ResourceID, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: applied.Outcome, Detail: applied.Detail, RecoveryOwner: plan.RecoveryOwner, RecordedAt: e.clock.Now()}
 		result.Receipts = append(result.Receipts, receipt)
 		if applied.Outcome != "applied" && applied.Outcome != "no-change" {
 			result.Status = SandboxApplyNonPass
@@ -434,11 +419,20 @@ func (e *Engine) SandboxStatus(_ context.Context, repository string) (SandboxSta
 }
 
 func (e *Engine) VerifySandbox(ctx context.Context, manifest SandboxManifest) (SandboxVerificationResult, error) {
+	if e.sandboxAdapter == nil {
+		return SandboxVerificationResult{}, errors.New("sandbox verification requires a sandbox adapter")
+	}
+	capability, err := e.sandboxAdapter.Capability(ctx)
+	if err != nil {
+		return SandboxVerificationResult{}, fmt.Errorf("verify sandbox capability: %w", err)
+	}
 	observation, err := e.sandboxAdapter.Observe(ctx, manifest.Target)
 	if err != nil {
 		return SandboxVerificationResult{}, fmt.Errorf("verify sandbox observation: %w", err)
 	}
-	missing := sandboxResourceProblems(manifest.Resources, observation.Resources)
+	missing := sandboxHandshakeProblems(manifest, capability, observation, e.clock.Now())
+	missing = append(missing, sandboxResourceProblems(manifest.Resources, observation.Resources)...)
+	sort.Strings(missing)
 	control := ControlResult{ID: "GITHUB-SANDBOX-001", State: ControlPass, Summary: "approved sandbox resources match the manifest", Evidence: []EvidenceReference{{Kind: "external-state", Target: manifest.Target.RepositoryName}}, Diagnostics: []string{}}
 	if len(missing) != 0 {
 		control.State = ControlFail
@@ -457,7 +451,7 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 	if containsSensitiveText(string(encoded)) {
 		return errors.New("sandbox manifest contains sensitive-looking material")
 	}
-	if manifest.SchemaVersion != 1 || manifest.OperationID == "" || manifest.SourceRevision == "" || manifest.ConfigurationRevision == "" || manifest.ApprovedBy == "" || manifest.ApprovedPlan == "" {
+	if manifest.SchemaVersion != 1 || manifest.OperationID == "" || manifest.SourceRevision == "" || manifest.ConfigurationRevision == "" || manifest.ApprovedBy == "" || manifest.ApprovedPlan == "" || manifest.RecoveryOwner == "" {
 		return errors.New("sandbox manifest requires schema, operation, source, configuration, and approval identities")
 	}
 	if manifest.MarkerPrefix == "" || manifest.Target.Host == "" || manifest.Target.OwnerID == "" || manifest.Target.RepositoryID == "" || manifest.Target.ProjectID == "" || manifest.Target.RepositoryName == "" {
@@ -549,7 +543,17 @@ func sandboxResourceProblems(desired []SandboxResourceSpec, observed []SandboxOb
 }
 
 func sandboxResourceMatches(desired SandboxResourceSpec, observed SandboxObservedResource) bool {
-	return desired.Key == observed.Key && desired.Kind == observed.Kind && desired.Name == observed.Name && desired.Marker == observed.Marker && equalStringMap(desired.Attributes, observed.Attributes)
+	return desired.Key == observed.Key && desired.Kind == observed.Kind && desired.Name == observed.Name && desired.Marker == observed.Marker && equalStringMap(sandboxEvidenceAttributes(desired.Attributes), observed.Attributes)
+}
+
+func sandboxEvidenceAttributes(attributes map[string]string) map[string]string {
+	result := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		if !strings.HasPrefix(key, "input:") {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func equalSandboxTarget(left, right SandboxTarget) bool { return left == right }

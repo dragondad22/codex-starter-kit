@@ -9,10 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 
 	starterkit "github.com/dragondad22/codex-starter-kit"
 	"github.com/dragondad22/codex-starter-kit/engine"
+	"github.com/dragondad22/codex-starter-kit/githubadapter"
 	"github.com/dragondad22/codex-starter-kit/releasechange"
 )
 
@@ -141,8 +143,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return writeJSON(stdout, stderr, engine.New().Capabilities())
-	case "bootstrap-sandbox":
-		flags := flag.NewFlagSet("bootstrap-sandbox", flag.ContinueOnError)
+	case "sandbox-plan":
+		flags := flag.NewFlagSet("sandbox-plan", flag.ContinueOnError)
 		flags.SetOutput(stderr)
 		inputPath := flags.String("input", "", "versioned sandbox request, capability, and observation JSON")
 		if err := flags.Parse(args[1:]); err != nil {
@@ -167,12 +169,134 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		adapter := engine.NewInMemorySandboxAdapter(input.Capability, input.Observation)
-		journey, err := engine.New(engine.WithSandboxAdapter(adapter)).BootstrapSandbox(context.Background(), input.Request)
+		lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
+		inspection, err := lifecycle.InspectSandbox(context.Background(), input.Request)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		return writeJSON(stdout, stderr, journey)
+		plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, engine.SandboxPlanningResult{SchemaVersion: 1, Inspection: inspection, Plan: plan})
+	case "sandbox-apply":
+		flags := flag.NewFlagSet("sandbox-apply", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		inputPath := flags.String("input", "", "versioned sandbox plan, approval, capability, and observation JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *inputPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--input is required and positional arguments are unsupported")
+			return 2
+		}
+		content, err := os.ReadFile(*inputPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "read sandbox apply input: %v\n", err)
+			return 1
+		}
+		var input struct {
+			Manifest    engine.SandboxManifest     `json:"manifest"`
+			Plan        engine.SandboxPlan         `json:"plan"`
+			Approval    engine.SandboxPlanApproval `json:"approval"`
+			Capability  engine.SandboxCapability   `json:"capability"`
+			Observation engine.SandboxObservation  `json:"observation"`
+		}
+		if err := decodeOneCLIJSON(content, &input); err != nil {
+			fmt.Fprintf(stderr, "decode sandbox apply input: %v\n", err)
+			return 1
+		}
+		adapter := engine.NewInMemorySandboxAdapter(input.Capability, input.Observation)
+		lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
+		apply, err := lifecycle.ApplySandbox(context.Background(), input.Plan, input.Approval)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		verification, err := lifecycle.VerifySandbox(context.Background(), input.Manifest)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		status, err := lifecycle.SandboxStatus(context.Background(), input.Plan.Repository)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, engine.SandboxLifecycleResult{SchemaVersion: 1, Plan: input.Plan, Apply: apply, Verification: verification, Status: status})
+	case "sandbox-live-plan":
+		flags := flag.NewFlagSet("sandbox-live-plan", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		inputPath := flags.String("input", "", "approved role-scoped live sandbox request JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *inputPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--input is required and positional arguments are unsupported")
+			return 2
+		}
+		var input liveSandboxPlanInput
+		if err := readCLIJSONFile(*inputPath, &input); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		adapter, err := newLiveSandboxRoleAdapter(input.Config, input.Role, input.App, input.Reviewer)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
+		inspection, err := lifecycle.InspectSandbox(context.Background(), input.Request)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, engine.SandboxPlanningResult{SchemaVersion: 1, Inspection: inspection, Plan: plan})
+	case "sandbox-live-apply":
+		flags := flag.NewFlagSet("sandbox-live-apply", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		inputPath := flags.String("input", "", "separately approved role-scoped live sandbox plan JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *inputPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--input is required and positional arguments are unsupported")
+			return 2
+		}
+		var input liveSandboxApplyInput
+		if err := readCLIJSONFile(*inputPath, &input); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		adapter, err := newLiveSandboxRoleAdapter(input.Config, input.Role, input.App, input.Reviewer)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
+		apply, err := lifecycle.ApplySandbox(context.Background(), input.Plan, input.Approval)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		verification, err := lifecycle.VerifySandbox(context.Background(), input.Manifest)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		status, err := lifecycle.SandboxStatus(context.Background(), input.Plan.Repository)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, engine.SandboxLifecycleResult{SchemaVersion: 1, Plan: input.Plan, Apply: apply, Verification: verification, Status: status})
 	case "manage-task":
 		flags := flag.NewFlagSet("manage-task", flag.ContinueOnError)
 		flags.SetOutput(stderr)
@@ -348,6 +472,60 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported operation: %s\n", args[0])
 		return 2
 	}
+}
+
+type liveSandboxPlanInput struct {
+	Role     string                              `json:"role"`
+	Request  engine.SandboxRequest               `json:"request"`
+	Config   githubadapter.SandboxConfig         `json:"config"`
+	App      githubadapter.AppInstallationConfig `json:"app"`
+	Reviewer githubadapter.UserTokenConfig       `json:"reviewer"`
+}
+
+type liveSandboxApplyInput struct {
+	Role     string                              `json:"role"`
+	Manifest engine.SandboxManifest              `json:"manifest"`
+	Plan     engine.SandboxPlan                  `json:"plan"`
+	Approval engine.SandboxPlanApproval          `json:"approval"`
+	Config   githubadapter.SandboxConfig         `json:"config"`
+	App      githubadapter.AppInstallationConfig `json:"app"`
+	Reviewer githubadapter.UserTokenConfig       `json:"reviewer"`
+}
+
+func readCLIJSONFile(path string, output any) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read JSON input: %w", err)
+	}
+	if err := decodeOneCLIJSON(content, output); err != nil {
+		return fmt.Errorf("decode JSON input: %w", err)
+	}
+	return nil
+}
+
+func newLiveSandboxRoleAdapter(config githubadapter.SandboxConfig, role string, app githubadapter.AppInstallationConfig, reviewer ...githubadapter.UserTokenConfig) (*githubadapter.SandboxAdapter, error) {
+	if role == githubadapter.SandboxRoleReviewer {
+		if len(reviewer) != 1 {
+			return nil, errors.New("reviewer live provider configuration is unavailable")
+		}
+		token := os.Getenv("CSK_REVIEWER_TOKEN")
+		provider, err := githubadapter.NewReviewerTokenProvider(reviewer[0], token, http.DefaultClient, nil)
+		if err != nil {
+			return nil, err
+		}
+		return githubadapter.NewSandboxRole(config, role, provider, http.DefaultClient)
+	}
+	privateKey := os.Getenv("CSK_APP_PRIVATE_KEY")
+	if privateKey == "" {
+		return nil, errors.New("CSK_APP_PRIVATE_KEY is unavailable")
+	}
+	provider, err := githubadapter.NewAppInstallationProvider(app, githubadapter.PrivateKeyProviderFunc(func(context.Context) ([]byte, error) {
+		return []byte(privateKey), nil
+	}), http.DefaultClient)
+	if err != nil {
+		return nil, err
+	}
+	return githubadapter.NewSandboxRole(config, role, provider, http.DefaultClient)
 }
 
 func decodeOneCLIJSON(content []byte, target any) error {
