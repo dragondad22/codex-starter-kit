@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
@@ -73,6 +74,8 @@ type SandboxAdapter struct {
 	client    *http.Client
 	now       func() time.Time
 	roles     []string
+	proofMu   sync.Mutex
+	proofs    map[string]engine.SandboxObservedResource
 }
 
 func NewSandbox(config SandboxConfig, providers map[string]CredentialProvider, client *http.Client, options ...SandboxOption) (*SandboxAdapter, error) {
@@ -130,7 +133,7 @@ func newSandbox(config SandboxConfig, providers map[string]CredentialProvider, r
 	}
 	config.Roles = roleCopy
 	config.Resources = cloneSandboxSpecs(config.Resources)
-	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now, roles: requiredRoles}
+	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now, roles: requiredRoles, proofs: map[string]engine.SandboxObservedResource{}}
 	for _, option := range options {
 		option(adapter)
 	}

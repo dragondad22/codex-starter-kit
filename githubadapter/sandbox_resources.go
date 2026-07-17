@@ -46,6 +46,7 @@ func (adapter *SandboxAdapter) observeRepositoryResources(ctx context.Context) (
 			result = append(result, resources...)
 		}
 	}
+	result = append(result, adapter.observeEphemeralProofs()...)
 	return result, problems
 }
 
@@ -77,9 +78,79 @@ func (adapter *SandboxAdapter) applyRepositoryResource(ctx context.Context, effe
 			return engine.SandboxEffectResult{}, errors.New("sandbox reviewer credential is unavailable")
 		}
 		return adapter.applyReview(ctx, credential, effect)
+	case engine.SandboxResourceFixtureDenial:
+		return adapter.applyFixtureDenial(ctx, effect)
+	case engine.SandboxResourceTokenRevocation:
+		return adapter.applyTokenRevocation(ctx, effect)
 	default:
 		return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "sandbox resource kind has no production effect handler"}, nil
 	}
+}
+
+func (adapter *SandboxAdapter) observeEphemeralProofs() []engine.SandboxObservedResource {
+	adapter.proofMu.Lock()
+	defer adapter.proofMu.Unlock()
+	result := []engine.SandboxObservedResource{}
+	for _, desired := range adapter.config.Resources {
+		if desired.Kind != engine.SandboxResourceFixtureDenial && desired.Kind != engine.SandboxResourceTokenRevocation {
+			continue
+		}
+		if proof, exists := adapter.proofs[desired.Key]; exists {
+			result = append(result, proof)
+		}
+	}
+	return result
+}
+
+func (adapter *SandboxAdapter) retainEphemeralProof(resource engine.SandboxResourceSpec, id string) {
+	adapter.proofMu.Lock()
+	defer adapter.proofMu.Unlock()
+	adapter.proofs[resource.Key] = engine.SandboxObservedResource{
+		Key: resource.Key, Kind: resource.Kind, Name: resource.Name, ID: id, Marker: resource.Marker,
+		Attributes: desiredAttributes(resource, resource.Attributes),
+	}
+}
+
+func (adapter *SandboxAdapter) applyFixtureDenial(ctx context.Context, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	if effect.Kind == "remove-resource" {
+		return engine.SandboxEffectResult{Outcome: "not-applicable", Detail: "denial proofs are ephemeral run evidence"}, nil
+	}
+	credential, err := adapter.roleCredential(ctx, SandboxRoleSeeder)
+	if err != nil {
+		return engine.SandboxEffectResult{}, errors.New("sandbox seeder credential is unavailable")
+	}
+	path := adapter.repoPath() + "/git/refs/heads/" + escapePath(effect.Resource.Attributes["branch"])
+	_, err = adapter.rest(ctx, credential, http.MethodDelete, path, nil, nil)
+	if err == nil {
+		return engine.SandboxEffectResult{Outcome: "fail", Detail: "fixture branch deletion was unexpectedly allowed"}, nil
+	}
+	if !isResponseStatus(err, http.StatusForbidden) {
+		return engine.SandboxEffectResult{}, err
+	}
+	adapter.retainEphemeralProof(effect.Resource, "http-403")
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-403", Detail: "active fixture ruleset denied branch deletion"}, nil
+}
+
+func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	if effect.Kind == "remove-resource" {
+		return engine.SandboxEffectResult{Outcome: "not-applicable", Detail: "revocation proofs are ephemeral run evidence"}, nil
+	}
+	role := effect.Resource.Attributes["role"]
+	if role == SandboxRoleReviewer {
+		return engine.SandboxEffectResult{Outcome: "not-applicable", Detail: "reviewer token revocation is human-owned"}, nil
+	}
+	credential, err := adapter.roleCredential(ctx, role)
+	if err != nil {
+		return engine.SandboxEffectResult{}, errors.New("sandbox App credential is unavailable for revocation")
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodDelete, "/installation/token", nil, nil); err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, "/installation/repositories", nil, nil); !isResponseStatus(err, http.StatusUnauthorized) {
+		return engine.SandboxEffectResult{Outcome: "fail", Detail: "revoked App token remained usable or returned an unexpected state"}, nil
+	}
+	adapter.retainEphemeralProof(effect.Resource, "http-401")
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-401", Detail: "App installation token revoked and rejected"}, nil
 }
 
 func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {

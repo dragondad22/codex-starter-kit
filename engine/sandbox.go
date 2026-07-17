@@ -27,6 +27,7 @@ const (
 	SandboxResourceFixturePR        = "fixture-pr"
 	SandboxResourceFixtureWorkflow  = "fixture-workflow"
 	SandboxResourceFixtureReview    = "fixture-review"
+	SandboxResourceFixtureDenial    = "fixture-denial-proof"
 	SandboxResourceTokenRevocation  = "token-revocation"
 	SandboxResourcePresent          = "present"
 	SandboxResourceAbsent           = "absent"
@@ -47,6 +48,7 @@ var supportedSandboxResourceKinds = map[string]struct{}{
 	SandboxResourceFixturePR:        {},
 	SandboxResourceFixtureWorkflow:  {},
 	SandboxResourceFixtureReview:    {},
+	SandboxResourceFixtureDenial:    {},
 	SandboxResourceTokenRevocation:  {},
 }
 

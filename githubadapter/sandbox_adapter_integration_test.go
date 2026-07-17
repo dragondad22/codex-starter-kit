@@ -207,6 +207,66 @@ func TestSandboxAdapterClaimsFixtureWorkflowOnlyWhenContentExactlyMatches(t *tes
 	}
 }
 
+func TestSandboxAdapterRetainsExpectedFixtureDenialProof(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete || request.URL.Path != "/repos/labs/sandbox/git/refs/heads/contract/run/cleanup" {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		response.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	proof := engine.SandboxResourceSpec{Key: "proof:rules-denial", Kind: engine.SandboxResourceFixtureDenial, Name: "active rules denial", Marker: "starter-kit-contract:run", Attributes: map[string]string{"branch": "contract/run/cleanup", "status": "denied"}}
+	config.Resources = []engine.SandboxResourceSpec{proof}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: proof})
+	if err != nil || result.Outcome != "applied" || result.ResourceID != "http-403" {
+		t.Fatalf("apply = %#v, %v", result, err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Resources) != 1 || observation.Resources[0].Key != proof.Key {
+		t.Fatalf("observation = %#v, %v", observation, err)
+	}
+}
+
+func TestSandboxAdapterRevokesAppTokenAndRetainsRejectionProof(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodDelete && request.URL.Path == "/installation/token":
+			response.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet && request.URL.Path == "/installation/repositories":
+			response.WriteHeader(http.StatusUnauthorized)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	proof := engine.SandboxResourceSpec{Key: "proof:seeder-revocation", Kind: engine.SandboxResourceTokenRevocation, Name: "seeder token revocation", Marker: "starter-kit-contract:run", Attributes: map[string]string{"role": githubadapter.SandboxRoleSeeder, "state": "revoked", "status": "401"}}
+	config.Resources = []engine.SandboxResourceSpec{proof}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: proof})
+	if err != nil || result.Outcome != "applied" || result.ResourceID != "http-401" {
+		t.Fatalf("apply = %#v, %v", result, err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Resources) != 1 || observation.Resources[0].Key != proof.Key {
+		t.Fatalf("observation = %#v, %v", observation, err)
+	}
+}
+
 func sandboxConfig(server *httptest.Server, target engine.SandboxTarget) githubadapter.SandboxConfig {
 	return githubadapter.SandboxConfig{
 		Host: "github.com", RESTBaseURL: server.URL, GraphQLURL: server.URL + "/graphql", APIVersion: "2026-03-10",
