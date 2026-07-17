@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,49 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	}
 }
 
+func TestBootstrapSandboxCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("initialize sandbox Git repository: %v: %s", err, output)
+	}
+	now := time.Now().UTC()
+	target := engine.SandboxTarget{Host: "memory.local", OwnerID: "owner", RepositoryID: "repository", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	input := struct {
+		Request     engine.SandboxRequest     `json:"request"`
+		Capability  engine.SandboxCapability  `json:"capability"`
+		Observation engine.SandboxObservation `json:"observation"`
+	}{
+		Request: engine.SandboxRequest{Repository: repository, Manifest: engine.SandboxManifest{
+			SchemaVersion: 1, OperationID: "issue-73-bootstrap-v1", SourceRevision: "issue-73", ConfigurationRevision: "config-v1",
+			ApprovedBy: "owner", ApprovedPlan: "issue-73-bootstrap-v1", MarkerPrefix: "starter-kit-contract:", Target: target,
+			Resources: []engine.SandboxResourceSpec{{Key: "label:contract-run", Kind: engine.SandboxResourceLabel, Name: "contract-run", Attributes: map[string]string{"color": "5319E7"}}},
+		}},
+		Capability:  engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "memory-app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config-v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Observation: engine.SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config-v1", Resources: []engine.SandboxObservedResource{}},
+	}
+	content, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(t.TempDir(), "sandbox.json")
+	if err := os.WriteFile(inputPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"bootstrap-sandbox", "--input", inputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var journey engine.SandboxLifecycleResult
+	if err := json.Unmarshal(stdout.Bytes(), &journey); err != nil {
+		t.Fatalf("decode sandbox journey: %v: %s", err, stdout.String())
+	}
+	if journey.Plan.ID == "" || journey.Apply.Status != engine.SandboxApplyApplied || journey.Verification.OverallState != engine.ControlPass || journey.Status.Disposition != "converged" {
+		t.Fatalf("unexpected sandbox journey: %#v", journey)
+	}
+}
+
 func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -105,6 +149,9 @@ func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
 	}
 	if len(report.Operations) == 0 || report.Operations[0] != "apply" {
 		t.Fatalf("operations are absent or unstable: %#v", report.Operations)
+	}
+	if !slices.Contains(report.Operations, "bootstrap-sandbox") {
+		t.Fatalf("bootstrap-sandbox capability is absent: %#v", report.Operations)
 	}
 	if report.Engine.Provenance != engine.ProvenanceUnverified {
 		t.Fatalf("engine self-asserted provenance trust: %#v", report.Engine)

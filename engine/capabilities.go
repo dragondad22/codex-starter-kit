@@ -65,6 +65,7 @@ func (e *Engine) Capabilities() CapabilityReport {
 		},
 		Operations: []string{
 			"apply",
+			"bootstrap-sandbox",
 			"create",
 			"inspect",
 			"plan",

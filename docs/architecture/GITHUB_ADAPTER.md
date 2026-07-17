@@ -1,6 +1,6 @@
 # GitHub Adapter — Identity and Transport Contract
 
-**Status:** Implemented deterministic production transport; live effects not configured
+**Status:** Implemented deterministic production transport; isolated live setup in progress
 
 **Issue:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72)
 
@@ -13,6 +13,13 @@ interface. Work Manager continues to own desired lifecycle policy, immutable pla
 preconditions, receipts, verification, and recovery. The adapter owns only ephemeral
 credential acquisition, a fixed target manifest, normalized GitHub observation, and
 allowlisted REST/GraphQL effects.
+
+Issue #73 adds a separate `SandboxAdapter` seam for baseline and fixture resources whose
+authority differs from routine one-task reconciliation. `NewSandbox` accepts one immutable
+organization repository/Project allowlist plus three role expectations and injected
+credential providers. It aggregates reconciler, seeder, and rules installation authority
+without making any one credential a fallback for another. See
+[GitHub Sandbox Bootstrap](SANDBOX_BOOTSTRAP.md).
 
 `githubadapter.New` accepts one credential-free configuration, an injected credential
 provider, and a native Go HTTP client. The configuration names the host, pinned REST

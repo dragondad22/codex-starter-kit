@@ -141,6 +141,38 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return writeJSON(stdout, stderr, engine.New().Capabilities())
+	case "bootstrap-sandbox":
+		flags := flag.NewFlagSet("bootstrap-sandbox", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		inputPath := flags.String("input", "", "versioned sandbox request, capability, and observation JSON")
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if *inputPath == "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "--input is required and positional arguments are unsupported")
+			return 2
+		}
+		content, err := os.ReadFile(*inputPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "read sandbox input: %v\n", err)
+			return 1
+		}
+		var input struct {
+			Request     engine.SandboxRequest     `json:"request"`
+			Capability  engine.SandboxCapability  `json:"capability"`
+			Observation engine.SandboxObservation `json:"observation"`
+		}
+		if err := decodeOneCLIJSON(content, &input); err != nil {
+			fmt.Fprintf(stderr, "decode sandbox input: %v\n", err)
+			return 1
+		}
+		adapter := engine.NewInMemorySandboxAdapter(input.Capability, input.Observation)
+		journey, err := engine.New(engine.WithSandboxAdapter(adapter)).BootstrapSandbox(context.Background(), input.Request)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return writeJSON(stdout, stderr, journey)
 	case "manage-task":
 		flags := flag.NewFlagSet("manage-task", flag.ContinueOnError)
 		flags.SetOutput(stderr)

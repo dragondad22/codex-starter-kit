@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-73-sandbox-bootstrap",
+  "summary": "Bootstrap and verify an isolated organization-owned GitHub contract sandbox through an approved, replay-safe lifecycle.",
+  "category": "added",
+  "audiences": ["operators", "developers", "security"],
+  "components": ["engine", "github"],
+  "issues": [73],
+  "breaking": false,
+  "internal_only": false
+}

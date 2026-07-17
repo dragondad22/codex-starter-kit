@@ -1,6 +1,6 @@
 # GitHub live contract-test matrix
 
-**Status:** Bounded research result; not provisioning approval or product authority  
+**Status:** Approved organization-only 1.0 qualification topology; provisioning owned by #73
 **Issue:** [#68](https://github.com/dragondad22/codex-starter-kit/issues/68)  
 **Retrieved:** 2026-07-15  
 **Intended use:** Final decomposition of GitHub feature #4 and later adapter qualification
@@ -21,13 +21,19 @@ allocates evidence between those contracts; it does not replace them.
 
 ## Conclusion
 
-One sandbox cannot prove every supported 1.0 identity honestly. The minimum topology is:
+The product owner narrowed the required Phase 3 / 1.0 topology on 2026-07-16. Required
+qualification uses one dedicated GitHub Free organization; the personal user-owned
+Project/classic-token route is not a 1.0 support claim and must remain `not-configured`
+or `unsupported` until separately approved and qualified. This supersedes the broader
+research proposal below wherever it described P as required.
+
+The approved minimum topology is:
 
 | Target | Purpose | Base disposition |
 |---|---|---|
 | **O — organization route**: dedicated public repository plus organization-owned Project; App installed only on that repository | Preferred unattended `app-installation` identity; organization Project permission; repository Issues, PR observation, rules, and cleanup | Required live target before App support is promoted |
-| **P — personal route**: dedicated public personal repository plus user-owned Project | Interactive/recovery `user-token` route and the documented user-Project gap; use an explicitly accepted classic token only where the fine-grained/App routes are unsupported | Required live target before the personal route is promoted |
-| **A — Actions route**: one minimal workflow in O or P | Repository-local `GITHUB_TOKEN`, least job permissions, denied Project and cross-repository behavior, workflow-trigger semantics | Required live target for CI authority claims |
+| **P — personal route** | Deferred; no personal repository, user-owned Project, or classic PAT is provisioned | `not-configured` for 1.0; requires a separate future approval |
+| **A — Actions route**: one minimal workflow in O | Repository-local `GITHUB_TOKEN`, least job permissions, denied Project and cross-repository behavior, workflow-trigger semantics | Required live target for CI authority claims |
 | **F — deterministic fault harness**: in-memory adapter plus controllable HTTP double | Rate exhaustion, partial GraphQL data, lost response, offline/reconnect, webhook signature/GUID replay, time, and retry scheduling | Required repeatable evidence; never relabeled as live GitHub evidence |
 
 The base matrix uses public repositories and standard GitHub-hosted runners. Current
@@ -80,10 +86,10 @@ evidence.
 | O reconciler App installation | Selected O repository; repository Metadata read, Issues write, Pull requests read, Checks read, Actions read, Commit statuses read; organization Projects write | Omit Issues for issue mutation; Projects read for Project mutation; unselected repository; wrong installation; expired/revoked/suspended installation token |
 | O rules inspector | Selected O repository; Metadata and Administration read | Administration omitted cannot inspect |
 | O rules applier | One-operation selected-repository token; Metadata read and Administration write | Inspector token cannot mutate; token is destroyed after disable/delete cleanup |
-| P reconciler classic user token | Expected personal actor; classic scopes exactly `public_repo` and `project` | Separately omit `public_repo` and `project`; fine-grained, App-user, and App-installation tokens must be rejected for the documented user-owned Project item route |
+| P reconciler classic user token | Not provisioned or required for 1.0 | `not-configured`; no classic-token fallback may be selected automatically |
 | A issue job | `contents: read`, `issues: write`, every other job permission `none` | Project and other-repository access denied; a second job with `issues: read` cannot mutate |
 | A observation job | `contents: read`, `pull-requests: read`, `checks: read`, `statuses: read`, `actions: read`, every other job permission `none` | No issue, Project, ruleset, review submission, merge, contents-write, or workflow-write authority |
-| Fixture seeder App installation | Separate private App installed only on O and P sandbox repositories; Metadata read, Contents write, Pull requests write, Workflows write, and Issues write | Seeder installation credential is unavailable to Work Manager, Actions jobs, and reviewer; omitted Workflows permission cannot seed/change the fixture workflow |
+| Fixture seeder App installation | Separate private App installed only on the O sandbox repository; Metadata read, Contents write, Pull requests write, Workflows write, and Issues write | Seeder installation credential is unavailable to Work Manager, Actions jobs, and reviewer; omitted Workflows permission cannot seed/change the fixture workflow |
 | Distinct test reviewer | Dedicated user account, different from sandbox owner, seeder App managers, and implementation actor; repository role Write; selected-repository fine-grained token with Metadata/Contents read and Pull requests write | Pull requests read cannot submit a review; same-actor or stale-head review is observed but cannot satisfy distinct review |
 | Optional webhook manager | Separate one-operation identity with Metadata read and Webhooks write | Omitted by default; built-in `GITHUB_TOKEN` cannot configure it |
 
@@ -269,13 +275,13 @@ policy review rather than inheriting this proposal.
 
 | Implication | Base recommendation and fallback |
 |---|---|
-| Ownership | O requires an organization owner/App manager and Project administrator; P requires the personal owner. If those roles are unavailable, affected live evidence is `not-configured`, not delegated to a broader token. |
+| Ownership | O requires an organization owner/App manager and Project administrator. P is outside the 1.0 claim. If required O roles are unavailable, affected live evidence is `not-configured`, not delegated to a broader token. |
 | App trust | Register one private test App, selected-repository installation, no public listing, minimum permissions, and webhooks disabled unless GH-WEB-02 is separately selected. Record owner, managers, key rotation/revocation, and incident contact before use. |
-| User token breadth | The user-owned Project REST route currently rejects fine-grained and App tokens. A classic token is an accepted broad fallback only after its scopes, expiry, storage, revocation, actor, and personal-account implications are approved. Otherwise P is unsupported. |
+| User token breadth | No classic PAT is approved or required. The reviewer uses a selected-repository fine-grained PAT with Contents read and Pull requests write only; it is not a Project or reconciliation fallback. |
 | Data | Public synthetic fixture content only. No operational issue text, source, credentials, private metadata, or sensitive evidence enters the sandbox. |
 | Cost | Public repositories with standard hosted runners have no Actions-minute charge under current docs. No paid upgrade, private target, larger runner, hosted receiver, or secret service is required for the base matrix. Usage and pricing remain invalidation triggers. |
 | Compatibility | Base target is GitHub.com REST `2026-03-10` plus current GraphQL. GitHub Enterprise Server, private/paid behavior, App-based user-owned Project mutation, and webhook durability remain unsupported/not-configured until exact qualification. |
-| Fallback | Production can remain user-token interactive for the personal route and in-memory/polling-first where App/webhooks are unavailable. Missing live evidence narrows the support claim; it does not block deterministic local logic or justify broader authority. |
+| Fallback | In-memory evidence remains available where live GitHub is unavailable. Missing live evidence narrows the support claim; it does not justify a personal route, broader token, or webhook authority. |
 
 ## Provisioning gate
 

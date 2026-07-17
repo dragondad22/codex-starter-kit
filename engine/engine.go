@@ -17,8 +17,18 @@ import (
 
 // Engine owns lifecycle orchestration behind the public operation seam.
 type Engine struct {
-	clock       Clock
-	workAdapter WorkAdapter
+	clock          Clock
+	workAdapter    WorkAdapter
+	sandboxAdapter SandboxAdapter
+}
+
+// WithSandboxAdapter supplies the external-resource adapter used by sandbox bootstrap operations.
+func WithSandboxAdapter(adapter SandboxAdapter) Option {
+	return func(engine *Engine) {
+		if adapter != nil {
+			engine.sandboxAdapter = adapter
+		}
+	}
 }
 
 // Clock supplies deterministic verification time.
