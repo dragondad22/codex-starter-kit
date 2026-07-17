@@ -137,7 +137,7 @@ func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect 
 	}
 	role := effect.Resource.Attributes["role"]
 	if role == SandboxRoleReviewer {
-		return engine.SandboxEffectResult{Outcome: "not-applicable", Detail: "reviewer token revocation is human-owned"}, nil
+		return engine.SandboxEffectResult{Outcome: "not-applicable", Detail: "reviewer credential revocation is human-owned"}, nil
 	}
 	credential, err := adapter.roleCredential(ctx, role)
 	if err != nil {
@@ -147,7 +147,7 @@ func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect 
 		return engine.SandboxEffectResult{}, err
 	}
 	if _, err := adapter.rest(ctx, credential, http.MethodGet, "/installation/repositories", nil, nil); !isResponseStatus(err, http.StatusUnauthorized) {
-		return engine.SandboxEffectResult{Outcome: "fail", Detail: "revoked App token remained usable or returned an unexpected state"}, nil
+		return engine.SandboxEffectResult{Outcome: "fail", Detail: "revoked App credential remained usable or returned an unexpected state"}, nil
 	}
 	adapter.retainEphemeralProof(effect.Resource, "http-401")
 	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-401", Detail: "App installation credential was revoked and rejected"}, nil
@@ -494,8 +494,12 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 			if resource.Key == effect.Resource.Key {
 				method = http.MethodPatch
 				path += "/" + resource.ID
-				existingNodeID = resource.Attributes["node_id"]
-				existingDraft = resource.Attributes["draft"] == "true"
+				var existing sandboxPullRequest
+				if _, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &existing); err != nil {
+					return engine.SandboxEffectResult{}, err
+				}
+				existingNodeID = existing.NodeID
+				existingDraft = existing.Draft
 				delete(body, "head")
 				delete(body, "draft")
 				body["state"] = effect.Resource.Attributes["state"]
@@ -511,9 +515,14 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 			if desiredDraft {
 				mutation = `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{id}}}`
 			}
-			var response map[string]any
+			var response struct {
+				Errors []graphQLError `json:"errors"`
+			}
 			if err := adapter.graphql(ctx, credential, mutation, map[string]any{"id": existingNodeID}, &response); err != nil {
 				return engine.SandboxEffectResult{}, err
+			}
+			if len(response.Errors) != 0 {
+				return engine.SandboxEffectResult{}, errors.New("GitHub rejected the fixture pull request draft transition")
 			}
 		}
 		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: strconv.Itoa(pull.Number), Detail: "marked fixture pull request created"}, nil

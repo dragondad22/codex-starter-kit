@@ -267,6 +267,41 @@ func TestSandboxAdapterRevokesAppTokenAndRetainsRejectionProof(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterRejectsGraphQLDraftTransitionErrors(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/pulls":
+			json.NewEncoder(response).Encode([]map[string]any{{
+				"node_id": "PR_fixture", "number": 13, "title": "Contract fixture: success",
+				"body": "starter-kit-contract:run", "state": "open", "draft": true,
+				"head": map[string]any{"ref": "contract/success"}, "base": map[string]any{"ref": "main"},
+			}})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/pulls/13":
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "PR_fixture", "number": 13, "draft": true})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/labs/sandbox/pulls/13":
+			json.NewEncoder(response).Encode(map[string]any{"number": 13})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			json.NewEncoder(response).Encode(map[string]any{"errors": []map[string]any{{"message": "transition rejected"}}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	fixture := engine.SandboxResourceSpec{Key: "fixture:pr:success", Kind: engine.SandboxResourceFixturePR, Name: "success", Marker: "starter-kit-contract:run", Attributes: map[string]string{"title": "Contract fixture: success", "state": "open", "draft": "false", "head": "contract/success", "base": "main"}}
+	config.Resources = []engine.SandboxResourceSpec{fixture}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: fixture}); err == nil || !strings.Contains(err.Error(), "draft transition") {
+		t.Fatalf("apply error = %v", err)
+	}
+}
+
 func sandboxConfig(server *httptest.Server, target engine.SandboxTarget) githubadapter.SandboxConfig {
 	return githubadapter.SandboxConfig{
 		Host: "github.com", RESTBaseURL: server.URL, GraphQLURL: server.URL + "/graphql", APIVersion: "2026-03-10",
