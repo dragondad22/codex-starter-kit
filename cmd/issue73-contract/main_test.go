@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
@@ -15,6 +17,16 @@ func TestQualificationPlansKeepRevocationLast(t *testing.T) {
 		}
 		if len(resources) < 2 || resources[len(resources)-1].Kind != engine.SandboxResourceTokenRevocation {
 			t.Fatalf("%s resources do not revoke last: %#v", role, resources)
+		}
+		target := engine.SandboxTarget{Host: "github.com", OwnerID: ownerID, RepositoryID: repositoryID, ProjectID: projectID, RepositoryName: repository}
+		manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "test", SourceRevision: "source", ConfigurationRevision: configuration, ApprovedBy: "owner", ApprovedPlan: "approved", RecoveryOwner: "owner", MarkerPrefix: markerPrefix, Target: target, Resources: resources}
+		adapter := engine.NewInMemorySandboxAdapter(engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Target: target}, engine.SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: configuration})
+		repositoryPath := t.TempDir()
+		if err := os.MkdirAll(repositoryPath+"/.git", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := engine.New(engine.WithSandboxAdapter(adapter)).InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repositoryPath, Manifest: manifest}); err != nil {
+			t.Fatalf("%s qualification manifest: %v", role, err)
 		}
 	}
 }

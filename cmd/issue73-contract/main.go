@@ -234,7 +234,7 @@ func activeRulesResources() []engine.SandboxResourceSpec {
 }
 
 func revocationResource(role string) engine.SandboxResourceSpec {
-	return resource("proof:token-revocation:"+role, engine.SandboxResourceTokenRevocation, role+" App token revocation", runMarker+":proof:token-revocation:"+role, map[string]string{"role": role, "state": "revoked", "status": "401"})
+	return resource("proof:token-revocation:"+role, engine.SandboxResourceTokenRevocation, role+" credential revocation", runMarker+":proof:token-revocation:"+role, map[string]string{"role": role, "state": "revoked", "status": "401"})
 }
 
 func cleanupSeederResources() []engine.SandboxResourceSpec {
