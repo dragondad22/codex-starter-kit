@@ -117,6 +117,36 @@ func TestSandboxInspectionStopsOnUnrecognizedNameCollision(t *testing.T) {
 	}
 }
 
+func TestSandboxInspectionDistinguishesProjectOptionsWithTheSameNameInDifferentFields(t *testing.T) {
+	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
+	repository := newSandboxRepository(t)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	manifest := SandboxManifest{
+		SchemaVersion: 1, OperationID: "approved-plan", SourceRevision: "source", ConfigurationRevision: "config",
+		ApprovedBy: "owner", ApprovedPlan: "approved-plan", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
+		Resources: []SandboxResourceSpec{
+			{Key: "project-option:status:next", Kind: SandboxResourceProjectOption, Name: "Next", Attributes: map[string]string{"field": "Status"}},
+			{Key: "project-option:horizon:next", Kind: SandboxResourceProjectOption, Name: "Next", Attributes: map[string]string{"field": "Horizon"}},
+		},
+	}
+	adapter := NewInMemorySandboxAdapter(
+		SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config", Resources: []SandboxObservedResource{
+			{Key: "project-option:status:next", Kind: SandboxResourceProjectOption, Name: "Next", ID: "status-next", Attributes: map[string]string{"field": "Status"}},
+			{Key: "project-option:horizon:next", Kind: SandboxResourceProjectOption, Name: "Next", ID: "horizon-next", Attributes: map[string]string{"field": "Horizon"}},
+		}},
+	)
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("inspect sandbox: %v", err)
+	}
+	if inspection.Disposition != "inspected" || len(inspection.Problems) != 0 {
+		t.Fatalf("inspection = %q %#v", inspection.Disposition, inspection.Problems)
+	}
+}
+
 func TestSandboxApplyRejectsChangedObservationBeforeEffects(t *testing.T) {
 	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
 	repository := newSandboxRepository(t)

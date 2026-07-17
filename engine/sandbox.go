@@ -15,39 +15,39 @@ import (
 )
 
 const (
-	SandboxResourceLabel           = "label"
-	SandboxResourceProjectField    = "project-field"
-	SandboxResourceProjectOption   = "project-option"
-	SandboxResourceProjectView     = "project-view"
-	SandboxResourceProjectWorkflow = "project-workflow"
+	SandboxResourceLabel            = "label"
+	SandboxResourceProjectField     = "project-field"
+	SandboxResourceProjectOption    = "project-option"
+	SandboxResourceProjectView      = "project-view"
+	SandboxResourceProjectWorkflow  = "project-workflow"
 	SandboxResourceProjectItemProof = "project-item-proof"
-	SandboxResourceRuleset         = "ruleset"
-	SandboxResourceFixtureIssue    = "fixture-issue"
-	SandboxResourceFixtureBranch   = "fixture-branch"
-	SandboxResourceFixturePR       = "fixture-pr"
-	SandboxResourceFixtureWorkflow = "fixture-workflow"
-	SandboxResourceFixtureReview   = "fixture-review"
-	SandboxResourceTokenRevocation = "token-revocation"
-	SandboxResourcePresent         = "present"
-	SandboxResourceAbsent          = "absent"
+	SandboxResourceRuleset          = "ruleset"
+	SandboxResourceFixtureIssue     = "fixture-issue"
+	SandboxResourceFixtureBranch    = "fixture-branch"
+	SandboxResourceFixturePR        = "fixture-pr"
+	SandboxResourceFixtureWorkflow  = "fixture-workflow"
+	SandboxResourceFixtureReview    = "fixture-review"
+	SandboxResourceTokenRevocation  = "token-revocation"
+	SandboxResourcePresent          = "present"
+	SandboxResourceAbsent           = "absent"
 )
 
 const sandboxStatePath = ".starter-kit/sandbox/state.json"
 
 var supportedSandboxResourceKinds = map[string]struct{}{
-	SandboxResourceLabel:           {},
-	SandboxResourceProjectField:    {},
-	SandboxResourceProjectOption:   {},
-	SandboxResourceProjectView:     {},
-	SandboxResourceProjectWorkflow: {},
+	SandboxResourceLabel:            {},
+	SandboxResourceProjectField:     {},
+	SandboxResourceProjectOption:    {},
+	SandboxResourceProjectView:      {},
+	SandboxResourceProjectWorkflow:  {},
 	SandboxResourceProjectItemProof: {},
-	SandboxResourceRuleset:         {},
-	SandboxResourceFixtureIssue:    {},
-	SandboxResourceFixtureBranch:   {},
-	SandboxResourceFixturePR:       {},
-	SandboxResourceFixtureWorkflow: {},
-	SandboxResourceFixtureReview:   {},
-	SandboxResourceTokenRevocation: {},
+	SandboxResourceRuleset:          {},
+	SandboxResourceFixtureIssue:     {},
+	SandboxResourceFixtureBranch:    {},
+	SandboxResourceFixturePR:        {},
+	SandboxResourceFixtureWorkflow:  {},
+	SandboxResourceFixtureReview:    {},
+	SandboxResourceTokenRevocation:  {},
 }
 
 // SandboxTarget binds bootstrap work to one approved owner, repository, and Project.
@@ -499,19 +499,27 @@ func sandboxHandshakeProblems(manifest SandboxManifest, capability SandboxCapabi
 	keys := map[string]struct{}{}
 	desiredNames := make(map[string]string, len(manifest.Resources))
 	for _, resource := range manifest.Resources {
-		desiredNames[resource.Kind+"\x00"+resource.Name] = resource.Key
+		desiredNames[sandboxResourceIdentity(resource.Kind, resource.Name, resource.Attributes)] = resource.Key
 	}
 	for _, resource := range observation.Resources {
 		if _, duplicate := keys[resource.Key]; duplicate {
 			problems = append(problems, "duplicate observed sandbox resource: "+resource.Key)
 		}
 		keys[resource.Key] = struct{}{}
-		if desiredKey, collision := desiredNames[resource.Kind+"\x00"+resource.Name]; collision && desiredKey != resource.Key {
+		if desiredKey, collision := desiredNames[sandboxResourceIdentity(resource.Kind, resource.Name, resource.Attributes)]; collision && desiredKey != resource.Key {
 			problems = append(problems, "unrecognized resource collides with managed kind/name: "+resource.Kind+"/"+resource.Name)
 		}
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+func sandboxResourceIdentity(kind, name string, attributes map[string]string) string {
+	identity := kind + "\x00" + name
+	if kind == SandboxResourceProjectOption {
+		identity += "\x00" + attributes["field"]
+	}
+	return identity
 }
 
 func sandboxResourceProblems(desired []SandboxResourceSpec, observed []SandboxObservedResource) []string {
