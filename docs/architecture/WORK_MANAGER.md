@@ -58,11 +58,27 @@ Closed questions require either a durable promotion route or an explicit no-prom
 resolution; closed research requires a durable promoted output. Implementation work
 requires a named distinct-context review role.
 
-For the selected task, the immutable plan also reports derived parent status/closure from
-the supplied parent and sibling facts. This represents the #64 rule that a started child
-keeps an incomplete parent `in-progress` and all closed children close it `done`; the
-one-task route does not apply a second parent effect. Multi-item reconciliation remains
-#74.
+For the selected task, the immutable plan derives and applies a bounded reconciliation
+slice containing the selected item, its one parent, and its direct dependents. A closed
+selected item becomes Status `done`; any started or completed child keeps an incomplete
+parent `in-progress`; and all closed children close the parent as `done` only when the
+input explicitly confirms that the parent completion contract is satisfied. An
+all-children-closed parent without that confirmation is rejected instead of being left
+open as an unexplained placeholder.
+
+Each direct dependent supplies its complete blocker slice and an explicit Ready-eligibility
+fact. The final closed blocker promotes an eligible dependent from `blocked` to `ready`
+without selecting Status `next`; any open blocker retains `blocked`. Related corrections
+are ordered parent-first and then by dependent managed ID. Their plans and receipts retain
+the exact target, operations, semantic before/after lifecycle values, source, observation,
+actor, authority, attempt, and result. Completed related effects survive interruption,
+and the next plan contains only residual drift.
+
+The bounded slice is not yet the complete #15 contract: it accepts enumerated relationship
+facts but does not refresh native parent/sub-issue and blocker/dependent relationships.
+#15 retains ownership of that native observation before it can pass. Afterward #74
+composes the completed reconciliation path with authoritative issue bodies, subtype
+completion, Horizon, Phase, and broader executable-work governance.
 
 Creating a missing task and reconciling its Project/relationship state are separate
 effects. A completed create receipt therefore survives a denied or interrupted Project
@@ -101,12 +117,13 @@ transport outcomes, and simulated/live receipt separation. See the
 [GitHub adapter contract](GITHUB_ADAPTER.md).
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
-owns separately approved sandbox provisioning; #74 owns full intake, hierarchy, subtype,
-Horizon, Phase, and Project governance; #75 owns branch/PR/review/gate delivery; and #76
-owns aggregate live qualification.
+owns separately approved sandbox provisioning. #15 still needs renewed bounded authority
+and a passing live item/parent/dependent reconciliation receipt. #74 consumes that result
+while owning full intake, subtype, Horizon, Phase, and Project governance; #75 owns
+branch/PR/review/gate delivery; and #76 owns aggregate live qualification.
 
-The current route manages one task at a time. It does not create credentials, provision
-repositories or Projects, configure rules or workflows, publish a release, or claim
-private/paid/GHES support. Live GitHub mutation is `not-configured` until #73 supplies the
-approved target and authority. Native Linux, macOS, and Windows support is claimed only
-after the exact completing revision passes the repository matrix.
+The current draft route manages one selected task plus its bounded parent/direct-dependent
+reconciliation slice. It does not yet discover missing native relationships, create
+credentials, provision repositories or Projects, configure rules or workflows, publish a
+release, or claim private/paid/GHES support. Native Linux, macOS, and Windows support is
+claimed only after the exact completing revision passes the repository matrix.

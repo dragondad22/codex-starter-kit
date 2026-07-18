@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -169,7 +170,7 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 		Target: engine.WorkTarget{
 			Host: "memory.local", RepositoryID: "repository:fixture", ProjectID: "project:fixture",
 			FieldIDs:  map[string]string{"readiness": "field:readiness", "status": "field:status"},
-			OptionIDs: map[string]string{"readiness:ready": "option:ready", "readiness:blocked": "option:blocked", "status:next": "option:next", "status:done": "option:done"},
+			OptionIDs: map[string]string{"readiness:ready": "option:ready", "readiness:blocked": "option:blocked", "status:backlog": "option:backlog", "status:next": "option:next", "status:in-progress": "option:in-progress", "status:done": "option:done"},
 		},
 	})
 	request := engine.ManagedTaskRequest{
@@ -681,7 +682,7 @@ func TestManagedTaskRateLimitPersistsBoundedRetryUntilReset(t *testing.T) {
 func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T) {
 	t.Parallel()
 
-	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
 	request.Intent.Task.ParentManagedID = "issue:4"
 	request.Intent.Task.ParentContext = &engine.WorkParentContext{
 		ManagedID: "issue:4", Status: "in-progress",
@@ -694,6 +695,11 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 	request.Intent.Task.Status = "next"
 	request.Intent.Task.Closed = true
 	request.Intent.Task.PromotionRecord = "docs/decisions/DEC-0013-question-and-research-work.md"
+	observation := adapter.Observation()
+	observation.RelatedTasks = []engine.WorkObservedTask{{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", StatusOption: "option:in-progress"}}
+	observation.Revision = "observation:parent-context"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
 	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -724,6 +730,300 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 	}
 	if verification.OverallState != engine.ControlPass {
 		t.Fatalf("expected derived policy to verify, got %#v", verification)
+	}
+}
+
+func TestManagedTaskReconcilesClosedItemParentAndFinalUnblockedDependent(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.Closed = true
+	request.Intent.Task.Status = "next"
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{
+		ManagedID: "issue:4", Status: "backlog", CompletionSatisfied: true,
+		OtherChildren: []engine.WorkRelatedTask{{ManagedID: "issue:46", Status: "backlog", Closed: false}},
+	}
+	request.Intent.Task.Dependents = []engine.WorkDependentContext{{
+		ManagedID: "issue:74", Readiness: "blocked", Status: "backlog", ReadyEligible: true,
+		Blockers: []engine.WorkDependency{{ManagedID: "issue:71", Closed: true}, {ManagedID: "issue:46", Closed: true}},
+	}}
+	request.Intent.Target.OptionIDs["status:backlog"] = "option:backlog"
+	request.Intent.Target.OptionIDs["status:in-progress"] = "option:in-progress"
+
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready",
+		StatusOption: "option:next", Closed: true, Review: request.Intent.Task.Review,
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{
+		{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", ReadinessOption: "option:ready", StatusOption: "option:backlog"},
+		{ManagedID: "issue:74", IssueNodeID: "memory:issue:74", ProjectItemID: "memory:item:74", ReadinessOption: "option:blocked", StatusOption: "option:backlog"},
+	}
+	observation.Revision = "observation:closed-slice"
+	adapter.SetObservation(observation)
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 3 {
+		t.Fatalf("expected selected, parent, and dependent corrections, got %#v", plan.Effects)
+	}
+	if plan.Effects[0].ManagedID != "issue:71" || plan.Effects[0].Desired.Status != "done" {
+		t.Fatalf("closed selected item did not plan Done: %#v", plan.Effects[0])
+	}
+	if plan.Effects[1].ManagedID != "issue:4" || plan.Effects[1].Desired.Status != "in-progress" || plan.Effects[1].Desired.Closed {
+		t.Fatalf("incomplete parent did not plan In progress: %#v", plan.Effects[1])
+	}
+	if plan.Effects[2].ManagedID != "issue:74" || plan.Effects[2].Desired.Readiness != "ready" || plan.Effects[2].Desired.Status != "backlog" {
+		t.Fatalf("final unblocked dependent changed the wrong fields: %#v", plan.Effects[2])
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.OverallState != engine.ControlPass {
+		t.Fatalf("expected bounded reconciliation slice to converge, got %#v", verification)
+	}
+}
+
+func TestManagedTaskClosesParentOnlyWhenEveryChildAndCompletionContractAreComplete(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	request.Intent.Task.Closed = true
+	request.Intent.Task.Status = "done"
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{
+		ManagedID: "issue:4", Status: "in-progress", CompletionSatisfied: true,
+		OtherChildren: []engine.WorkRelatedTask{{ManagedID: "issue:46", Status: "done", Closed: true}},
+	}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ParentManagedID: "issue:4",
+		ReadinessOption: "option:ready", StatusOption: "option:done", Phase: "Phase 3", Closed: true, Review: request.Intent.Task.Review,
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", StatusOption: "option:in-progress"}}
+	observation.Revision = "observation:parent-ready-to-close"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].ManagedID != "issue:4" || !plan.Effects[0].Desired.Closed || plan.Effects[0].Desired.Status != "done" {
+		t.Fatalf("expected one parent closure correction, got %#v", plan.Effects)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("parent closure did not verify: %#v, %v", verification, err)
+	}
+	replayInspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayPlan, err := lifecycle.PlanManagedTask(context.Background(), replayInspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replayPlan.NoChange || len(replayPlan.Effects) != 0 {
+		t.Fatalf("parent closure replay must be idempotent, got %#v", replayPlan)
+	}
+}
+
+func TestManagedTaskRejectsUnexplainedOpenParentAfterEveryChildCloses(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.Closed = true
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{
+		ManagedID: "issue:4", Status: "in-progress",
+		OtherChildren: []engine.WorkRelatedTask{{ManagedID: "issue:46", Status: "done", Closed: true}},
+	}
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil || !strings.Contains(err.Error(), "completion contract") {
+		t.Fatalf("all-children-complete parent must require an explicit completion result, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(request.Repository, ".starter-kit", "work-manager", "state.json")); !os.IsNotExist(err) {
+		t.Fatalf("rejected parent ambiguity must not create state, got %v", err)
+	}
+}
+
+func TestManagedTaskDoesNotPromoteDependentUntilEveryBlockerCloses(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	request.Intent.Task.Dependents = []engine.WorkDependentContext{{
+		ManagedID: "issue:74", Readiness: "blocked", Status: "backlog", ReadyEligible: true,
+		Blockers: []engine.WorkDependency{{ManagedID: "issue:71", Closed: true}, {ManagedID: "issue:46", Closed: false}},
+	}}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready",
+		StatusOption: "option:next", Phase: "Phase 3", Review: request.Intent.Task.Review,
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{{ManagedID: "issue:74", IssueNodeID: "memory:issue:74", ProjectItemID: "memory:item:74", ReadinessOption: "option:blocked", StatusOption: "option:backlog"}}
+	observation.Revision = "observation:dependent-still-blocked"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("dependent with an open blocker must remain blocked without effects, got %#v", plan)
+	}
+}
+
+func TestManagedTaskRejectsDirectDependentCycle(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.Dependents = []engine.WorkDependentContext{{
+		ManagedID: "issue:74", Readiness: "blocked", Status: "backlog", ReadyEligible: true,
+		Blockers: []engine.WorkDependency{
+			{ManagedID: request.Intent.Task.ManagedID, Closed: true},
+			{ManagedID: "issue:74", Closed: true},
+		},
+	}}
+
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil || !strings.Contains(err.Error(), "dependent blocker context") {
+		t.Fatalf("expected direct dependency cycle to stop inspection, got %v", err)
+	}
+	if _, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository); err == nil {
+		t.Fatal("rejected dependency cycle must not create durable state")
+	}
+}
+
+func TestManagedTaskReopensIssueAndRestoresExplicitLifecycleState(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	request.Intent.Task.Status = "backlog"
+	request.Intent.Target.OptionIDs["status:backlog"] = "option:backlog"
+	observation := adapter.Observation()
+	observation.Target = request.Intent.Target
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready",
+		StatusOption: "option:done", Phase: "Phase 3", Review: request.Intent.Task.Review, Closed: true,
+	}
+	observation.Revision = "observation:stale-closed"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || !slices.Equal(plan.Effects[0].Operations, []string{"issue", "status"}) {
+		t.Fatalf("expected reopen and explicit Status restoration, got %#v", plan.Effects)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("reopened task did not converge: %#v, %v", verification, err)
+	}
+}
+
+func TestManagedTaskRelatedPartialFailureResumesOnlyUnconvergedCorrections(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	request.Intent.Task.Closed = true
+	request.Intent.Task.Status = "next"
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{
+		ManagedID: "issue:4", Status: "backlog",
+		OtherChildren: []engine.WorkRelatedTask{{ManagedID: "issue:46", Status: "backlog"}},
+	}
+	request.Intent.Task.Dependents = []engine.WorkDependentContext{{
+		ManagedID: "issue:74", Readiness: "blocked", Status: "backlog", ReadyEligible: true,
+		Blockers: []engine.WorkDependency{{ManagedID: "issue:71", Closed: true}},
+	}}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready",
+		StatusOption: "option:next", Closed: true, Review: request.Intent.Task.Review,
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{
+		{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", ReadinessOption: "option:ready", StatusOption: "option:backlog"},
+		{ManagedID: "issue:74", IssueNodeID: "memory:issue:74", ProjectItemID: "memory:item:74", ReadinessOption: "option:blocked", StatusOption: "option:backlog"},
+	}
+	observation.Revision = "observation:partial-related-slice"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "applied", Attempt: 1, Detail: "selected item corrected"}, true)
+	adapter.QueueApplyResult(engine.WorkEffectResult{Outcome: "denied", Attempt: 1, Recoverable: true, Detail: "parent Project write denied"}, false)
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != engine.WorkApplyNonPass || len(result.Receipts) != 2 || result.Receipts[1].Outcome != "denied" {
+		t.Fatalf("expected retained selected receipt and denied parent receipt, got %#v", result)
+	}
+	if result.Receipts[1].After != result.Receipts[1].Before {
+		t.Fatalf("denied correction must not claim its desired after-state: %#v", result.Receipts[1])
+	}
+
+	restarted := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+	recoveryInspection, err := restarted.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryPlan, err := restarted.PlanManagedTask(context.Background(), recoveryInspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recoveryPlan.Effects) != 2 || recoveryPlan.Effects[0].ManagedID != "issue:4" || recoveryPlan.Effects[1].ManagedID != "issue:74" {
+		t.Fatalf("recovery must omit the converged selected item and retain related deltas, got %#v", recoveryPlan.Effects)
+	}
+	if _, err := restarted.ApplyManagedTask(context.Background(), recoveryPlan.ID, recoveryPlan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := restarted.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("related recovery did not converge: %#v, %v", verification, err)
 	}
 }
 

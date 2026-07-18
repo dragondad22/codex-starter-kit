@@ -48,14 +48,60 @@ understand a field's complete state model.
 
 ## Remaining issue scope
 
-This record establishes the standing behavior and repairs the observed slice. Issue #15
-remains open for a supported automation or repeatable reconciliation backstop that proves
-closed items and dependency changes cannot silently leave the Project stale.
+The lifecycle engine and production GitHub adapter now implement the repeatable
+reconciliation backstop through the Work Manager seam. One immutable plan can correct the
+selected closed/open item, its parent, and its direct dependents. The plan is bound to the
+governed source, normalized observation, target/configuration IDs, actor, permission,
+expiry, and exact semantic before/after states.
+
+The policy maps closed items to Status `Done`, reopens items only to the explicitly
+supplied lifecycle state, keeps a partially delivered parent `In progress`, and closes an
+all-children-complete parent only after an explicit completion-contract result. A parent
+with every child closed but no satisfied completion result is rejected. A fully specified
+dependent becomes Ready only after its final blocker closes and remains Backlog unless it
+was separately selected.
+
+Related effects are independently receipted. A selected-item success followed by a denied
+parent correction retains both results; refreshed inspection produces a plan containing
+only the unconverged parent and dependent. Parent closure uses a state-only GitHub patch
+and preserves human-owned title, body, and labels.
+
+This is a partial #15 result. The current route receives bounded relationship facts from
+its caller; it does not yet refresh native GitHub hierarchy and dependency observations.
+#15 retains that work because #74 consumes the completed reconciliation contract. Native
+relationships must be observed rather than inferred from issue prose.
 
 ## Verification
+
+The first public-seam test was recorded RED before production types existed: compilation
+failed because parent completion, direct dependent context, and related observations were
+absent. It then passed after the engine planned, applied, and verified the selected,
+parent, and dependent corrections.
+
+Focused deterministic coverage now includes:
+
+- closed-item Status repair, incomplete-parent progress, and final-blocker promotion;
+- all-children-complete parent closure plus effect-free replay;
+- rejection of unexplained open parents after every child closes;
+- no dependent promotion while any blocker remains open;
+- rejection of a direct dependent cycle before durable state;
+- reopening to an explicit lifecycle state;
+- partial related-effect denial, restart, residual-only plan, and convergence;
+- bounded production-adapter observation of selected and related immutable identities;
+- parent issue closure and Status correction without rewriting human content; and
+- existing stale target/configuration, permission denial, partial response, rate,
+  ambiguity, replay, and native portability cases.
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"
 python3 scripts/validate_docs.py
 go test ./...
+go run ./cmd/starter-kit changes check --repository .
+git diff --check
 ```
+
+The exact completing revision must pass native Linux, macOS, and Windows CI and a distinct
+Standards/Spec review before merge. The approved #73 sandbox supplies only built-in
+close-to-Done evidence. #15's native relationship observation and `GH-WORK-08` multi-item
+live result are `not-configured` pending renewed bounded authority; they remain #15
+acceptance gates and must pass before this issue or its draft PR can complete.

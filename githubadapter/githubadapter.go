@@ -160,7 +160,7 @@ func New(config Config, provider CredentialProvider, client *http.Client, option
 }
 
 // Observe reads one stable-marker issue and its Project item through bounded pagination.
-func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, managedID string) (engine.WorkObservation, error) {
+func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, managedID string, relatedManagedIDs ...string) (engine.WorkObservation, error) {
 	credential, err := adapter.credential(ctx)
 	if err != nil {
 		return adapter.failedObservation(target, managedID, nil, err), nil
@@ -204,6 +204,45 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		}
 		return adapter.failedObservation(target, managedID, &credential, err), nil
 	}
+	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target)
+	seenRelated := map[string]bool{}
+	for _, relatedManagedID := range relatedManagedIDs {
+		if relatedManagedID == "" || relatedManagedID == managedID || seenRelated[relatedManagedID] {
+			observation.Disposition = "needs-review"
+			observation.Problems = []string{"related managed-task observation request is invalid or ambiguous"}
+			break
+		}
+		seenRelated[relatedManagedID] = true
+		relatedIssues, relatedErr := adapter.findManagedIssues(ctx, credential, relatedManagedID)
+		if relatedErr != nil {
+			return adapter.failedObservation(target, relatedManagedID, &credential, relatedErr), nil
+		}
+		if len(relatedIssues) != 1 {
+			observation.Disposition = "needs-review"
+			observation.Problems = []string{"required related managed task is absent or ambiguous"}
+			break
+		}
+		relatedItem, relatedErr := adapter.findProjectItem(ctx, credential, relatedIssues[0].NodeID, target)
+		if relatedErr != nil {
+			if errors.Is(relatedErr, errGraphQLPartial) {
+				observation.Disposition = "needs-review"
+				observation.Problems = []string{errGraphQLPartial.Error()}
+				break
+			}
+			return adapter.failedObservation(target, relatedManagedID, &credential, relatedErr), nil
+		}
+		observation.RelatedTasks = append(observation.RelatedTasks, *normalizeObservedTask(relatedIssues[0], relatedItem, relatedManagedID, target))
+	}
+	observation.Revision = digest(struct {
+		Task     *engine.WorkObservedTask
+		Related  []engine.WorkObservedTask
+		State    string
+		Problems []string
+	}{observation.Task, observation.RelatedTasks, observation.Disposition, observation.Problems})
+	return observation, nil
+}
+
+func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget) *engine.WorkObservedTask {
 	issueType := "task"
 	for _, label := range issue.Labels {
 		if strings.HasPrefix(label.Name, "type:") {
@@ -211,13 +250,10 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 			break
 		}
 	}
-	observed := &engine.WorkObservedTask{
-		ManagedID: managedID, IssueNodeID: issue.NodeID, Title: issue.Title, IssueType: issueType,
-		Closed: strings.EqualFold(issue.State, "closed"),
-	}
-	if projectItem != nil {
-		observed.ProjectItemID = projectItem.ID
-		for _, field := range projectItem.FieldValues.Nodes {
+	observed := &engine.WorkObservedTask{ManagedID: managedID, IssueNodeID: issue.NodeID, Title: issue.Title, IssueType: issueType, Closed: strings.EqualFold(issue.State, "closed")}
+	if item != nil {
+		observed.ProjectItemID = item.ID
+		for _, field := range item.FieldValues.Nodes {
 			switch field.Field.ID {
 			case target.FieldIDs["readiness"]:
 				observed.ReadinessOption = field.OptionID
@@ -239,9 +275,7 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		observed.PromotionRecord = metadata.PromotionRecord
 		observed.Review = slices.Clone(metadata.Review)
 	}
-	observation.Task = observed
-	observation.Revision = digest(observed)
-	return observation, nil
+	return observed
 }
 
 func (adapter *Adapter) failedObservation(target engine.WorkTarget, managedID string, credential *Credential, err error) engine.WorkObservation {
@@ -334,6 +368,24 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		operations = []string{"issue", "project", "readiness", "status"}
 	}
 	issue := issues[0]
+	if slices.Contains(operations, "closure") && strings.EqualFold(issue.State, "closed") != effect.Desired.Closed {
+		state := "open"
+		if effect.Desired.Closed {
+			state = "closed"
+		}
+		response, updateErr := adapter.mutateREST(ctx, credential, http.MethodPatch, adapter.issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{"state": state}, &struct{}{})
+		if updateErr != nil {
+			return adapter.transportResult(updateErr, response, attempt)
+		}
+		observed, observeErr := adapter.findManagedIssues(ctx, credential, effect.ManagedID)
+		if observeErr != nil {
+			return adapter.transportResult(observeErr, nil, attempt)
+		}
+		if len(observed) != 1 || strings.EqualFold(observed[0].State, "closed") != effect.Desired.Closed {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "issue closure postcondition did not converge", Recoverable: true}, nil
+		}
+		issue = observed[0]
+	}
 	if slices.Contains(operations, "issue") && !issueMatchesDesired(issue, effect.Desired) {
 		state := "open"
 		if effect.Desired.Closed {

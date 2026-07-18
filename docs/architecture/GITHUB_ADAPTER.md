@@ -1,6 +1,6 @@
 # GitHub Adapter — Identity and Transport Contract
 
-**Status:** Implemented deterministic production transport; isolated live setup in progress
+**Status:** Implemented deterministic production transport; isolated sandbox baseline qualified
 
 **Issue:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72)
 
@@ -38,8 +38,8 @@ not runtime dependencies.
 
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
-| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | `not-configured` until #73 provisions and approves the organization fixture |
-| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | `not-configured` until #73 records token breadth, storage, target, and cleanup authority |
+| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; the Work Adapter's multi-item reconciliation route remains unqualified live |
+| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | `not-configured` for Work Adapter effects; #73's separately bounded reviewer identity is not a reconciler fallback |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
 App installation mode rejects a user-owned Project rather than selecting a user token.
@@ -72,17 +72,21 @@ does not broaden authority or switch credentials.
 
 Observation follows bounded REST `Link` pages and GraphQL Project-item cursors, matches
 the exact non-secret `starter-kit-managed:<managed-id>` marker, and normalizes issue,
-Project item, lifecycle option, and managed metadata identities. Zero matches means the
-task is absent. Multiple matches are `ambiguous`. GraphQL partial data plus errors is
-`needs-review`, never a partial pass.
+Project item, lifecycle option, and managed metadata identities. Work Manager may request
+one bounded ordered set of already-governed parent and direct-dependent IDs; every
+requested related item must resolve uniquely with immutable issue
+and Project-item identities or the observation is non-pass. Zero selected matches means
+the task is absent. Multiple matches are `ambiguous`. Missing/ambiguous related items and
+GraphQL partial data are `needs-review`, never partial success.
 
 The adapter accepts only the two semantic effects produced by Work Manager:
 
 - `create-task` re-reads the marker before POST. One existing match recovers a lost
   response; multiple matches remain ambiguous.
 - `reconcile-task` carries an ordered list containing only the remaining semantic
-  operations: issue metadata, Project membership, Readiness, and Status. It preserves
-  human-authored body text and unrelated labels, skips already-converged operations, and
+  operations: issue metadata, issue closure/reopening, Project membership, Readiness, and
+  Status. A related parent closure patches only issue state and therefore does not rewrite
+  human-owned title, body, or labels. The adapter skips already-converged operations and
   re-reads every mutation before reporting it applied.
 
 Expired/invalid authentication, insufficient authorization, hidden-resource 404,
@@ -103,6 +107,9 @@ scheduling, Actions limitations, and unsupported combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,
-Project, issue, or paid feature was created or mutated for #72. #73 must establish the
-approved isolated fixtures before a `live` receipt can be produced; #76 owns aggregate
-qualification and support claims.
+Project, issue, or paid feature was created or mutated for #72. #73 subsequently
+established the approved isolated sandbox and recorded its separate baseline and
+close-to-Done evidence. That evidence does not qualify the Work Adapter's native
+parent/blocker/dependent observation or multi-item reconciliation behavior; those claims
+still require their own live proof before #15 can pass. #76 owns aggregate qualification
+and support claims after the contributing contracts have passed.
