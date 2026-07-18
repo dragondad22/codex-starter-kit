@@ -58,15 +58,26 @@ func TestProjectProofIncludesPositiveNegativeAndCloseAutomationCases(t *testing.
 func TestCleanupClosesRetainedRecordsAndDeletesEphemeralResources(t *testing.T) {
 	resources := cleanupSeederResources()
 	states := map[string]string{}
-	for _, resource := range resources {
+	lastPullRequest := -1
+	firstBranch := len(resources)
+	for index, resource := range resources {
 		states[resource.Kind] = resource.DesiredState
 		if resource.Kind == engine.SandboxResourceFixtureIssue || resource.Kind == engine.SandboxResourceFixturePR {
 			if resource.DesiredState == engine.SandboxResourceAbsent || resource.Attributes["state"] != "closed" {
 				t.Fatalf("retained fixture is not closed: %#v", resource)
 			}
 		}
+		if resource.Kind == engine.SandboxResourceFixturePR {
+			lastPullRequest = index
+		}
+		if resource.Kind == engine.SandboxResourceFixtureBranch && firstBranch == len(resources) {
+			firstBranch = index
+		}
 	}
 	if states[engine.SandboxResourceFixtureBranch] != engine.SandboxResourceAbsent || states[engine.SandboxResourceFixtureWorkflow] != engine.SandboxResourceAbsent {
 		t.Fatalf("ephemeral cleanup states = %#v", states)
+	}
+	if lastPullRequest < 0 || firstBranch <= lastPullRequest {
+		t.Fatalf("cleanup must close pull requests before deleting their branches: %#v", resources)
 	}
 }

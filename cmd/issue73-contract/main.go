@@ -279,14 +279,14 @@ func cleanupSeederResources() []engine.SandboxResourceSpec {
 		}
 		resources = append(resources, resource("fixture:issue:"+name, engine.SandboxResourceFixtureIssue, name, runMarker+":issue:"+name, map[string]string{"title": "Contract fixture: " + name, "state": "closed", "input:labels": labels}))
 	}
-	for _, name := range []string{"success", "failing", "cleanup"} {
-		branch := "contract/issue-73-20260717-01/" + name
-		resources = append(resources, absentResource("fixture:branch:"+name, engine.SandboxResourceFixtureBranch, branch, runMarker+":branch:"+name, map[string]string{}))
-	}
 	resources = append(resources,
 		resource("fixture:pr:success", engine.SandboxResourceFixturePR, "success", runMarker+":pr:success", map[string]string{"title": "Contract fixture: success", "state": "closed", "draft": "false", "head": "contract/issue-73-20260717-01/success", "base": "main"}),
 		resource("fixture:pr:failing", engine.SandboxResourceFixturePR, "failing", runMarker+":pr:failing", map[string]string{"title": "Contract fixture: failing", "state": "closed", "draft": "false", "head": "contract/issue-73-20260717-01/failing", "base": "main"}),
 	)
+	for _, name := range []string{"success", "failing", "cleanup"} {
+		branch := "contract/issue-73-20260717-01/" + name
+		resources = append(resources, absentResource("fixture:branch:"+name, engine.SandboxResourceFixtureBranch, branch, runMarker+":branch:"+name, map[string]string{}))
+	}
 	return resources
 }
 
