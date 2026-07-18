@@ -376,7 +376,13 @@ func createFiles(request CreateRequest) ([]PlannedFile, error) {
 		},
 		"AGENTS.md": {
 			ownership: "generated",
-			content:   "# Managed repository\n\nStart with the project brief, then follow stable routes in `.starter-kit/routes.json`.\n",
+			content: "# Managed repository\n\n" +
+				"Start with the project brief, then follow stable routes in `.starter-kit/routes.json`.\n\n" +
+				"When conversation surfaces durable untracked work, a consequential question, or a decision that must be promoted, " +
+				"search open and closed GitHub Issues first. Update a duplicate or contained issue, suggest a lifecycle-specific issue for genuinely new work, " +
+				"and route an approved material decision to its authoritative record. " +
+				"Prompt at a natural checkpoint; ordinary clarification stays in the conversation. " +
+				"Do not begin material implementation until the applicable issue's Readiness is `Ready`, and reference its `#N` while working.\n",
 		},
 		"docs/decisions/INDEX.md": {
 			ownership: "human-owned",

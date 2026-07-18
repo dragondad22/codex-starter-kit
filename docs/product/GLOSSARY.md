@@ -83,6 +83,14 @@ handle the content and does not prove that a product route satisfies those needs
 A versioned requirement with applicability, evaluation, enforcement, exception, evidence,
 invalidation, and routing rules.
 
+### Conversational capture
+
+The agent behavior of noticing when discussion produces durable untracked work, a
+consequential question, risk, dependency, or decision; searching existing GitHub work;
+and offering the owner the appropriate issue or authoritative-record action at a natural
+checkpoint. It does not silently create work, approve decisions, or track ordinary
+clarification.
+
 ### Corrective exception
 
 A time-limited accepted exception for a condition expected to be remediated.

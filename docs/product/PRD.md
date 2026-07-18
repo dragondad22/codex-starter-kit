@@ -110,6 +110,7 @@ The product ships as three layers from its first usable release:
 51. As a project owner, I want delegated delivery as the default with predictable mandatory interrupts so that routine work can proceed without inferring new authority.
 52. As an assurance owner, I want repository, work-item, and release additions to compose without weakening broader requirements so that scope-specific rigor remains explainable.
 53. As a maintainer, I want profile changes to invalidate active plans without rewriting historical evidence so that current work adapts and prior claims remain reconstructable.
+54. As a project owner, I want the agent to notice durable untracked work and decisions during conversation, search for existing issues, and offer the right capture action so that distraction or missing process knowledge does not erase operational memory.
 
 ## Implementation Decisions
 
@@ -140,6 +141,11 @@ The product ships as three layers from its first usable release:
   contracts; ordinary clarification remains outside the Project.
 - Material question answers are promoted with reciprocal issue/authority references, and
   research produces durable human-owned records without silently establishing decisions.
+- At natural conversational checkpoints, agents search open and closed GitHub issues and
+  offer to capture newly durable work, consequential questions, risks, dependencies, or
+  decisions through the applicable existing item, lifecycle-specific issue, or
+  authoritative record. Ordinary clarification stays conversational, capture is not
+  silently applied, and material implementation still requires Readiness `Ready`.
 - Native GitHub Milestones are finite release manifests; Horizon remains rolling feature
   intent, and aggregate release issues own S.M.A.R.T. readiness and publication.
 - The Codex Starter Kit `1.0.0` outcome is the complete Phase 0–6 contract governed by

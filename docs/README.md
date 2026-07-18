@@ -118,6 +118,8 @@
 57. `decisions/DEC-0022-scoped-execution-mandates-and-issue-responsibility.md` — approved
     mandate containment, collaboration cadence, issue responsibility, and lifecycle-specific
     template contract.
+58. `evidence/ISSUE-84.md` — conversational capture, generated managed-repository rule,
+    validation evidence, limitations, and downstream executable-work handoff.
 
 ## Document lifecycle
 

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-84-conversational-capture",
+  "summary": "Prompt owners to capture durable untracked work and decisions before material implementation.",
+  "category": "added",
+  "audiences": ["users", "developers"],
+  "components": ["engine", "github-workflow"],
+  "issues": [84],
+  "breaking": false,
+  "internal_only": false
+}

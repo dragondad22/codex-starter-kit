@@ -83,6 +83,19 @@ PROHIBITED_ACTIVE_ASSURANCE_CLAIMS = (
     "launch must support regulated projects",
     "regulatory policy and evidence supported at launch",
 )
+CONVERSATIONAL_CAPTURE_MARKERS = {
+    "AGENTS.md": (
+        "search open and closed GitHub issues",
+        "suggest creating or updating",
+        "ordinary conversational clarification",
+        "Readiness is `Ready`",
+    ),
+    "docs/agents/issue-tracker.md": (
+        "natural checkpoint",
+        "active issue",
+        "authoritative record",
+    ),
+}
 
 
 def _load_json_document(path: Path, root: Path) -> tuple[Any | None, list[str]]:
@@ -257,6 +270,25 @@ def validate_sensitive_data_boundary(root: Path) -> list[str]:
     return failures
 
 
+def validate_conversational_capture_contract(root: Path) -> list[str]:
+    """Validate the standing route from conversation to durable GitHub work."""
+
+    failures: list[str] = []
+    for relative, markers in CONVERSATIONAL_CAPTURE_MARKERS.items():
+        path = root / relative
+        if not path.is_file():
+            failures.append(f"{relative}: missing conversational-capture document")
+            continue
+        text = " ".join(path.read_text(encoding="utf-8").lower().split())
+        for marker in markers:
+            normalized_marker = " ".join(marker.lower().split())
+            if normalized_marker not in text:
+                failures.append(
+                    f"{relative}: missing conversational-capture marker: {marker}"
+                )
+    return failures
+
+
 def validate_glossary_order(root: Path) -> list[str]:
     """Require canonical glossary terms to remain alphabetically ordered."""
 
@@ -419,6 +451,7 @@ def main() -> int:
     failures.extend(validate_issue_templates(ROOT))
     failures.extend(validate_workflow(ROOT))
     failures.extend(validate_sensitive_data_boundary(ROOT))
+    failures.extend(validate_conversational_capture_contract(ROOT))
     failures.extend(validate_glossary_order(ROOT))
 
     if failures:

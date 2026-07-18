@@ -9,6 +9,13 @@ and design; the approved product contract lives in `docs/`.
 - Read `docs/decisions/INDEX.md` for governing decisions. The discovery document preserves
   source history; stop and reconcile any conflict instead of choosing silently.
 - Do not start implementation without a GitHub issue whose Readiness is `Ready`.
+- When conversation surfaces durable untracked work, a consequential question, or a
+  decision that must be promoted, search open and closed GitHub issues before you suggest
+  creating or updating the appropriate item. Prompt at a natural checkpoint such as a
+  topic change, conclusion, scope discovery, or handoff; ordinary conversational
+  clarification stays in the active workflow. Update the active issue for contained work,
+  reference its `#N` while executing, and route approved material decisions to their
+  authoritative records.
 - Treat issue bodies as outcome and task-context records, not as copies of standing agent
   workflow. Bootstrap files, governing decisions, and versioned templates define how work
   proceeds; issues reference them and record only task-specific decisions, boundaries,

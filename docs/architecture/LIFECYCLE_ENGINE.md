@@ -2,7 +2,7 @@
 
 **Status:** Implemented development slice
 **Decision:** [DEC-0015](../decisions/DEC-0015-lifecycle-engine-toolchain.md)
-**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#30](https://github.com/dragondad22/codex-starter-kit/issues/30)
+**Issues:** [#26](https://github.com/dragondad22/codex-starter-kit/issues/26)–[#30](https://github.com/dragondad22/codex-starter-kit/issues/30), [#84](https://github.com/dragondad22/codex-starter-kit/issues/84)
 
 ## Interface
 
@@ -117,7 +117,7 @@ managed-file manifest.
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
 | `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
 | Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts plus content-addressed stale-lease, abandoned-stage, and replay observations |
-| `AGENTS.md` | generated | Concise repository orientation and routes |
+| `AGENTS.md` | generated | Concise repository orientation, routes, conversational capture, and Ready-work guardrail |
 | `docs/product/BRIEF.md` | human-owned | Approved seed project brief |
 | `docs/product/PERSONAS.md` | human-owned | Confirmed seed persona registry |
 | `docs/decisions/INDEX.md` | human-owned | Durable decision index |
