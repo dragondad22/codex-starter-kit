@@ -55,10 +55,13 @@ cleanup that preserves human resources, active-lease refusal, unsupported kinds,
 sensitive-looking manifest rejection. State is integrity protected and receipts contain
 no credentials.
 
-Schema-v2 mandate containment accepts regenerated recovery plans only when target, actor,
-resource/effect kind, marker or baseline key, effect count, recovery owner, and expiry
-remain bounded. Out-of-mandate plans stop before effects. Historical schema-v1 exact-plan
-approval remains readable and executable for replay without rewriting prior evidence.
+Schema-v2 mandate containment accepts regenerated recovery plans only when the immutable
+target; exact credential identity, permissions, evidence mode, and compatibility; exact
+resource-spec digests; resource/effect kinds; data, cost, destructive, and retention
+profile; effect count; recovery owner; and expiry remain bounded. The #73 run marker is
+recorded as context but never establishes ownership by itself. Out-of-mandate plans stop
+before effects. Historical schema-v1 exact-plan approval remains readable and executable
+for replay without rewriting prior evidence.
 
 The production GitHub sandbox adapter validates three distinct expiring App installation
 roles against actor, account, installation, permissions, and the immutable target. It
