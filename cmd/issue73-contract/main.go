@@ -53,12 +53,13 @@ func main() {
 		os.Exit(2)
 	}
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: ownerID, RepositoryID: repositoryID, ProjectID: projectID, RepositoryName: repository}
-	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "issue-73-live-" + *stage + "-" + *role + "-v3", SourceRevision: *source, ConfigurationRevision: configuration, ApprovedBy: "dragondad22", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "dragondad22", MarkerPrefix: markerPrefix, Target: target, Resources: resources}
+	authority := issue73Authority(*role, expectation)
+	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "issue-73-live-" + *stage + "-" + *role + "-v3", SourceRevision: *source, ConfigurationRevision: configuration, ApprovedBy: "dragondad22", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "dragondad22", MarkerPrefix: markerPrefix, Target: target, Authority: authority, Resources: resources}
 	config := githubadapter.SandboxConfig{Host: "github.com", RESTBaseURL: "https://api.github.com", GraphQLURL: "https://api.github.com/graphql", APIVersion: "2026-03-10", ConfigurationRevision: configuration, Target: target, RepositoryOwner: "codex-starter-kit-labs", RepositoryName: "codex-starter-kit-sandbox", ProjectNumber: 1, Resources: resources, Roles: map[string]githubadapter.SandboxRoleExpectation{*role: expectation}, EvidenceMode: "live", LiveTargetApproved: true}
-	json.NewEncoder(os.Stdout).Encode(planInput{Role: *role, Request: engine.SandboxRequest{Repository: *repositoryPath, Manifest: manifest}, Config: config, App: app, Reviewer: reviewer, Mandate: issue73Mandate(target)})
+	json.NewEncoder(os.Stdout).Encode(planInput{Role: *role, Request: engine.SandboxRequest{Repository: *repositoryPath, Manifest: manifest}, Config: config, App: app, Reviewer: reviewer, Mandate: issue73Mandate(target, resources, authority)})
 }
 
-func issue73Mandate(target engine.SandboxTarget) engine.SandboxExecutionMandate {
+func issue73Mandate(target engine.SandboxTarget, resources []engine.SandboxResourceSpec, authority engine.SandboxAuthorityProfile) engine.SandboxExecutionMandate {
 	unmarked := []string{}
 	for _, resource := range reconcilerResources() {
 		if resource.Marker == "" {
@@ -75,7 +76,7 @@ func issue73Mandate(target engine.SandboxTarget) engine.SandboxExecutionMandate 
 		ExpiresAt:     approvedAt.Add(14 * 24 * time.Hour),
 		Target:        target,
 		Actors:        []string{"american-dragon-designs", "reconciler", "reviewer", "rules", "seeder", "codex-starter-kit-labs-reconciler", "codex-starter-kit-labs-rules", "codex-starter-kit-labs-seeder"},
-		MarkerPrefix:  markerPrefix,
+		MarkerPrefix:  runMarker,
 		UnmarkedKeys:  unmarked,
 		ResourceKinds: []string{engine.SandboxResourceLabel, engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView, engine.SandboxResourceProjectWorkflow, engine.SandboxResourceProjectItemProof, engine.SandboxResourceRuleset, engine.SandboxResourceFixtureIssue, engine.SandboxResourceFixtureBranch, engine.SandboxResourceFixturePR, engine.SandboxResourceFixtureWorkflow, engine.SandboxResourceFixtureReview, engine.SandboxResourceFixtureDenial, engine.SandboxResourceTokenRevocation},
 		EffectKinds:   []string{"reconcile-resource", "remove-resource"},
@@ -85,7 +86,26 @@ func issue73Mandate(target engine.SandboxTarget) engine.SandboxExecutionMandate 
 		Destructive:   "marker-scoped-fixture-cleanup-only",
 		Retention:     "30-day-raw-evidence",
 		RecoveryOwner: "dragondad22",
-	})
+		Authority:     authority,
+	}, resources...)
+}
+
+func issue73Authority(role string, expectation githubadapter.SandboxRoleExpectation) engine.SandboxAuthorityProfile {
+	permissions := make([]string, 0, len(expectation.RequiredPermissions))
+	for _, permission := range expectation.RequiredPermissions {
+		permissions = append(permissions, role+":"+permission)
+	}
+	sort.Strings(permissions)
+	return engine.SandboxAuthorityProfile{
+		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(role, expectation)},
+		Permissions:          permissions,
+		EvidenceMode:         "live",
+		Compatibility:        "github.com:api.github.com:2026-03-10:native-rest-graphql",
+		DataClass:            "public-synthetic",
+		CostCeiling:          "zero-dollar",
+		Destructive:          "marker-scoped-fixture-cleanup-only",
+		Retention:            "30-day-raw-evidence",
+	}
 }
 
 func rolePlan(stage, role, baseSHA, successHead, failingHead string) ([]engine.SandboxResourceSpec, githubadapter.SandboxRoleExpectation, githubadapter.AppInstallationConfig, githubadapter.UserTokenConfig, error) {

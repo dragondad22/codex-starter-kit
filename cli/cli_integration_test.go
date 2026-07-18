@@ -93,6 +93,7 @@ func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	target := engine.SandboxTarget{Host: "memory.local", OwnerID: "owner", RepositoryID: "repository", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	authority := engine.SandboxAuthorityProfile{CredentialIdentities: []string{"memory-app|test|actor|account|1|2"}, Permissions: []string{"memory-app:issues:write"}, EvidenceMode: "memory", Compatibility: "test-native", DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only"}
 	input := struct {
 		Request     engine.SandboxRequest     `json:"request"`
 		Capability  engine.SandboxCapability  `json:"capability"`
@@ -100,10 +101,10 @@ func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
 	}{
 		Request: engine.SandboxRequest{Repository: repository, Manifest: engine.SandboxManifest{
 			SchemaVersion: 1, OperationID: "issue-73-bootstrap-v1", SourceRevision: "issue-73", ConfigurationRevision: "config-v1",
-			ApprovedBy: "owner", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target,
+			ApprovedBy: "owner", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target, Authority: authority,
 			Resources: []engine.SandboxResourceSpec{{Key: "label:contract-run", Kind: engine.SandboxResourceLabel, Name: "contract-run", Attributes: map[string]string{"color": "5319E7"}}},
 		}},
-		Capability:  engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "memory-app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config-v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Capability:  engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "memory-app", EvidenceMode: "memory", Compatibility: authority.Compatibility, Target: target, Permissions: authority.Permissions, CredentialIdentities: authority.CredentialIdentities, ConfigurationRevision: "config-v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
 		Observation: engine.SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config-v1", Resources: []engine.SandboxObservedResource{}},
 	}
 	content, err := json.Marshal(input)
@@ -133,8 +134,8 @@ func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
 	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
 		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-comment-approval", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
 		Target: target, Actors: []string{"memory-app"}, MarkerPrefix: "starter-kit-contract:", UnmarkedKeys: []string{"label:contract-run"}, ResourceKinds: []string{engine.SandboxResourceLabel}, EffectKinds: []string{"reconcile-resource"}, MaxEffects: 1,
-		DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only", RecoveryOwner: "sandbox-owner",
-	})
+		DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only", RecoveryOwner: "sandbox-owner", Authority: authority,
+	}, input.Request.Manifest.Resources...)
 	applyInput := struct {
 		Manifest    engine.SandboxManifest     `json:"manifest"`
 		Plan        engine.SandboxPlan         `json:"plan"`

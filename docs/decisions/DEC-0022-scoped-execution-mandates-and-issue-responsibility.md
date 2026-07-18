@@ -22,9 +22,11 @@ a decision-complete execution brief.
 ## Decision
 
 Human approval attaches to a versioned **execution mandate**. A mandate identifies the
-owner and approval record; immutable targets and actors; allowed semantic effects; data,
-cost, compatibility, and destructive ceilings; marker or ownership constraints; expiry;
-and cleanup, retention, and recovery ownership. The lifecycle engine still emits an exact
+owner and approval record; immutable targets and credential identities; exact permission
+and compatibility profiles; allowed semantic effects and exact resource-spec digests;
+data, cost, and destructive ceilings; bounded-run marker context; expiry; and cleanup,
+retention, and recovery ownership. A marker is descriptive evidence, not sufficient proof
+of ownership. The lifecycle engine still emits an exact
 content-addressed plan, but may apply, retry, reconcile, and clean up without another
 checkpoint when it proves the plan is wholly contained by the active mandate.
 

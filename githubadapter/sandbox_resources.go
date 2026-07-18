@@ -130,6 +130,26 @@ func (adapter *SandboxAdapter) applyFixtureDenial(ctx context.Context, effect en
 	} else if !isResponseStatus(err, http.StatusForbidden) {
 		return engine.SandboxEffectResult{}, err
 	}
+	var rules []struct {
+		Type string `json:"type"`
+	}
+	rulesPath := adapter.repoPath() + "/rules/branches/" + escapePath(effect.Resource.Attributes["branch"])
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, rulesPath, nil, &rules); err != nil {
+		return engine.SandboxEffectResult{}, errors.New("active branch rules could not be re-read after denied deletion")
+	}
+	hasDeletionRule := false
+	for _, rule := range rules {
+		if rule.Type == "deletion" {
+			hasDeletionRule = true
+		}
+	}
+	if !hasDeletionRule {
+		return engine.SandboxEffectResult{}, errors.New("denied branch deletion is not attributable to an active deletion rule")
+	}
+	refPath := adapter.repoPath() + "/git/ref/heads/" + escapePath(effect.Resource.Attributes["branch"])
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, refPath, nil, &struct{}{}); err != nil {
+		return engine.SandboxEffectResult{}, errors.New("fixture branch was not retained after denied deletion")
+	}
 	proofID := "http-" + strconv.Itoa(status)
 	adapter.retainEphemeralProof(effect.Resource, proofID)
 	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: proofID, Detail: "active fixture ruleset denied branch deletion"}, nil

@@ -71,18 +71,32 @@ type SandboxResourceSpec struct {
 	Attributes   map[string]string `json:"attributes"`
 }
 
+// SandboxAuthorityProfile makes the non-resource authority route part of every
+// immutable plan and execution mandate.
+type SandboxAuthorityProfile struct {
+	CredentialIdentities []string `json:"credential_identities"`
+	Permissions          []string `json:"permissions"`
+	EvidenceMode         string   `json:"evidence_mode"`
+	Compatibility        string   `json:"compatibility"`
+	DataClass            string   `json:"data_classification"`
+	CostCeiling          string   `json:"cost_ceiling"`
+	Destructive          string   `json:"destructive_ceiling"`
+	Retention            string   `json:"retention"`
+}
+
 // SandboxManifest is the approved desired state for one isolated contract sandbox.
 type SandboxManifest struct {
-	SchemaVersion         int                   `json:"schema_version"`
-	OperationID           string                `json:"operation_id"`
-	SourceRevision        string                `json:"source_revision"`
-	ConfigurationRevision string                `json:"configuration_revision"`
-	ApprovedBy            string                `json:"approved_by"`
-	ApprovedPlan          string                `json:"approved_plan"`
-	RecoveryOwner         string                `json:"recovery_owner"`
-	MarkerPrefix          string                `json:"marker_prefix"`
-	Target                SandboxTarget         `json:"target"`
-	Resources             []SandboxResourceSpec `json:"resources"`
+	SchemaVersion         int                     `json:"schema_version"`
+	OperationID           string                  `json:"operation_id"`
+	SourceRevision        string                  `json:"source_revision"`
+	ConfigurationRevision string                  `json:"configuration_revision"`
+	ApprovedBy            string                  `json:"approved_by"`
+	ApprovedPlan          string                  `json:"approved_plan"`
+	RecoveryOwner         string                  `json:"recovery_owner"`
+	MarkerPrefix          string                  `json:"marker_prefix"`
+	Target                SandboxTarget           `json:"target"`
+	Authority             SandboxAuthorityProfile `json:"authority"`
+	Resources             []SandboxResourceSpec   `json:"resources"`
 }
 
 // SandboxRequest selects the local evidence repository and approved manifest.
@@ -100,6 +114,8 @@ type SandboxCapability struct {
 	EvidenceMode          string        `json:"evidence_mode"`
 	Target                SandboxTarget `json:"target"`
 	Permissions           []string      `json:"permissions"`
+	CredentialIdentities  []string      `json:"credential_identities"`
+	Compatibility         string        `json:"compatibility"`
 	ConfigurationRevision string        `json:"configuration_revision"`
 	Problems              []string      `json:"problems,omitempty"`
 	ObservedAt            time.Time     `json:"observed_at"`
@@ -148,42 +164,45 @@ type SandboxEffect struct {
 
 // SandboxPlan is immutable and bound to the reviewed source and observation.
 type SandboxPlan struct {
-	SchemaVersion         int             `json:"schema_version"`
-	ID                    string          `json:"plan_id"`
-	Repository            string          `json:"repository"`
-	OperationID           string          `json:"operation_id"`
-	SourceRevision        string          `json:"source_revision"`
-	ConfigurationRevision string          `json:"configuration_revision"`
-	InspectionID          string          `json:"inspection_id"`
-	ObservationRevision   string          `json:"observation_revision"`
-	Target                SandboxTarget   `json:"target"`
-	ProvisioningPlan      string          `json:"provisioning_plan"`
-	RecoveryOwner         string          `json:"recovery_owner"`
-	Effects               []SandboxEffect `json:"effects"`
-	NoChange              bool            `json:"no_change"`
+	SchemaVersion         int                     `json:"schema_version"`
+	ID                    string                  `json:"plan_id"`
+	Repository            string                  `json:"repository"`
+	OperationID           string                  `json:"operation_id"`
+	SourceRevision        string                  `json:"source_revision"`
+	ConfigurationRevision string                  `json:"configuration_revision"`
+	InspectionID          string                  `json:"inspection_id"`
+	ObservationRevision   string                  `json:"observation_revision"`
+	Target                SandboxTarget           `json:"target"`
+	ProvisioningPlan      string                  `json:"provisioning_plan"`
+	RecoveryOwner         string                  `json:"recovery_owner"`
+	Authority             SandboxAuthorityProfile `json:"authority"`
+	Effects               []SandboxEffect         `json:"effects"`
+	NoChange              bool                    `json:"no_change"`
 }
 
 // SandboxExecutionMandate authorizes a bounded family of semantic sandbox effects.
 // Exact plans remain content-addressed evidence and must be contained by this mandate.
 type SandboxExecutionMandate struct {
-	SchemaVersion int           `json:"schema_version"`
-	ID            string        `json:"mandate_id"`
-	ApprovedBy    string        `json:"approved_by"`
-	ApprovalID    string        `json:"approval_id"`
-	ApprovedAt    time.Time     `json:"approved_at"`
-	ExpiresAt     time.Time     `json:"expires_at"`
-	Target        SandboxTarget `json:"target"`
-	Actors        []string      `json:"actors"`
-	MarkerPrefix  string        `json:"marker_prefix"`
-	UnmarkedKeys  []string      `json:"unmarked_resource_keys"`
-	ResourceKinds []string      `json:"resource_kinds"`
-	EffectKinds   []string      `json:"effect_kinds"`
-	MaxEffects    int           `json:"max_effects"`
-	DataClass     string        `json:"data_classification"`
-	CostCeiling   string        `json:"cost_ceiling"`
-	Destructive   string        `json:"destructive_ceiling"`
-	Retention     string        `json:"retention"`
-	RecoveryOwner string        `json:"recovery_owner"`
+	SchemaVersion   int                     `json:"schema_version"`
+	ID              string                  `json:"mandate_id"`
+	ApprovedBy      string                  `json:"approved_by"`
+	ApprovalID      string                  `json:"approval_id"`
+	ApprovedAt      time.Time               `json:"approved_at"`
+	ExpiresAt       time.Time               `json:"expires_at"`
+	Target          SandboxTarget           `json:"target"`
+	Actors          []string                `json:"actors"`
+	MarkerPrefix    string                  `json:"marker_prefix"`
+	UnmarkedKeys    []string                `json:"unmarked_resource_keys"`
+	ResourceKinds   []string                `json:"resource_kinds"`
+	EffectKinds     []string                `json:"effect_kinds"`
+	ResourceDigests []string                `json:"resource_digests"`
+	MaxEffects      int                     `json:"max_effects"`
+	DataClass       string                  `json:"data_classification"`
+	CostCeiling     string                  `json:"cost_ceiling"`
+	Destructive     string                  `json:"destructive_ceiling"`
+	Retention       string                  `json:"retention"`
+	RecoveryOwner   string                  `json:"recovery_owner"`
+	Authority       SandboxAuthorityProfile `json:"authority"`
 }
 
 // SandboxPlanApproval accepts legacy exact-plan approval (schema 1) or one approved
@@ -354,7 +373,7 @@ func (e *Engine) PlanSandbox(_ context.Context, inspection SandboxInspection) (S
 		}{inspection.Manifest.OperationID, effect.Resource})
 		effects = append(effects, effect)
 	}
-	plan := SandboxPlan{SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Manifest.OperationID, SourceRevision: inspection.Manifest.SourceRevision, ConfigurationRevision: inspection.Manifest.ConfigurationRevision, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, Target: inspection.Manifest.Target, ProvisioningPlan: inspection.Manifest.ApprovedPlan, RecoveryOwner: inspection.Manifest.RecoveryOwner, Effects: effects, NoChange: len(effects) == 0}
+	plan := SandboxPlan{SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Manifest.OperationID, SourceRevision: inspection.Manifest.SourceRevision, ConfigurationRevision: inspection.Manifest.ConfigurationRevision, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, Target: inspection.Manifest.Target, ProvisioningPlan: inspection.Manifest.ApprovedPlan, RecoveryOwner: inspection.Manifest.RecoveryOwner, Authority: cloneSandboxAuthority(inspection.Manifest.Authority), Effects: effects, NoChange: len(effects) == 0}
 	plan.ID = digestJSON(plan)
 	return plan, nil
 }
@@ -404,6 +423,11 @@ func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval Sa
 		result.Problems = []string{"sandbox actor is outside approved mandate"}
 		return result, writeSandboxApplyState(plan, result)
 	}
+	if approval.SchemaVersion == 2 && !sandboxCapabilityMatchesAuthority(capability, approval.Mandate.Authority) {
+		result.Status = SandboxApplyNonPass
+		result.Problems = []string{"sandbox credential identity, permissions, or compatibility are outside approved mandate"}
+		return result, writeSandboxApplyState(plan, result)
+	}
 	observation, err := e.sandboxAdapter.Observe(ctx, plan.Target)
 	if err != nil {
 		return result, fmt.Errorf("refresh sandbox observation: %w", err)
@@ -447,13 +471,13 @@ func validateSandboxAuthorization(plan SandboxPlan, approval SandboxPlanApproval
 		return "", errors.New("sandbox apply requires an exact-plan approval or execution mandate")
 	}
 	mandate := *approval.Mandate
-	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != digestJSON(sandboxExecutionMandateWithoutID(mandate)) || mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || mandate.ExpiresAt.Before(mandate.ApprovedAt) || len(mandate.Actors) == 0 || mandate.DataClass == "" || mandate.CostCeiling == "" || mandate.Destructive == "" || mandate.Retention == "" || mandate.MaxEffects < 0 {
+	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != digestJSON(sandboxExecutionMandateWithoutID(mandate)) || mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || mandate.ExpiresAt.Before(mandate.ApprovedAt) || len(mandate.Actors) == 0 || len(mandate.ResourceDigests) == 0 || !validSandboxAuthority(mandate.Authority) || mandate.DataClass != mandate.Authority.DataClass || mandate.CostCeiling != mandate.Authority.CostCeiling || mandate.Destructive != mandate.Authority.Destructive || mandate.Retention != mandate.Authority.Retention || mandate.MaxEffects < 0 {
 		return "", errors.New("sandbox execution mandate is invalid")
 	}
 	if now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt) {
 		return "", errors.New("sandbox execution mandate is not currently valid")
 	}
-	if !equalSandboxTarget(plan.Target, mandate.Target) || plan.RecoveryOwner != mandate.RecoveryOwner || len(plan.Effects) > mandate.MaxEffects {
+	if !equalSandboxTarget(plan.Target, mandate.Target) || plan.RecoveryOwner != mandate.RecoveryOwner || len(plan.Effects) > mandate.MaxEffects || !equalSandboxAuthority(plan.Authority, mandate.Authority) {
 		return "", errors.New("sandbox plan is outside approved mandate")
 	}
 	resourceKinds := make(map[string]struct{}, len(mandate.ResourceKinds))
@@ -464,6 +488,10 @@ func validateSandboxAuthorization(plan SandboxPlan, approval SandboxPlanApproval
 	for _, kind := range mandate.EffectKinds {
 		effectKinds[kind] = struct{}{}
 	}
+	resourceDigests := make(map[string]struct{}, len(mandate.ResourceDigests))
+	for _, digest := range mandate.ResourceDigests {
+		resourceDigests[digest] = struct{}{}
+	}
 	for _, effect := range plan.Effects {
 		if _, ok := resourceKinds[effect.Resource.Kind]; !ok {
 			return "", errors.New("sandbox plan is outside approved mandate")
@@ -471,8 +499,7 @@ func validateSandboxAuthorization(plan SandboxPlan, approval SandboxPlanApproval
 		if _, ok := effectKinds[effect.Kind]; !ok {
 			return "", errors.New("sandbox plan is outside approved mandate")
 		}
-		markerAllowed := effect.Resource.Marker != "" && mandate.MarkerPrefix != "" && strings.HasPrefix(effect.Resource.Marker, mandate.MarkerPrefix)
-		if !markerAllowed && !(effect.Resource.Marker == "" && slices.Contains(mandate.UnmarkedKeys, effect.Resource.Key)) {
+		if _, ok := resourceDigests[sandboxResourceAuthorizationDigest(effect.Resource)]; !ok {
 			return "", errors.New("sandbox plan is outside approved mandate")
 		}
 	}
@@ -484,12 +511,49 @@ func sandboxExecutionMandateWithoutID(value SandboxExecutionMandate) SandboxExec
 	return value
 }
 
+func validSandboxAuthority(value SandboxAuthorityProfile) bool {
+	return len(value.CredentialIdentities) != 0 && len(value.Permissions) != 0 && value.EvidenceMode != "" && value.Compatibility != "" && value.DataClass != "" && value.CostCeiling != "" && value.Destructive != "" && value.Retention != ""
+}
+
+func emptySandboxAuthority(value SandboxAuthorityProfile) bool {
+	return len(value.CredentialIdentities) == 0 && len(value.Permissions) == 0 && value.EvidenceMode == "" && value.Compatibility == "" && value.DataClass == "" && value.CostCeiling == "" && value.Destructive == "" && value.Retention == ""
+}
+
+func equalSandboxAuthority(left, right SandboxAuthorityProfile) bool {
+	return sameSandboxStrings(left.CredentialIdentities, right.CredentialIdentities) && sameSandboxStrings(left.Permissions, right.Permissions) && left.EvidenceMode == right.EvidenceMode && left.Compatibility == right.Compatibility && left.DataClass == right.DataClass && left.CostCeiling == right.CostCeiling && left.Destructive == right.Destructive && left.Retention == right.Retention
+}
+
+func sandboxCapabilityMatchesAuthority(capability SandboxCapability, authority SandboxAuthorityProfile) bool {
+	return capability.EvidenceMode == authority.EvidenceMode && capability.Compatibility == authority.Compatibility && sameSandboxStrings(capability.CredentialIdentities, authority.CredentialIdentities) && sameSandboxStrings(capability.Permissions, authority.Permissions)
+}
+
+func sameSandboxStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	left = slices.Clone(left)
+	right = slices.Clone(right)
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
+}
+
 // BindSandboxExecutionMandate returns the content-addressed authority envelope retained
 // by callers and receipts. It does not grant authority; ApprovedBy and ApprovalID must
 // identify the separate human-owned decision record.
-func BindSandboxExecutionMandate(value SandboxExecutionMandate) SandboxExecutionMandate {
+
+func BindSandboxExecutionMandate(value SandboxExecutionMandate, resources ...SandboxResourceSpec) SandboxExecutionMandate {
+	value.ResourceDigests = value.ResourceDigests[:0]
+	for _, resource := range resources {
+		value.ResourceDigests = append(value.ResourceDigests, sandboxResourceAuthorizationDigest(resource))
+	}
+	sort.Strings(value.ResourceDigests)
 	value.ID = digestJSON(sandboxExecutionMandateWithoutID(value))
 	return value
+}
+
+func sandboxResourceAuthorizationDigest(resource SandboxResourceSpec) string {
+	return digestJSON(cloneSandboxResourceSpec(resource))
 }
 
 func sandboxPlanWithoutID(value SandboxPlan) SandboxPlan {
@@ -549,6 +613,9 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 	if manifest.MarkerPrefix == "" || manifest.Target.Host == "" || manifest.Target.OwnerID == "" || manifest.Target.RepositoryID == "" || manifest.Target.ProjectID == "" || manifest.Target.RepositoryName == "" {
 		return errors.New("sandbox manifest requires a marker prefix and immutable target identities")
 	}
+	if !emptySandboxAuthority(manifest.Authority) && !validSandboxAuthority(manifest.Authority) {
+		return errors.New("sandbox manifest authority profile is incomplete")
+	}
 	seen := map[string]struct{}{}
 	for _, resource := range manifest.Resources {
 		if resource.Key == "" || resource.Kind == "" || resource.Name == "" {
@@ -585,6 +652,9 @@ func sandboxHandshakeProblems(manifest SandboxManifest, capability SandboxCapabi
 	}
 	if !equalSandboxTarget(capability.Target, manifest.Target) || !equalSandboxTarget(observation.Target, manifest.Target) {
 		problems = append(problems, "sandbox target identity does not match the manifest")
+	}
+	if !emptySandboxAuthority(manifest.Authority) && !sandboxCapabilityMatchesAuthority(capability, manifest.Authority) {
+		problems = append(problems, "sandbox credential identity, permissions, evidence mode, or compatibility do not match the manifest")
 	}
 	keys := map[string]struct{}{}
 	desiredNames := make(map[string]string, len(manifest.Resources))
@@ -659,11 +729,18 @@ func sandboxEvidenceAttributes(attributes map[string]string) map[string]string {
 func equalSandboxTarget(left, right SandboxTarget) bool { return left == right }
 
 func cloneSandboxManifest(value SandboxManifest) SandboxManifest {
+	value.Authority = cloneSandboxAuthority(value.Authority)
 	resources := make([]SandboxResourceSpec, len(value.Resources))
 	for index, resource := range value.Resources {
 		resources[index] = cloneSandboxResourceSpec(resource)
 	}
 	value.Resources = resources
+	return value
+}
+
+func cloneSandboxAuthority(value SandboxAuthorityProfile) SandboxAuthorityProfile {
+	value.CredentialIdentities = slices.Clone(value.CredentialIdentities)
+	value.Permissions = slices.Clone(value.Permissions)
 	return value
 }
 
@@ -674,6 +751,7 @@ func cloneSandboxResourceSpec(value SandboxResourceSpec) SandboxResourceSpec {
 
 func cloneSandboxCapability(value SandboxCapability) SandboxCapability {
 	value.Permissions = slices.Clone(value.Permissions)
+	value.CredentialIdentities = slices.Clone(value.CredentialIdentities)
 	value.Problems = slices.Clone(value.Problems)
 	return value
 }

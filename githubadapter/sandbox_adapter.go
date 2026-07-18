@@ -152,8 +152,9 @@ func sandboxRolesForConfig(config SandboxConfig) []string {
 
 func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCapability, error) {
 	now := adapter.now()
-	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: strings.Join(adapter.roles, "+"), EvidenceMode: adapter.config.EvidenceMode, Target: adapter.config.Target, ConfigurationRevision: adapter.config.ConfigurationRevision, ObservedAt: now}
+	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: strings.Join(adapter.roles, "+"), EvidenceMode: adapter.config.EvidenceMode, Compatibility: "github.com:api.github.com:2026-03-10:native-rest-graphql", Target: adapter.config.Target, ConfigurationRevision: adapter.config.ConfigurationRevision, ObservedAt: now}
 	for _, role := range adapter.roles {
+		capability.CredentialIdentities = append(capability.CredentialIdentities, SandboxCredentialIdentity(role, adapter.config.Roles[role]))
 		credential, err := adapter.roleCredential(ctx, role)
 		if err != nil {
 			capability.Available = false
@@ -169,8 +170,14 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 		}
 	}
 	sort.Strings(capability.Permissions)
+	sort.Strings(capability.CredentialIdentities)
 	sort.Strings(capability.Problems)
 	return capability, nil
+}
+
+// SandboxCredentialIdentity returns the credential-free identity bound into plans and mandates.
+func SandboxCredentialIdentity(role string, expectation SandboxRoleExpectation) string {
+	return strings.Join([]string{role, expectation.Mode, expectation.Actor, expectation.Account, expectation.AccountID, expectation.InstallationID}, "|")
 }
 
 func (adapter *SandboxAdapter) Observe(ctx context.Context, target engine.SandboxTarget) (engine.SandboxObservation, error) {

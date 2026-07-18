@@ -1,6 +1,6 @@
 # GitHub Sandbox Bootstrap
 
-**Status:** Implemented engine contract; live qualification in progress
+**Status:** Implemented engine contract; live qualification recorded in issue evidence
 
 **Issue:** [#73](https://github.com/dragondad22/codex-starter-kit/issues/73)
 
@@ -24,18 +24,20 @@ Inspection stops on stale/expired authority, configuration or immutable-target m
 duplicate keys, unsupported kinds, sensitive-looking manifest material, or an
 unrecognized resource colliding by kind and name. Apply requires an integrity-valid exact
 plan plus either a historical schema-v1 exact-plan approval or a schema-v2 execution
-mandate. The engine proves the plan's target, actor, effect/resource kinds, marker or
-allowlisted baseline key, maximum effects, recovery owner, and validity window remain
-contained before refreshing capability and observation. It then holds the repository
-lifecycle lease and never steals an active lease.
+mandate. The engine proves the plan's target, exact credential identities and permission
+set, evidence/compatibility/data/cost/destructive/retention profile, exact approved
+resource-spec digests, effect/resource kinds, maximum effects, recovery owner, and
+validity window remain contained before refreshing capability and observation. It then
+rechecks the live credential identity and permissions, holds the repository lifecycle
+lease, and never steals an active lease. A marker alone never establishes ownership.
 
 Every attempted effect produces a credential-free receipt. Partial application remains
 `non-pass`; a new inspection plans only the remaining semantic delta. Integrity-protected
 state under `.starter-kit/sandbox/state.json` supports restart status and replay. A new
 plan digest caused by re-observation, partial completion, retry, or cleanup does not need
 another prompt while its semantic effects remain inside the mandate. Cleanup accepts only
-an approved marker and removes only that managed key. Unrecognized human-owned resources
-are preserved.
+an exact resource specification committed into the mandate and removes only that managed
+key. Unrecognized human-owned resources are preserved.
 
 Project built-in workflow configuration remains human-owned. The adapter observes and
 verifies its postcondition but returns `needs-review` instead of silently substituting an

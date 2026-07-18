@@ -213,10 +213,16 @@ func TestSandboxAdapterRetainsExpectedFixtureDenialProof(t *testing.T) {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
 			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-				if request.Method != http.MethodDelete || request.URL.Path != "/repos/labs/sandbox/git/refs/heads/contract/run/cleanup" {
+				switch {
+				case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/git/refs/heads/contract/run/cleanup":
+					response.WriteHeader(status)
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rules/branches/contract/run/cleanup":
+					json.NewEncoder(response).Encode([]map[string]string{{"type": "deletion"}})
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run/cleanup":
+					json.NewEncoder(response).Encode(map[string]any{"ref": "refs/heads/contract/run/cleanup"})
+				default:
 					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
 				}
-				response.WriteHeader(status)
 			}))
 			defer server.Close()
 			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
@@ -238,6 +244,33 @@ func TestSandboxAdapterRetainsExpectedFixtureDenialProof(t *testing.T) {
 				t.Fatalf("observation = %#v, %v", observation, err)
 			}
 		})
+	}
+}
+
+func TestSandboxAdapterRejectsUnattributedFixtureDenial(t *testing.T) {
+	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodDelete:
+			response.WriteHeader(http.StatusUnprocessableEntity)
+		case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/rules/branches/"):
+			json.NewEncoder(response).Encode([]map[string]string{{"type": "required_status_checks"}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	proof := engine.SandboxResourceSpec{Key: "proof:rules-denial", Kind: engine.SandboxResourceFixtureDenial, Name: "active rules denial", Marker: "starter-kit-contract:run", Attributes: map[string]string{"branch": "contract/run/cleanup", "status": "denied"}}
+	config.Resources = []engine.SandboxResourceSpec{proof}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: proof}); err == nil || result.Outcome == "applied" {
+		t.Fatalf("unattributed denial = %#v, %v", result, err)
 	}
 }
 

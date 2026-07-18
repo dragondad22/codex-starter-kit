@@ -12,13 +12,17 @@ import (
 
 func TestIssue73MandateNamesAdapterRolesAndImmutableTarget(t *testing.T) {
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: ownerID, RepositoryID: repositoryID, ProjectID: projectID, RepositoryName: repository}
-	mandate := issue73Mandate(target)
+	resources, expectation, _, _, err := rolePlan("rules-proof", githubadapter.SandboxRoleSeeder, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mandate := issue73Mandate(target, resources, issue73Authority(githubadapter.SandboxRoleSeeder, expectation))
 	for _, actor := range []string{"reconciler", "seeder", "rules", "reviewer", "american-dragon-designs"} {
 		if !slices.Contains(mandate.Actors, actor) {
 			t.Fatalf("mandate actors %v omit %q", mandate.Actors, actor)
 		}
 	}
-	if mandate.ID == "" || mandate.Target != target || mandate.DataClass != "public-synthetic" || mandate.CostCeiling != "zero-dollar" {
+	if mandate.ID == "" || mandate.Target != target || mandate.DataClass != "public-synthetic" || mandate.CostCeiling != "zero-dollar" || mandate.MarkerPrefix != runMarker || len(mandate.ResourceDigests) != len(resources) || !slices.Equal(mandate.Authority.Permissions, []string{"seeder:contents:write", "seeder:issues:write", "seeder:metadata:read", "seeder:pull-requests:write", "seeder:workflows:write"}) {
 		t.Fatalf("mandate = %#v", mandate)
 	}
 }
