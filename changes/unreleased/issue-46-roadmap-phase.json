@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-46-roadmap-phase",
+  "summary": "Project roadmap Phase directly on features while child work derives context without duplicated assignments.",
+  "category": "added",
+  "audiences": ["users", "developers", "stakeholders"],
+  "components": ["engine", "github-workflow"],
+  "issues": [46],
+  "breaking": false,
+  "internal_only": false
+}

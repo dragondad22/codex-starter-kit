@@ -4,6 +4,8 @@
 **Roadmap authority:** Live features and ordering are maintained in the
 [Codex Starter Kit GitHub Project](https://github.com/users/dragondad22/projects/8).
 This document is sequencing/reference architecture, not a hand-maintained status tracker.
+The Project's governed `Phase` field maps features #1–#9 to Phase 0–Phase 8; ordinary
+children derive that context through their native parent.
 
 ## Sequencing Principle
 

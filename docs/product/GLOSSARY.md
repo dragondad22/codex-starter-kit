@@ -220,8 +220,11 @@ authority, risks, and communication needs. An AI actor is not a persona.
 
 An ordered roadmap outcome used to sequence product capability and its evidence. Phase
 membership must be explicit, either directly on cross-cutting work or derived from a
-native parent assigned to the phase. A phase is not a sprint, Horizon value, execution
-state, or release Milestone; completing one does not publish a release.
+native parent assigned to the phase. The governed values are `Phase 0` through `Phase 8`.
+Roadmap features carry the direct Project assignment; ordinary children leave the field
+blank and expose parent-derived context. A cross-cutting direct assignment requires a
+durable reason. A phase is not a sprint, Horizon value, execution state, or release
+Milestone; completing one does not publish a release.
 
 ### Policy pack
 

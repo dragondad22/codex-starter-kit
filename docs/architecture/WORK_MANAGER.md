@@ -2,7 +2,7 @@
 
 **Status:** Implemented credential-free lifecycle and deterministic GitHub transport
 
-**Issue:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71)
+**Issues:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71), [#46](https://github.com/dragondad22/codex-starter-kit/issues/46)
 
 **GitHub adapter:** [#72 contract](GITHUB_ADAPTER.md); live sandbox deferred to #73/#76
 
@@ -25,7 +25,7 @@ Every boundary is schema version 1:
 
 - `WorkDesiredIntent` binds one stable managed ID to the governed source revision,
   operating-profile revision, input digests, expected actor, immutable target IDs,
-  relationships, lifecycle values, Phase, promotion route, review requirements, and
+  relationships, lifecycle values, direct and parent-derived Phase, promotion route, review requirements, and
   desired completion state.
 - `WorkCapability` reports online/fresh state, actor/mode, immutable target ownership,
   API version, exact permissions, rate budgets, limitations, evidence mode,
@@ -50,13 +50,23 @@ the emitted JSON plus black-box behavior through the CLI and engine seam.
 
 Work Manager derives the effective task before planning. It promotes a blocked task to
 Readiness `ready` only when every supplied native blocker is closed, never changes Status
-as a side effect of that promotion, inherits Phase from the parent when direct Phase is
+as a side effect of that promotion, reports Phase from the parent when direct Phase is
 absent, maps a closed task to Status `done`, and preserves parent, blocker, promotion, and
 distinct-review facts. The adapter observes and attempts semantic effects; it cannot
 select policy, credentials, broader authority, or a passing result.
 Closed questions require either a durable promotion route or an explicit no-promotion
 resolution; closed research requires a durable promoted output. Implementation work
 requires a named distinct-context review role.
+
+Phase projection uses the immutable `Phase` field and `Phase 0`–`Phase 8` option IDs.
+Roadmap features may carry a direct assignment. Ordinary children retain a blank Phase
+field while `DerivedFacts` reports the adapter-observed native parent's immutable Phase
+option with source `parent`; caller text alone cannot establish that fact. This avoids
+copying context onto every child. A non-feature direct assignment is cross-cutting
+and requires a durable reason. A child cannot duplicate its parent's value directly.
+Unsupported values, missing/stale identities, or an unjustified direct assignment stop
+before durable state. Reconciliation sets a justified direct option and clears a copied
+option from ordinary child work.
 
 For the selected task, the immutable plan also reports derived parent status/closure from
 the supplied parent and sibling facts. This represents the #64 rule that a started child
@@ -101,12 +111,14 @@ transport outcomes, and simulated/live receipt separation. See the
 [GitHub adapter contract](GITHUB_ADAPTER.md).
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
-owns separately approved sandbox provisioning; #74 owns full intake, hierarchy, subtype,
-Horizon, Phase, and Project governance; #75 owns branch/PR/review/gate delivery; and #76
-owns aggregate live qualification.
+qualified separately approved sandbox provisioning. #46 applied and re-read the
+operational Phase catalog through an approved owner CLI route, not through Work Manager.
+#74 owns full intake, hierarchy, subtype, Horizon, Phase, and Project governance; #75 owns
+branch/PR/review/gate delivery; and #76 owns aggregate live qualification.
 
 The current route manages one task at a time. It does not create credentials, provision
-repositories or Projects, configure rules or workflows, publish a release, or claim
-private/paid/GHES support. Live GitHub mutation is `not-configured` until #73 supplies the
-approved target and authority. Native Linux, macOS, and Windows support is claimed only
-after the exact completing revision passes the repository matrix.
+repositories or Projects, configure rules, workflows, or Project views, publish a release,
+or claim private/paid/GHES support. Routine Work Adapter live mutation remains
+`not-configured`; the separately applied Phase catalog does not broaden that claim. Native
+Linux, macOS, and Windows support is claimed only after the exact completing revision
+passes the repository matrix.

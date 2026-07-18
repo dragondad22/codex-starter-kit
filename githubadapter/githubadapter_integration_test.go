@@ -3,6 +3,7 @@ package githubadapter_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -200,11 +201,11 @@ func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t 
 	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
 	defer server.Close()
 	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
-	adapter := newUserAdapter(t, server, now)
+	adapter := newPhaseUserAdapter(t, server, now)
 	target := engine.WorkTarget{
 		Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project",
-		FieldIDs:  map[string]string{"readiness": "F_readiness", "status": "F_status"},
-		OptionIDs: map[string]string{"readiness:ready": "O_ready", "status:next": "O_next"},
+		FieldIDs:  map[string]string{"readiness": "F_readiness", "status": "F_status", "phase": "F_phase"},
+		OptionIDs: map[string]string{"readiness:ready": "O_ready", "status:next": "O_next", "phase:Phase 0": "O_phase_0", "phase:Phase 1": "O_phase_1", "phase:Phase 2": "O_phase_2", "phase:Phase 3": "O_phase_3", "phase:Phase 4": "O_phase_4", "phase:Phase 5": "O_phase_5", "phase:Phase 6": "O_phase_6", "phase:Phase 7": "O_phase_7", "phase:Phase 8": "O_phase_8"},
 	}
 	repository := t.TempDir()
 	if output, err := exec.Command("git", "init", repository).CombinedOutput(); err != nil {
@@ -214,7 +215,7 @@ func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t 
 		SchemaVersion: 1, OperationID: "operation-72", SourceRevision: "source-72", OperatingProfileRevision: "profile-1",
 		InputDigests: map[string]string{"brief": fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("issue-72")))},
 		Credential:   engine.WorkCredentialExpectation{Mode: "user-token", Actor: "octocat"}, Target: target,
-		Task: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Reconcile one managed task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
+		Task: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "feature", Title: "Reconcile one managed task", Readiness: "ready", Status: "next", Phase: "Phase 3", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
 	}}
 	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithWorkAdapter(adapter))
 
@@ -237,6 +238,9 @@ func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t 
 	if createdAfterFirst != 1 || mutationsAfterFirst == 0 {
 		t.Fatalf("unexpected first effects: creates=%d mutations=%d", createdAfterFirst, mutationsAfterFirst)
 	}
+	if fixture.fields["F_phase"] != "O_phase_3" {
+		t.Fatalf("direct Phase was not projected by immutable option ID: %v", fixture.fields)
+	}
 
 	second, err := lifecycle.ManageTask(context.Background(), request)
 	if err != nil {
@@ -256,6 +260,33 @@ func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t 
 	}
 	if strings.Contains(string(state), "top-secret-token") {
 		t.Fatal("durable lifecycle state contains the ephemeral credential")
+	}
+}
+
+func TestObserveBindsInheritedPhaseToNativeParentProjectOption(t *testing.T) {
+	t.Parallel()
+	selected := engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Child", ParentManagedID: "feature-4"}
+	parent := engine.DesiredManagedTask{ManagedID: "feature-4", IssueType: "feature", Title: "Parent", Phase: "Phase 3"}
+	fixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item",
+		parentFields: map[string]string{"F_phase": "O_phase_3"}, parentProjectItemID: "PVTI_parent",
+		issue:  &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: "Child", Body: managedFixtureBody(t, selected), State: "open", Labels: []string{"type:task"}},
+		parent: &githubFixtureIssue{Number: 4, NodeID: "I_parent", Title: "Parent", Body: managedFixtureBody(t, parent), State: "open", Labels: []string{"type:feature"}},
+	}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	target := engine.WorkTarget{
+		Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project",
+		FieldIDs:  map[string]string{"readiness": "F_readiness", "status": "F_status", "phase": "F_phase"},
+		OptionIDs: map[string]string{"readiness:ready": "O_ready", "status:next": "O_next", "phase:Phase 0": "O_phase_0", "phase:Phase 1": "O_phase_1", "phase:Phase 2": "O_phase_2", "phase:Phase 3": "O_phase_3", "phase:Phase 4": "O_phase_4", "phase:Phase 5": "O_phase_5", "phase:Phase 6": "O_phase_6", "phase:Phase 7": "O_phase_7", "phase:Phase 8": "O_phase_8"},
+	}
+	observation, err := newPhaseUserAdapter(t, server, now).Observe(context.Background(), target, "task-72")
+	if err != nil || observation.Task == nil {
+		t.Fatalf("native parent observation = %#v, %v", observation, err)
+	}
+	if observation.Task.NativeParentManagedID != "feature-4" || observation.Task.ParentPhaseOption != "O_phase_3" {
+		t.Fatalf("native parent Phase was not bound by immutable identities: %#v", observation.Task)
 	}
 }
 
@@ -433,6 +464,33 @@ func TestReconcilePreservesHumanBodyAndUnmanagedLabels(t *testing.T) {
 	}
 }
 
+func TestReconcileClearsDuplicatedPhaseFromOrdinaryChild(t *testing.T) {
+	t.Parallel()
+	desired := engine.DesiredManagedTask{
+		ManagedID: "task-72", IssueType: "task", Title: "Child task", ParentManagedID: "feature-4",
+		ParentPhase: "Phase 3", Readiness: "ready", Status: "next",
+	}
+	fixture := &lifecycleFixture{fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next", "F_phase": "O_phase_3"}, projectItemID: "PVTI_item", issue: &githubFixtureIssue{
+		Number: 17, NodeID: "I_issue", Title: "Child task", State: "open",
+		Body: "<!-- starter-kit-managed:task-72 -->", Labels: []string{"type:task"},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	result, err := newPhaseUserAdapter(t, server, now).Apply(context.Background(), engine.WorkEffect{
+		Kind: "reconcile-task", Operations: []string{"phase"}, Attempt: 1,
+		ManagedID: "task-72", Marker: "starter-kit-managed:task-72", Desired: desired,
+	})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("clear inherited Phase = %#v, %v", result, err)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if _, exists := fixture.fields["F_phase"]; exists {
+		t.Fatalf("ordinary child retained a duplicate direct Phase: %v", fixture.fields)
+	}
+}
+
 func TestStaleProjectConfigurationStopsBeforeMutation(t *testing.T) {
 	t.Parallel()
 	server := handshakeServer(t, "octocat", "User", "octocat", "R_repo", "octocat", "P_project")
@@ -447,6 +505,45 @@ func TestStaleProjectConfigurationStopsBeforeMutation(t *testing.T) {
 	capability, err := adapter.Capability(context.Background())
 	if err != nil || capability.Disposition != "needs-review" || !strings.Contains(strings.Join(capability.Problems, " "), "stale") {
 		t.Fatalf("stale configuration capability = %#v, %v", capability, err)
+	}
+}
+
+func TestPhaseCatalogHandshakeRejectsDuplicateWrongTypeAndRenamedOption(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func([]any)
+	}{
+		{name: "duplicate Phase field"},
+		{name: "wrong field type", mutate: func(nodes []any) {
+			nodes[len(nodes)-1].(map[string]any)["dataType"] = "TEXT"
+		}},
+		{name: "renamed option", mutate: func(nodes []any) {
+			options := nodes[len(nodes)-1].(map[string]any)["options"].([]any)
+			options[0].(map[string]any)["name"] = "Phase Zero"
+		}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fields := fixtureProjectFields()
+			nodes := fields["nodes"].([]any)
+			if test.name == "duplicate Phase field" {
+				fields["nodes"] = append(nodes, map[string]any{"id": "F_phase_duplicate", "name": "Phase", "dataType": "SINGLE_SELECT", "options": []any{}})
+			} else {
+				test.mutate(nodes)
+			}
+			fixture := &lifecycleFixture{fields: map[string]string{}, projectFields: fields}
+			server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+			defer server.Close()
+			now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+			capability, err := newPhaseUserAdapter(t, server, now).Capability(context.Background())
+			if err != nil || capability.Disposition != "needs-review" || !strings.Contains(strings.Join(capability.Problems, " "), "stale") {
+				t.Fatalf("invalid Phase catalog must stop capability: %#v, %v", capability, err)
+			}
+		})
 	}
 }
 
@@ -705,20 +802,24 @@ func managedTarget() engine.WorkTarget {
 }
 
 type lifecycleFixture struct {
-	mu                 sync.Mutex
-	issue              *githubFixtureIssue
-	projectItemID      string
-	fields             map[string]string
-	createCount        int
-	mutationCount      int
-	loseCreateResponse bool
-	failProjectAdd     bool
-	app                bool
-	actor              string
-	repositoryOwner    string
-	repositoryID       string
-	projectOwner       string
-	projectID          string
+	mu                  sync.Mutex
+	issue               *githubFixtureIssue
+	parent              *githubFixtureIssue
+	projectItemID       string
+	parentProjectItemID string
+	fields              map[string]string
+	parentFields        map[string]string
+	projectFields       map[string]any
+	createCount         int
+	mutationCount       int
+	loseCreateResponse  bool
+	failProjectAdd      bool
+	app                 bool
+	actor               string
+	repositoryOwner     string
+	repositoryID        string
+	projectOwner        string
+	projectID           string
 }
 
 type githubFixtureIssue struct {
@@ -778,6 +879,16 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 			issues = append(issues, map[string]any{"number": fixture.issue.Number, "node_id": fixture.issue.NodeID, "title": fixture.issue.Title, "body": fixture.issue.Body, "state": fixture.issue.State, "labels": labels})
 		}
 		writeFixtureJSON(writer, issues)
+	case request.Method == http.MethodGet && request.URL.Path == issuesPath+"/17/parent":
+		if fixture.parent == nil {
+			http.NotFound(writer, request)
+			return
+		}
+		labels := []any{}
+		for _, label := range fixture.parent.Labels {
+			labels = append(labels, map[string]any{"name": label})
+		}
+		writeFixtureJSON(writer, map[string]any{"number": fixture.parent.Number, "node_id": fixture.parent.NodeID, "title": fixture.parent.Title, "body": fixture.parent.Body, "state": fixture.parent.State, "labels": labels})
 	case request.Method == http.MethodPost && request.URL.Path == issuesPath:
 		var input struct {
 			Title  string   `json:"title"`
@@ -821,7 +932,11 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 			if fixture.app {
 				ownerKind = "Organization"
 			}
-			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}, "fields": fixtureProjectFields()}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
+			fields := fixture.projectFields
+			if fields == nil {
+				fields = fixtureProjectFields()
+			}
+			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": projectID, "owner": map[string]any{"login": projectOwner, "__typename": ownerKind}, "fields": fields}, "rateLimit": map[string]any{"limit": 5000, "remaining": 4980, "resetAt": "2026-07-16T01:00:00Z"}}})
 		case strings.Contains(input.Query, "ManagedTaskObservation"):
 			nodes := []any{}
 			if fixture.projectItemID != "" {
@@ -830,6 +945,13 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 					fieldNodes = append(fieldNodes, map[string]any{"optionId": optionID, "field": map[string]any{"id": fieldID}})
 				}
 				nodes = append(nodes, map[string]any{"id": fixture.projectItemID, "content": map[string]any{"id": "I_issue"}, "fieldValues": map[string]any{"nodes": fieldNodes}})
+			}
+			if fixture.parent != nil && fixture.parentProjectItemID != "" {
+				fieldNodes := []any{}
+				for fieldID, optionID := range fixture.parentFields {
+					fieldNodes = append(fieldNodes, map[string]any{"optionId": optionID, "field": map[string]any{"id": fieldID}})
+				}
+				nodes = append(nodes, map[string]any{"id": fixture.parentProjectItemID, "content": map[string]any{"id": fixture.parent.NodeID}, "fieldValues": map[string]any{"nodes": fieldNodes}})
 			}
 			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"items": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil}}}}})
 		case strings.Contains(input.Query, "addProjectV2ItemById"):
@@ -846,7 +968,12 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 			optionID, _ := input.Variables["option"].(string)
 			fixture.fields[fieldID] = optionID
 			fixture.mutationCount++
-			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"updateProjectV2ItemFieldValue": map[string]any{"projectV2Item": map[string]any{"id": fixture.projectItemID}}}})
+			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"update": map[string]any{"projectV2Item": map[string]any{"id": fixture.projectItemID}}}})
+		case strings.Contains(input.Query, "clearProjectV2ItemFieldValue"):
+			fieldID, _ := input.Variables["field"].(string)
+			delete(fixture.fields, fieldID)
+			fixture.mutationCount++
+			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"update": map[string]any{"projectV2Item": map[string]any{"id": fixture.projectItemID}}}})
 		default:
 			http.Error(writer, "unknown GraphQL operation", http.StatusBadRequest)
 		}
@@ -860,10 +987,24 @@ func writeFixtureJSON(writer http.ResponseWriter, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
+func managedFixtureBody(t *testing.T, desired engine.DesiredManagedTask) string {
+	t.Helper()
+	encoded, err := json.Marshal(desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "<!-- starter-kit-managed:" + desired.ManagedID + " -->\n<!-- starter-kit-managed-metadata:" + base64.RawURLEncoding.EncodeToString(encoded) + " -->"
+}
+
 func fixtureProjectFields() map[string]any {
+	phaseOptions := []any{}
+	for index := 0; index <= 8; index++ {
+		phaseOptions = append(phaseOptions, map[string]any{"id": fmt.Sprintf("O_phase_%d", index), "name": fmt.Sprintf("Phase %d", index)})
+	}
 	return map[string]any{"nodes": []any{
 		map[string]any{"id": "F_readiness", "options": []any{map[string]any{"id": "O_ready"}}},
 		map[string]any{"id": "F_status", "options": []any{map[string]any{"id": "O_next"}}},
+		map[string]any{"id": "F_phase", "name": "Phase", "dataType": "SINGLE_SELECT", "options": phaseOptions},
 	}}
 }
 
@@ -880,6 +1021,24 @@ func newUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *githu
 	}, githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
 		return githubadapter.Credential{Token: "top-secret-token", Mode: "user-token", Actor: "octocat", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ExpiresAt: now.Add(time.Hour)}, nil
 	}), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return adapter
+}
+
+func newPhaseUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *githubadapter.Adapter {
+	t.Helper()
+	config := githubadapter.Config{
+		Host: "github.com", RESTBaseURL: server.URL, GraphQLURL: server.URL + "/graphql", APIVersion: "2026-03-10",
+		Mode: "user-token", Actor: "octocat", ActorKind: "user",
+		RepositoryOwner: "octocat", RepositoryName: "example", RepositoryID: "R_repo",
+		ProjectOwner: "octocat", ProjectOwnerKind: "user", ProjectID: "P_project",
+		FieldIDs:            map[string]string{"readiness": "F_readiness", "status": "F_status", "phase": "F_phase"},
+		OptionIDs:           map[string]string{"readiness:ready": "O_ready", "status:next": "O_next", "phase:Phase 0": "O_phase_0", "phase:Phase 1": "O_phase_1", "phase:Phase 2": "O_phase_2", "phase:Phase 3": "O_phase_3", "phase:Phase 4": "O_phase_4", "phase:Phase 5": "O_phase_5", "phase:Phase 6": "O_phase_6", "phase:Phase 7": "O_phase_7", "phase:Phase 8": "O_phase_8"},
+		RequiredPermissions: []string{"issues:write", "projects:write", "pull_requests:read"},
+	}
+	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}

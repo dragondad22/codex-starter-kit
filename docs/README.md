@@ -120,6 +120,8 @@
     template contract.
 58. `evidence/ISSUE-84.md` — conversational capture, generated managed-repository rule,
     validation evidence, limitations, and downstream executable-work handoff.
+59. `evidence/ISSUE-46.md` — Phase field/option identities, feature mapping, deterministic
+    projection evidence, live Project result, and remaining human-owned view gate.
 
 ## Document lifecycle
 

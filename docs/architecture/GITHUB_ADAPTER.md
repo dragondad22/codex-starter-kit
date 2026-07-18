@@ -1,6 +1,6 @@
 # GitHub Adapter — Identity and Transport Contract
 
-**Status:** Implemented deterministic production transport; isolated live setup in progress
+**Status:** Implemented deterministic production transport; isolated sandbox baseline qualified
 
 **Issue:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72)
 
@@ -38,8 +38,8 @@ not runtime dependencies.
 
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
-| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | `not-configured` until #73 provisions and approves the organization fixture |
-| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | `not-configured` until #73 records token breadth, storage, target, and cleanup authority |
+| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; routine Work Adapter effects remain unqualified live |
+| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's operational Phase catalog was applied through the separately approved owner CLI route; that is not a live Work Adapter user-token qualification |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
 App installation mode rejects a user-owned Project rather than selecting a user token.
@@ -72,18 +72,22 @@ does not broaden authority or switch credentials.
 
 Observation follows bounded REST `Link` pages and GraphQL Project-item cursors, matches
 the exact non-secret `starter-kit-managed:<managed-id>` marker, and normalizes issue,
-Project item, lifecycle option, and managed metadata identities. Zero matches means the
-task is absent. Multiple matches are `ambiguous`. GraphQL partial data plus errors is
-`needs-review`, never a partial pass.
+Project item, lifecycle option, native parent, parent Phase option, and managed metadata
+identities. The capability handshake requires exactly one single-select `Phase` field and
+the complete named Phase 0–8 option catalog whenever Phase is configured. Renamed,
+duplicate, wrong-type, missing, extra, or stale catalog state is `needs-review`. Zero
+selected matches means the task is absent. Multiple matches are `ambiguous`. GraphQL
+partial data plus errors is `needs-review`, never a partial pass.
 
 The adapter accepts only the two semantic effects produced by Work Manager:
 
 - `create-task` re-reads the marker before POST. One existing match recovers a lost
   response; multiple matches remain ambiguous.
 - `reconcile-task` carries an ordered list containing only the remaining semantic
-  operations: issue metadata, Project membership, Readiness, and Status. It preserves
+  operations: issue metadata, Project membership, Readiness, Status, and direct Phase. It preserves
   human-authored body text and unrelated labels, skips already-converged operations, and
-  re-reads every mutation before reporting it applied.
+  re-reads every mutation before reporting it applied. Phase is set by immutable option ID
+  for directly assigned work and cleared from ordinary children that derive it from a parent.
 
 Expired/invalid authentication, insufficient authorization, hidden-resource 404,
 validation failure, offline transport, GraphQL partial errors, bounded pagination
@@ -103,6 +107,8 @@ scheduling, Actions limitations, and unsupported combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,
-Project, issue, or paid feature was created or mutated for #72. #73 must establish the
-approved isolated fixtures before a `live` receipt can be produced; #76 owns aggregate
-qualification and support claims.
+Project, issue, or paid feature was created or mutated for #72. #73 subsequently
+qualified the isolated sandbox baseline, and #46 applied and re-read the approved
+operational Phase catalog through an owner CLI route. Neither result is a live pass for
+the routine Work Adapter Phase effect. #46's saved `Phases` view remains `not-configured`;
+#76 owns aggregate qualification and support claims.
