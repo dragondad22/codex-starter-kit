@@ -59,6 +59,20 @@ func TestProjectProofIncludesPositiveNegativeAndCloseAutomationCases(t *testing.
 	}
 }
 
+func TestProofSetupContainsOnlyCleanupBranchAndActiveRules(t *testing.T) {
+	seeder, _, _, _, err := rolePlan("proof-setup", githubadapter.SandboxRoleSeeder, "base", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _, _, _, err := rolePlan("proof-setup", githubadapter.SandboxRoleRules, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seeder) != 1 || seeder[0].Key != "fixture:branch:cleanup" || seeder[0].Attributes["input:base_sha"] != "base" || len(rules) != 1 || rules[0].Key != "ruleset:fixture" || rules[0].Attributes["enforcement"] != "active" {
+		t.Fatalf("proof setup = %#v / %#v", seeder, rules)
+	}
+}
+
 func TestCleanupClosesRetainedRecordsAndDeletesEphemeralResources(t *testing.T) {
 	resources := cleanupSeederResources()
 	states := map[string]string{}

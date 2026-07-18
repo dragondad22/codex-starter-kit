@@ -36,14 +36,14 @@ type planInput struct {
 func main() {
 	flags := flag.NewFlagSet("issue73-contract", flag.ExitOnError)
 	role := flags.String("role", "", "reconciler, seeder, or rules")
-	stage := flags.String("stage", "setup", "setup, qualification, rules-proof, project-proof, or cleanup")
+	stage := flags.String("stage", "setup", "setup, qualification, proof-setup, rules-proof, project-proof, or cleanup")
 	repositoryPath := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact starter-kit source revision")
 	baseSHA := flags.String("base-sha", "", "sandbox main revision used for fixture branches")
 	successHead := flags.String("success-head", "", "exact success fixture PR head revision")
 	failingHead := flags.String("failing-head", "", "exact failing fixture PR head revision")
 	flags.Parse(os.Args[1:])
-	if *source == "" || (*stage == "setup" && *role == githubadapter.SandboxRoleSeeder && *baseSHA == "") || (*stage == "qualification" && *role == githubadapter.SandboxRoleReviewer && (*successHead == "" || *failingHead == "")) || flags.NArg() != 0 {
+	if *source == "" || ((*stage == "setup" || *stage == "proof-setup") && *role == githubadapter.SandboxRoleSeeder && *baseSHA == "") || (*stage == "qualification" && *role == githubadapter.SandboxRoleReviewer && (*successHead == "" || *failingHead == "")) || flags.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "--role, --stage, --source-revision, and stage-specific revisions are required")
 		os.Exit(2)
 	}
@@ -114,6 +114,17 @@ func rolePlan(stage, role, baseSHA, successHead, failingHead string) ([]engine.S
 		return resources, expectation, appConfig, githubadapter.UserTokenConfig{}, err
 	}
 	switch stage + ":" + role {
+	case "proof-setup:seeder":
+		for _, candidate := range seederResources(baseSHA) {
+			if candidate.Key == "fixture:branch:cleanup" {
+				permissions := []string{"contents:write", "issues:write", "metadata:read", "pull-requests:write", "workflows:write"}
+				return []engine.SandboxResourceSpec{candidate}, expectation(role, "codex-starter-kit-labs-seeder", "147094309", permissions), app("4319763", "147094309", "codex-starter-kit-labs-seeder"), githubadapter.UserTokenConfig{}, nil
+			}
+		}
+		return nil, githubadapter.SandboxRoleExpectation{}, githubadapter.AppInstallationConfig{}, githubadapter.UserTokenConfig{}, fmt.Errorf("cleanup proof branch resource is unavailable")
+	case "proof-setup:rules":
+		permissions := []string{"administration:write", "metadata:read"}
+		return activeRulesResources(), expectation(role, "codex-starter-kit-labs-rules", "147094473", permissions), app("4319800", "147094473", "codex-starter-kit-labs-rules"), githubadapter.UserTokenConfig{}, nil
 	case "qualification:seeder":
 		resources := []engine.SandboxResourceSpec{
 			resource("fixture:pr:success", engine.SandboxResourceFixturePR, "success", runMarker+":pr:success", map[string]string{"title": "Contract fixture: success", "state": "open", "draft": "false", "head": "contract/issue-73-20260717-01/success", "base": "main"}),
