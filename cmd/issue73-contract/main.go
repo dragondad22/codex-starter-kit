@@ -149,7 +149,6 @@ func rolePlan(stage, role, baseSHA, successHead, failingHead string) ([]engine.S
 	case "rules-proof:seeder":
 		resources := []engine.SandboxResourceSpec{
 			resource("proof:rules-denial", engine.SandboxResourceFixtureDenial, "active fixture rules denial", runMarker+":proof:rules-denial", map[string]string{"branch": "contract/issue-73-20260717-01/cleanup", "status": "denied"}),
-			revocationResource(role),
 		}
 		permissions := []string{"contents:write", "issues:write", "metadata:read", "pull-requests:write", "workflows:write"}
 		return resources, expectation(role, "codex-starter-kit-labs-seeder", "147094309", permissions), app("4319763", "147094309", "codex-starter-kit-labs-seeder"), githubadapter.UserTokenConfig{}, nil

@@ -73,6 +73,16 @@ func TestProofSetupContainsOnlyCleanupBranchAndActiveRules(t *testing.T) {
 	}
 }
 
+func TestRulesProofIsIndependentFromCredentialRevocation(t *testing.T) {
+	resources, _, _, _, err := rolePlan("rules-proof", githubadapter.SandboxRoleSeeder, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resources) != 1 || resources[0].Kind != engine.SandboxResourceFixtureDenial {
+		t.Fatalf("rules proof resources = %#v", resources)
+	}
+}
+
 func TestCleanupClosesRetainedRecordsAndDeletesEphemeralResources(t *testing.T) {
 	resources := cleanupSeederResources()
 	states := map[string]string{}
