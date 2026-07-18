@@ -3,11 +3,25 @@ package main
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
 	"github.com/dragondad22/codex-starter-kit/githubadapter"
 )
+
+func TestIssue73MandateNamesAdapterRolesAndImmutableTarget(t *testing.T) {
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: ownerID, RepositoryID: repositoryID, ProjectID: projectID, RepositoryName: repository}
+	mandate := issue73Mandate(target)
+	for _, actor := range []string{"reconciler", "seeder", "rules", "reviewer", "american-dragon-designs"} {
+		if !slices.Contains(mandate.Actors, actor) {
+			t.Fatalf("mandate actors %v omit %q", mandate.Actors, actor)
+		}
+	}
+	if mandate.ID == "" || mandate.Target != target || mandate.DataClass != "public-synthetic" || mandate.CostCeiling != "zero-dollar" {
+		t.Fatalf("mandate = %#v", mandate)
+	}
+}
 
 func TestQualificationPlansKeepRevocationLast(t *testing.T) {
 	for _, role := range []string{githubadapter.SandboxRoleSeeder, githubadapter.SandboxRoleRules} {

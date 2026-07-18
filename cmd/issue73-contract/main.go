@@ -74,7 +74,7 @@ func issue73Mandate(target engine.SandboxTarget) engine.SandboxExecutionMandate 
 		ApprovedAt:    approvedAt,
 		ExpiresAt:     approvedAt.Add(14 * 24 * time.Hour),
 		Target:        target,
-		Actors:        []string{"american-dragon-designs", "codex-starter-kit-labs-reconciler", "codex-starter-kit-labs-rules", "codex-starter-kit-labs-seeder"},
+		Actors:        []string{"american-dragon-designs", "reconciler", "reviewer", "rules", "seeder", "codex-starter-kit-labs-reconciler", "codex-starter-kit-labs-rules", "codex-starter-kit-labs-seeder"},
 		MarkerPrefix:  markerPrefix,
 		UnmarkedKeys:  unmarked,
 		ResourceKinds: []string{engine.SandboxResourceLabel, engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView, engine.SandboxResourceProjectWorkflow, engine.SandboxResourceProjectItemProof, engine.SandboxResourceRuleset, engine.SandboxResourceFixtureIssue, engine.SandboxResourceFixtureBranch, engine.SandboxResourceFixturePR, engine.SandboxResourceFixtureWorkflow, engine.SandboxResourceFixtureReview, engine.SandboxResourceFixtureDenial, engine.SandboxResourceTokenRevocation},
