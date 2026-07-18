@@ -124,11 +124,15 @@ func (adapter *SandboxAdapter) applyFixtureDenial(ctx context.Context, effect en
 	if err == nil {
 		return engine.SandboxEffectResult{Outcome: "fail", Detail: "fixture branch deletion was unexpectedly allowed"}, nil
 	}
-	if !isResponseStatus(err, http.StatusForbidden) {
+	status := http.StatusForbidden
+	if isResponseStatus(err, http.StatusUnprocessableEntity) {
+		status = http.StatusUnprocessableEntity
+	} else if !isResponseStatus(err, http.StatusForbidden) {
 		return engine.SandboxEffectResult{}, err
 	}
-	adapter.retainEphemeralProof(effect.Resource, "http-403")
-	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: "http-403", Detail: "active fixture ruleset denied branch deletion"}, nil
+	proofID := "http-" + strconv.Itoa(status)
+	adapter.retainEphemeralProof(effect.Resource, proofID)
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: proofID, Detail: "active fixture ruleset denied branch deletion"}, nil
 }
 
 func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
