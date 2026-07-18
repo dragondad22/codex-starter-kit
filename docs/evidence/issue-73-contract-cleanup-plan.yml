@@ -1,0 +1,62 @@
+name: Plan contract sandbox cleanup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        role: [rules, seeder]
+    environment: contract-${{ matrix.role }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: eadd27373b924738da4151c9ccdf5198a38fe80d
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Generate credential-free cleanup input
+        run: >-
+          go -C tool run ./cmd/issue73-contract
+          --stage cleanup
+          --role "${{ matrix.role }}"
+          --repository "${{ github.workspace }}"
+          --source-revision eadd27373b924738da4151c9ccdf5198a38fe80d
+          > "${{ matrix.role }}-input.json"
+
+      - name: Inspect and emit immutable cleanup plan
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/starter-kit sandbox-live-plan
+          --input "../${{ matrix.role }}-input.json"
+          > "${{ matrix.role }}-planning.json"
+
+      - name: Retain redacted cleanup plan evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-73-cleanup-${{ matrix.role }}-planning
+          path: ${{ matrix.role }}-planning.json
+          if-no-files-found: error
+          retention-days: 30

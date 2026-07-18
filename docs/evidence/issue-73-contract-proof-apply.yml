@@ -1,0 +1,23 @@
+name: Apply contract sandbox proof under mandate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  rules-proof:
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: rules-proof
+      role: seeder
+      planning_run_id: "29625594695"
+      artifact_name: issue-73-rules-proof-seeder-planning
+      source_revision: 4163e8ad03d69253f064e964d422ea69bedf35b2

@@ -1,0 +1,34 @@
+name: Apply contract sandbox cleanup under mandate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  rules:
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: cleanup
+      role: rules
+      planning_run_id: "29625829477"
+      artifact_name: issue-73-cleanup-rules-planning
+      source_revision: eadd27373b924738da4151c9ccdf5198a38fe80d
+
+  seeder:
+    needs: rules
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: cleanup
+      role: seeder
+      planning_run_id: "29625829477"
+      artifact_name: issue-73-cleanup-seeder-planning
+      source_revision: eadd27373b924738da4151c9ccdf5198a38fe80d

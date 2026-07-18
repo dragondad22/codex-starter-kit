@@ -84,7 +84,7 @@ jobs:
       - name: Require converged verification
         run: >-
           jq -e
-          '.apply.status == "applied" and .verification.overall_state == "pass" and .status.disposition == "converged"'
+          '(.apply.status == "applied" or .apply.status == "no_change") and .verification.overall_state == "pass" and .status.disposition == "converged"'
           "${{ matrix.role }}-result.json"
 
       - name: Retain redacted apply evidence
