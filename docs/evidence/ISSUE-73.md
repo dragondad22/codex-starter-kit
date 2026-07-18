@@ -38,14 +38,13 @@ Every effect still records its exact plan and mandate identities.
   Actions environments isolate reconciler, seeder, rules, and reviewer secrets.
 - Managed labels `type:task`, `ready-for-agent`, and `contract-run` were created and
   re-read by immutable node ID.
-- The built-in Item closed workflow is enabled. Auto-add remains a named human UI
-  checkpoint until its exact repository and `is:issue label:contract-run` filter are
-  configured and re-read.
+- The built-in Item closed workflow and the exact repository-scoped
+  `is:issue label:contract-run` auto-add workflow are enabled and were proved with
+  positive, negative, and close-to-Done cases.
 
 Secret values were never read. Environment-secret metadata established that the three
-App private keys and reviewer token exist. The current seeder installation inventory is
-explicitly non-pass until GitHub reports Workflows write in addition to Contents, Issues,
-and Pull requests write.
+App private keys and reviewer token exist. The seeder installation reported Workflows,
+Contents, Issues, and Pull requests write before fixture qualification began.
 
 ## Implemented behavior
 
@@ -67,15 +66,43 @@ uses native versioned REST and GraphQL transport to observe managed labels and P
 fields/options/views/workflows. Human-owned workflow configuration reports
 `needs-review` when absent rather than selecting a substitute mechanism.
 
-## Open qualification gates
+## Live qualification result
 
-- Seeder installation must report `workflows: write` after the human accepts the updated
-  App permission.
-- The Project auto-add workflow must be configured in the UI and observed enabled.
-- The active-rules denial proof, cleanup, and final revocation cases must execute with
-  retained redacted receipts under the approved mandate.
-- The exact completing candidate must pass repository validation, native CI, and distinct
-  review before this evidence can record a live pass.
+The isolated bootstrap boundary is `pass`:
 
-Until those gates complete, live aggregate status is `not-configured`; deterministic
-engine and HTTP-fixture results do not substitute for it.
+- Qualification apply run
+  [`29610278071`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29610278071)
+  converged the seeder, distinct reviewer, and rules roles. Its redacted receipts retain
+  fixture PR/review identities, active ruleset identity `19106535`, and `http-401`
+  revocation proofs for the seeder and rules App credentials.
+- Proof planning run
+  [`29625594695`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625594695)
+  emitted immutable plans from candidate `4163e8ad03d69253f064e964d422ea69bedf35b2`.
+  Proof apply run
+  [`29625632625`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625632625)
+  retained the active-rules `http-422` denial and post-revocation `http-401` evidence.
+  Both receipts bind plan `sha256:8f35e8235e674c4e55cb8886a212ecd842740237c55660097895da2949e129fa`
+  to mandate `sha256:e1e9a1dfd8905786bca27e91db6be3480cb7f5f7fad5f42f85f510bb9288170b`.
+- Cleanup apply run
+  [`29625729444`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625729444)
+  removed the marked workflow, ruleset, and fixture branches and closed retained fixture
+  records. It preserved a non-pass receipt when GitHub auto-closed a PR after its branch
+  was deleted, even though verification found the target state converged. That result
+  drove the dependency-ordering correction.
+- Recovery planning run
+  [`29625829477`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625829477)
+  produced zero-effect plans for both cleanup roles from candidate
+  `eadd27373b924738da4151c9ccdf5198a38fe80d`. Recovery apply run
+  [`29625918740`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625918740)
+  accepted the engine's explicit `no_change` result and re-verified both roles as
+  converged.
+
+Earlier non-pass proof runs are retained rather than rewritten: planning run
+`29625238825` rejected an unsupported mandate input before effects, apply run
+`29625355700` rejected an actor outside the normalized role set before effects, and apply
+run `29625450408` retained the provider-denial mismatch without claiming a proof pass.
+The subsequent contained replans and fixes demonstrate that recovery did not require a
+new approval or broaden the approved target.
+
+Repository validation, native CI, and distinct review remain PR completion gates; they
+do not change the recorded live sandbox qualification result.
