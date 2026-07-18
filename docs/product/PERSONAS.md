@@ -64,6 +64,8 @@ security, regulatory, testing, documentation, or delivery discipline.
 - Delegate a small or personal project without accepting lower code, security, testing,
   documentation, or user-experience quality.
 - Preserve project knowledge so future people and AIs can continue without rediscovery.
+- Have the system notice and offer to capture durable work or decisions that the owner may
+  forget, be distracted from, or not recognize as tracker-worthy.
 - Scale from solo work to a team or regulated environment without replacing the workflow.
 
 **Desired outcomes:**
@@ -264,9 +266,11 @@ unlimited authority, or permission to inspect every sensitive evidence artifact.
 
 These are behaviors, not personas:
 
-- **Guide:** conducts discovery, explains choices, and records approved human intent.
-- **Planner:** converts approved intent into plans and Ready issues without inventing
-  unresolved decisions.
+- **Guide:** conducts discovery, explains choices, identifies conversational material that
+  crosses the durable-tracking threshold, and records approved human intent.
+- **Planner:** searches existing GitHub work, routes contained or duplicate findings, and
+  converts approved intent into lifecycle-appropriate issues and Ready plans without
+  inventing unresolved decisions.
 - **Implementer:** executes Ready scope and stops on stale or missing authority.
 - **Reviewer:** evaluates change and evidence in a distinct context within declared
   capability, with stronger independence or qualifications where effective policy

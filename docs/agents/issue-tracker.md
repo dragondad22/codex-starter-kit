@@ -87,6 +87,32 @@ child's triage label, Readiness, and dependencies to determine whether it can st
 
 ## Required behavior
 
+### Conversational capture
+
+Agents share responsibility for noticing when a conversation produces information that
+must survive it. At a natural checkpoint—a topic change, conclusion, newly discovered
+scope, or handoff—search open and closed GitHub issues before suggesting capture when:
+
+- new work falls outside the active issue;
+- an answer must survive the conversation, materially changes planned work, requires
+  named authority or evidence, or is likely to be referenced again;
+- a product, architecture, policy, regulatory, or risk decision needs durable promotion;
+  or
+- a new risk, dependency, limitation, or verified defect requires ownership beyond the
+  current mandate.
+
+Route a duplicate or contained correction to the active issue instead of creating a new
+item. Use the lifecycle-specific issue type for genuinely new work, and promote an
+approved material decision into its authoritative record because an issue or comment is
+not authority for that domain. Ordinary conversational clarification and exploratory
+fragments stay in the active workflow rather than flooding the Project.
+
+The prompt offers the owner a capture action; it does not silently create an issue,
+change Project fields, or approve a decision. Discussion may continue while an idea is
+being shaped, but material implementation stops until an applicable issue has Readiness
+`Ready`. Once execution begins, reference the active `#N`; the completing PR uses
+`Closes #N`.
+
 ### Lifecycle-specific issue templates
 
 An issue is complete relative to its current lifecycle state; visibility does not imply

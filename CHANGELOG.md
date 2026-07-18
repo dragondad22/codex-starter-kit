@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:c4948c38c2a1f3cbf1c6a160b08b9ce7c1603804662c6af1ef24b1718c0ceaea -->
+<!-- source-digest: sha256:2a4e5f03f255762b9978a4708e491a1df867e89a96f0f86356e12aebf31d900e -->
 
 ## [Unreleased]
 
@@ -17,6 +17,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 - Reconcile one managed task through a native, identity-bound GitHub REST and GraphQL adapter with explicit recovery evidence. (#72)
 - Bootstrap and verify an isolated organization-owned GitHub contract sandbox through an approved, replay-safe lifecycle. (#73)
 - Track one product version and generate audience-aware changelogs from validated, durable change records. (#78)
+- Prompt owners to capture durable untracked work and decisions before material implementation. (#84)
 
 ### Changed
 - Make managed-repository creation safe to replay, interrupt, recover, and reconcile without deleting ambiguous user content. (#29)

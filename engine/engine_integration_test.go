@@ -228,6 +228,37 @@ func TestCreateReturnsStableReviewablePlan(t *testing.T) {
 	}
 }
 
+func TestCreateRoutesConversationalCaptureThroughGeneratedAgentInstructions(t *testing.T) {
+	repository := newGitRepository(t)
+	plan, err := engine.New().Create(t.Context(), approvedCreate(repository))
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	var instructions string
+	for _, file := range plan.Files {
+		if file.Path == "AGENTS.md" {
+			instructions = file.Content
+			break
+		}
+	}
+	if instructions == "" {
+		t.Fatal("create plan does not contain generated AGENTS.md instructions")
+	}
+	for _, marker := range []string{
+		"search open and closed GitHub Issues",
+		"Update a duplicate or contained issue",
+		"suggest a lifecycle-specific issue for genuinely new work",
+		"route an approved material decision to its authoritative record",
+		"ordinary clarification stays in the conversation",
+		"Readiness is `Ready`",
+	} {
+		if !strings.Contains(instructions, marker) {
+			t.Errorf("generated AGENTS.md missing conversational-capture marker %q", marker)
+		}
+	}
+}
+
 func TestCreateRequiresExplicitHumanOwnedApprovals(t *testing.T) {
 	repository := newGitRepository(t)
 	_, err := engine.New().Create(t.Context(), engine.CreateRequest{Repository: repository})

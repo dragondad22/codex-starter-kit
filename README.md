@@ -141,6 +141,8 @@ and the repository's single [Codex Starter Kit Project](https://github.com/users
   scope, gates, evidence, approval, and publication.
 - An implementation issue becomes `Ready` only when an AI or developer can execute it
   without inventing missing decisions.
+- When conversation surfaces durable untracked work or decisions, agents search existing
+  issues and offer the appropriate capture action before material implementation.
 - Normal delivery is Ready issue → issue-named branch → pull request → required gates →
   squash merge.
 

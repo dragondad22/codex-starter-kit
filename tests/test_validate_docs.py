@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from scripts.validate_docs import (
+    validate_conversational_capture_contract,
     validate_decision_routes,
     validate_issue_templates,
     validate_glossary_order,
@@ -329,6 +330,46 @@ class FoundationManifestValidationTests(unittest.TestCase):
         self.assertTrue(any("action is not pinned" in failure for failure in failures))
         self.assertTrue(any("explicit shell dependency" in failure for failure in failures))
         self.assertTrue(any("phase1-evidence compare" in failure for failure in failures))
+
+
+class ConversationalCaptureValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        (self.root / "docs/agents").mkdir(parents=True)
+        (self.root / "AGENTS.md").write_text(
+            "# Agent rules\n\nDo not begin implementation without a Ready issue.\n",
+            encoding="utf-8",
+        )
+        (self.root / "docs/agents/issue-tracker.md").write_text(
+            "Search open and closed GitHub issues before capture.\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_accepts_complete_conversational_capture_route(self) -> None:
+        (self.root / "AGENTS.md").write_text(
+            "Search open and closed GitHub Issues before you suggest creating or "
+            "updating an issue. Ordinary conversational clarification stays here. "
+            "Implementation requires an issue whose Readiness is `Ready`.\n",
+            encoding="utf-8",
+        )
+        (self.root / "docs/agents/issue-tracker.md").write_text(
+            "At a natural checkpoint, update the active issue or promote an approved "
+            "decision into its authoritative record.\n",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(validate_conversational_capture_contract(self.root), [])
+
+    def test_rejects_missing_conversational_capture_route(self) -> None:
+        failures = validate_conversational_capture_contract(self.root)
+
+        self.assertTrue(
+            any("missing conversational-capture marker" in failure for failure in failures)
+        )
 
 
 class SensitiveDataBoundaryValidationTests(unittest.TestCase):
