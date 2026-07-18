@@ -480,6 +480,7 @@ type liveSandboxPlanInput struct {
 	Config   githubadapter.SandboxConfig         `json:"config"`
 	App      githubadapter.AppInstallationConfig `json:"app"`
 	Reviewer githubadapter.UserTokenConfig       `json:"reviewer"`
+	Mandate  engine.SandboxExecutionMandate      `json:"mandate"`
 }
 
 type liveSandboxApplyInput struct {
