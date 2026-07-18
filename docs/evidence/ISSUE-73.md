@@ -75,14 +75,22 @@ The isolated bootstrap boundary is `pass`:
   converged the seeder, distinct reviewer, and rules roles. Its redacted receipts retain
   fixture PR/review identities, active ruleset identity `19106535`, and `http-401`
   revocation proofs for the seeder and rules App credentials.
-- Proof planning run
-  [`29625594695`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625594695)
-  emitted immutable plans from candidate `4163e8ad03d69253f064e964d422ea69bedf35b2`.
-  Proof apply run
-  [`29625632625`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625632625)
-  retained the active-rules `http-422` denial and post-revocation `http-401` evidence.
-  Both receipts bind plan `sha256:8f35e8235e674c4e55cb8886a212ecd842740237c55660097895da2949e129fa`
-  to mandate `sha256:e1e9a1dfd8905786bca27e91db6be3480cb7f5f7fad5f42f85f510bb9288170b`.
+- Hardened proof setup planning/apply runs
+  [`29626471762`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626471762)
+  and
+  [`29626514924`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626514924)
+  created only the exact cleanup fixture branch and active fixture ruleset committed into
+  their role-specific mandates.
+- Hardened proof planning/apply runs
+  [`29626642880`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626642880)
+  and
+  [`29626687957`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626687957)
+  used candidate `a0b7ec94c83c0cc6c9c0746812ba778639c842ab`. The adapter accepted
+  `http-422` only after re-reading an active deletion rule for that exact branch and
+  re-reading the retained ref. The receipt binds plan
+  `sha256:d43cac386be5709ce98856b62daf1b872d019a97d5ec644dcbef2567fc36bf3e`
+  to exact-authority/resource mandate
+  `sha256:dd85226f06084030b077358657c522807ecbd4d121784c6e423defe573c10d38`.
 - Cleanup apply run
   [`29625729444`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625729444)
   removed the marked workflow, ruleset, and fixture branches and closed retained fixture
@@ -96,13 +104,24 @@ The isolated bootstrap boundary is `pass`:
   [`29625918740`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29625918740)
   accepted the engine's explicit `no_change` result and re-verified both roles as
   converged.
+- Final exact-authority cleanup planning/apply runs
+  [`29626722636`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626722636)
+  and
+  [`29626763374`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29626763374)
+  removed the hardened proof branch and ruleset and re-verified both cleanup roles as
+  converged.
 
 Earlier non-pass proof runs are retained rather than rewritten: planning run
 `29625238825` rejected an unsupported mandate input before effects, apply run
 `29625355700` rejected an actor outside the normalized role set before effects, and apply
 run `29625450408` retained the provider-denial mismatch without claiming a proof pass.
-The subsequent contained replans and fixes demonstrate that recovery did not require a
-new approval or broaden the approved target.
+Apply run `29626592839` retained a passing hardened rules-denial receipt but remained
+non-pass because its separate credential-revocation effect returned an unexpected state;
+the controls were then separated instead of treating either as evidence for the other.
+The earlier generic `422` receipt from `29625632625` is not used for the active-rules
+pass after review; its independently observed `http-401` revocation receipt remains part
+of the revocation evidence. The subsequent contained replans and fixes demonstrate that
+recovery did not require a new approval or broaden the approved target.
 
 Repository validation, native CI, and distinct review remain PR completion gates; they
 do not change the recorded live sandbox qualification result.

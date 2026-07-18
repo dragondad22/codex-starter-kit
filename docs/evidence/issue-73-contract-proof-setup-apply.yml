@@ -1,0 +1,35 @@
+name: Apply contract proof setup under mandate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  seeder:
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: proof-setup
+      role: seeder
+      planning_run_id: "29626471762"
+      artifact_name: issue-73-proof-setup-seeder-planning
+      source_revision: 2d916a8870faa8a1cee31b1a7761fed74a9efd10
+      base_sha: d7c2174fbf67bebdeb41fc78416dc6332e5d44f9
+
+  rules:
+    needs: seeder
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: proof-setup
+      role: rules
+      planning_run_id: "29626471762"
+      artifact_name: issue-73-proof-setup-rules-planning
+      source_revision: 2d916a8870faa8a1cee31b1a7761fed74a9efd10

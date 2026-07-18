@@ -1,4 +1,4 @@
-name: Plan contract sandbox proofs
+name: Plan contract proof setup
 
 on:
   workflow_dispatch:
@@ -16,11 +16,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        include:
-          - stage: rules-proof
-            role: seeder
-          - stage: project-proof
-            role: reconciler
+        role: [seeder, rules]
     environment: contract-${{ matrix.role }}
     runs-on: ubuntu-latest
     steps:
@@ -31,7 +27,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: a0b7ec94c83c0cc6c9c0746812ba778639c842ab
+          ref: 2d916a8870faa8a1cee31b1a7761fed74a9efd10
           path: tool
 
       - name: Install pinned Go
@@ -40,16 +36,17 @@ jobs:
           go-version: 1.26.5
           cache-dependency-path: tool/go.sum
 
-      - name: Generate credential-free proof input
+      - name: Generate credential-free proof setup input
         run: >-
           go -C tool run ./cmd/issue73-contract
-          --stage "${{ matrix.stage }}"
+          --stage proof-setup
           --role "${{ matrix.role }}"
           --repository "${{ github.workspace }}"
-          --source-revision a0b7ec94c83c0cc6c9c0746812ba778639c842ab
+          --source-revision 2d916a8870faa8a1cee31b1a7761fed74a9efd10
+          --base-sha d7c2174fbf67bebdeb41fc78416dc6332e5d44f9
           > "${{ matrix.role }}-input.json"
 
-      - name: Inspect and emit immutable proof plan
+      - name: Inspect and emit immutable proof setup plan
         env:
           CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
         run: >-
@@ -57,10 +54,10 @@ jobs:
           --input "../${{ matrix.role }}-input.json"
           > "${{ matrix.role }}-planning.json"
 
-      - name: Retain redacted plan evidence
+      - name: Retain redacted proof setup plan evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: issue-73-${{ matrix.stage }}-${{ matrix.role }}-planning
+          name: issue-73-proof-setup-${{ matrix.role }}-planning
           path: ${{ matrix.role }}-planning.json
           if-no-files-found: error
           retention-days: 30

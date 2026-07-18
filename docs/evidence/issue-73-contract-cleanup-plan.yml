@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: eadd27373b924738da4151c9ccdf5198a38fe80d
+          ref: a0b7ec94c83c0cc6c9c0746812ba778639c842ab
           path: tool
 
       - name: Install pinned Go
@@ -42,7 +42,7 @@ jobs:
           --stage cleanup
           --role "${{ matrix.role }}"
           --repository "${{ github.workspace }}"
-          --source-revision eadd27373b924738da4151c9ccdf5198a38fe80d
+          --source-revision a0b7ec94c83c0cc6c9c0746812ba778639c842ab
           > "${{ matrix.role }}-input.json"
 
       - name: Inspect and emit immutable cleanup plan
