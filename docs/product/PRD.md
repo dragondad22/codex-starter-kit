@@ -151,6 +151,10 @@ The product ships as three layers from its first usable release:
   `collaborative` engagement, additive assurance at repository/work-item/release scope,
   and `concise` or `expanded` evidence presentation. Defaults are delegated, no
   discretionary addition beyond effective policy, and concise.
+- DEC-0022 binds delegated external work to one scoped execution mandate. Contained plans,
+  retries, reconciliation, and cleanup proceed without repeated confirmation; new or
+  broader authority remains a mandatory interrupt. Issue templates preserve different
+  valid maturity states rather than forcing every visible feature into executable detail.
 - Profile changes are attributable and prospective. They invalidate affected active
   plans and derived views but never rewrite prior evidence, decisions, exceptions, or
   claims.

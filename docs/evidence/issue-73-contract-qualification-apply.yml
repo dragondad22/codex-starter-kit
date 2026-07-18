@@ -1,0 +1,47 @@
+name: Apply approved contract qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  seeder:
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: qualification
+      role: seeder
+      planning_run_id: "29595531080"
+      artifact_name: issue-73-qualification-seeder-planning
+      source_revision: 531c418b5c9b23e43d7649b4ba8ec0f535faab0e
+
+  reviewer:
+    needs: seeder
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: qualification
+      role: reviewer
+      planning_run_id: "29595531080"
+      artifact_name: issue-73-qualification-reviewer-planning
+      source_revision: 531c418b5c9b23e43d7649b4ba8ec0f535faab0e
+      success_head: 6988ecc5d9a339051b3d7a44c4738a440912c61e
+      failing_head: 3f62b849dc1a5244755230b4e206a79dd8751fda
+
+  rules:
+    needs: reviewer
+    uses: ./.github/workflows/contract-apply-role.yml
+    secrets: inherit
+    with:
+      stage: qualification
+      role: rules
+      planning_run_id: "29595531080"
+      artifact_name: issue-73-qualification-rules-planning
+      source_revision: 531c418b5c9b23e43d7649b4ba8ec0f535faab0e

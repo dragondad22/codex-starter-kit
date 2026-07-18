@@ -26,3 +26,4 @@
 | Issue #47 | [DEC-0019](DEC-0019-operating-profile-contract.md) | Three-axis operating profiles with delegated defaults, additive assurance, truthful evidence views, and prospective transitions |
 | Issue #62 | [DEC-0020](DEC-0020-distinct-pull-request-review.md) | A distinct capable review pass for every PR, separate from implementation, checks, outcome authority, and stronger qualified assurance |
 | Issue #78 | [DEC-0021](DEC-0021-product-version-and-change-records.md) | One product release version, structured authoritative change records, generated communication, and preparation/publication separation |
+| Issue #73 | [DEC-0022](DEC-0022-scoped-execution-mandates-and-issue-responsibility.md) | One bounded mandate authorizes contained plans and recovery; issue templates preserve lifecycle-appropriate intent without redefining standing workflow |

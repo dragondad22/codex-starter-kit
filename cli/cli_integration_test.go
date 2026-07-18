@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,86 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	}
 }
 
+func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("initialize sandbox Git repository: %v: %s", err, output)
+	}
+	now := time.Now().UTC()
+	target := engine.SandboxTarget{Host: "memory.local", OwnerID: "owner", RepositoryID: "repository", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	authority := engine.SandboxAuthorityProfile{CredentialIdentities: []string{"memory-app|test|actor|account|1|2"}, Permissions: []string{"memory-app:issues:write"}, EvidenceMode: "memory", Compatibility: "test-native", DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only"}
+	input := struct {
+		Request     engine.SandboxRequest     `json:"request"`
+		Capability  engine.SandboxCapability  `json:"capability"`
+		Observation engine.SandboxObservation `json:"observation"`
+	}{
+		Request: engine.SandboxRequest{Repository: repository, Manifest: engine.SandboxManifest{
+			SchemaVersion: 1, OperationID: "issue-73-bootstrap-v1", SourceRevision: "issue-73", ConfigurationRevision: "config-v1",
+			ApprovedBy: "owner", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target, Authority: authority,
+			Resources: []engine.SandboxResourceSpec{{Key: "label:contract-run", Kind: engine.SandboxResourceLabel, Name: "contract-run", Attributes: map[string]string{"color": "5319E7"}}},
+		}},
+		Capability:  engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "memory-app", EvidenceMode: "memory", Compatibility: authority.Compatibility, Target: target, Permissions: authority.Permissions, CredentialIdentities: authority.CredentialIdentities, ConfigurationRevision: "config-v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Observation: engine.SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config-v1", Resources: []engine.SandboxObservedResource{}},
+	}
+	content, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(t.TempDir(), "sandbox.json")
+	if err := os.WriteFile(inputPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"sandbox-plan", "--input", inputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var planning engine.SandboxPlanningResult
+	if err := json.Unmarshal(stdout.Bytes(), &planning); err != nil {
+		t.Fatalf("decode sandbox plan: %v: %s", err, stdout.String())
+	}
+	if planning.Plan.ID == "" || len(planning.Plan.Effects) != 1 {
+		t.Fatalf("unexpected sandbox plan: %#v", planning)
+	}
+	if _, err := os.Stat(filepath.Join(repository, ".starter-kit", "sandbox", "state.json")); !os.IsNotExist(err) {
+		t.Fatalf("planning wrote apply state: %v", err)
+	}
+	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-comment-approval", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: target, Actors: []string{"memory-app"}, MarkerPrefix: "starter-kit-contract:", UnmarkedKeys: []string{"label:contract-run"}, ResourceKinds: []string{engine.SandboxResourceLabel}, EffectKinds: []string{"reconcile-resource"}, MaxEffects: 1,
+		DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only", RecoveryOwner: "sandbox-owner", Authority: authority,
+	}, input.Request.Manifest.Resources...)
+	applyInput := struct {
+		Manifest    engine.SandboxManifest     `json:"manifest"`
+		Plan        engine.SandboxPlan         `json:"plan"`
+		Approval    engine.SandboxPlanApproval `json:"approval"`
+		Capability  engine.SandboxCapability   `json:"capability"`
+		Observation engine.SandboxObservation  `json:"observation"`
+	}{input.Request.Manifest, planning.Plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate}, input.Capability, input.Observation}
+	content, err = json.Marshal(applyInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyPath := filepath.Join(t.TempDir(), "sandbox-apply.json")
+	if err := os.WriteFile(applyPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = cli.Run([]string{"sandbox-apply", "--input", applyPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("apply exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var journey engine.SandboxLifecycleResult
+	if err := json.Unmarshal(stdout.Bytes(), &journey); err != nil {
+		t.Fatal(err)
+	}
+	if journey.Apply.Status != engine.SandboxApplyApplied || journey.Verification.OverallState != engine.ControlPass || journey.Status.Disposition != "converged" {
+		t.Fatalf("unexpected sandbox apply journey: %#v", journey)
+	}
+}
+
 func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -105,6 +186,9 @@ func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
 	}
 	if len(report.Operations) == 0 || report.Operations[0] != "apply" {
 		t.Fatalf("operations are absent or unstable: %#v", report.Operations)
+	}
+	if !slices.Contains(report.Operations, "sandbox-plan") || !slices.Contains(report.Operations, "sandbox-apply") {
+		t.Fatalf("sandbox plan/apply capabilities are absent: %#v", report.Operations)
 	}
 	if report.Engine.Provenance != engine.ProvenanceUnverified {
 		t.Fatalf("engine self-asserted provenance trust: %#v", report.Engine)

@@ -111,6 +111,13 @@
     target, effect, recovery, and evidence-mode contract.
 54. `evidence/ISSUE-72.md` — deterministic adapter behavior, security, verification,
     limitation, and GitHub-state record for the first real transport slice.
+55. `architecture/SANDBOX_BOOTSTRAP.md` — approved sandbox lifecycle, immutable target,
+    role-separated authority, replay, cleanup, and human workflow boundary.
+56. `evidence/ISSUE-73.md` — approved authority, immutable live identities, applied
+    baseline, deterministic behavior, current non-pass gates, and qualification evidence.
+57. `decisions/DEC-0022-scoped-execution-mandates-and-issue-responsibility.md` — approved
+    mandate containment, collaboration cadence, issue responsibility, and lifecycle-specific
+    template contract.
 
 ## Document lifecycle
 

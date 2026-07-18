@@ -9,6 +9,10 @@ and design; the approved product contract lives in `docs/`.
 - Read `docs/decisions/INDEX.md` for governing decisions. The discovery document preserves
   source history; stop and reconcile any conflict instead of choosing silently.
 - Do not start implementation without a GitHub issue whose Readiness is `Ready`.
+- Treat issue bodies as outcome and task-context records, not as copies of standing agent
+  workflow. Bootstrap files, governing decisions, and versioned templates define how work
+  proceeds; issues reference them and record only task-specific decisions, boundaries,
+  acceptance, and explicit exceptional overrides.
 - Reconcile Project fields whenever touched work starts, completes, reopens, or changes a
   dependency: update the item, its parent, and directly dependent issues. Completing a
   blocker promotes each fully unblocked dependent to `Ready`; it becomes `Next` only when
@@ -26,7 +30,10 @@ and design; the approved product contract lives in `docs/`.
 - Universal work must run natively on Linux, macOS, and Windows; do not introduce a
   universal Bash, PowerShell, GNU, WSL, or shell-string dependency.
 - Recommend useful installs or upgrades with trust, authority, data, cost, compatibility,
-  and fallback implications. Do not silently install or broaden authority.
+  and fallback implications. Do not silently install or broaden authority. Once an owner
+  approves a scoped execution mandate, continue through in-mandate effects and recovery
+  without repeated confirmation; stop on a semantic expansion or conflict, not a changed
+  plan digest alone.
 - Normal Git flow: Ready issue → issue-named branch → PR → required gates → squash merge.
 - A draft PR means implementation, verification, or internal review is still in progress.
   Once planned work and required checks/reviews are complete, mark it ready for review;

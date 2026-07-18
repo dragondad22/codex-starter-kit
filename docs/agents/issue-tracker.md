@@ -87,9 +87,32 @@ child's triage label, Readiness, and dependencies to determine whether it can st
 
 ## Required behavior
 
+### Lifecycle-specific issue templates
+
+An issue is complete relative to its current lifecycle state; visibility does not imply
+executability. Use the smallest template that preserves the work honestly:
+
+- `Feature idea` records an Intake opportunity, audience, reason, and provenance.
+- `Design-first initiative` records task-specific breadcrumbs, demand and design context,
+  governing decisions, confirmed facts versus hypotheses, open questions, indicative
+  surfaces, exclusions, and the promotion gate for later executable sub-issues.
+- `Executable work item` is reserved for decision-complete implementation that can pass
+  Readiness `Ready`.
+- Question, research, and bug records use their subtype contracts and are promoted or
+  decomposed rather than padded into task-shaped prose.
+
+Templates prescribe information shape, not conclusions. Do not invent architecture,
+scope, tests, or decisions to fill a form. A design-first parent may carry feature-level
+acceptance while deferring implementation tests to its eventual Ready sub-issues.
+
+Issue bodies state desired outcomes and task-specific memory. They reference bootstrap,
+policy, decisions, and normal Git flow instead of repeating them. Record an issue-level
+workflow override only when it is exceptional, explicit, justified, and authoritative.
+
 - Search for duplicates before creation.
 - Preserve native parent/sub-issue hierarchy when decomposing work.
-- Use the two-layer executable issue template for planned implementation.
+- Use the two-layer executable issue template only for planned implementation promoted to
+  Ready; preserve earlier work through the Intake or design-first template.
 - Reserve question issues for consequential uncertainties that need durable resolution;
   keep ordinary conversational clarification off the Project.
 - Require bounded objectives, authority, depth or effort, stopping conditions, provenance,

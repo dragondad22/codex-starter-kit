@@ -57,6 +57,7 @@ type Credential struct {
 	Mode               string    `json:"mode"`
 	Actor              string    `json:"actor"`
 	Account            string    `json:"account,omitempty"`
+	AccountID          string    `json:"account_id,omitempty"`
 	InstallationID     string    `json:"installation_id,omitempty"`
 	Permissions        []string  `json:"permissions"`
 	PermissionSource   string    `json:"permission_source"`

@@ -65,3 +65,13 @@ on the completing source revision.
 This decomposition does not provision GitHub sandboxes, register Apps, create or broaden
 credentials, enable paid services, implement production behavior, or turn the unexecuted
 #68 qualification rows into passes. Those effects remain governed by their child issues.
+
+## Approved topology amendment
+
+On 2026-07-16 the product owner selected a dedicated GitHub Free organization and removed
+the personal Project/classic-PAT route from required Phase 3 / 1.0 qualification. The
+approved route is organization Project plus selected-repository Apps and repository-local
+Actions, with public synthetic data, standard runners, zero-dollar guardrails, one
+mutating lease, 24-hour fixture cleanup, and 30-day raw-evidence retention. This changes
+the required topology, not the #71–#76 dependency graph. Issue #73 retains the concrete
+provisioning and qualification gate; no broader credential fallback is implied.

@@ -1,0 +1,91 @@
+{
+  "name": "Design-first initiative",
+  "description": "Preserve a visible feature or epic that needs research, decisions, or decomposition before implementation.",
+  "title": "",
+  "labels": ["type:feature", "needs-triage"],
+  "body": [
+    {
+      "type": "markdown",
+      "attributes": {
+        "value": "Use this for durable design-stage work. It may be complete for Intake or Needs refinement without being executable. Do not implement from this body until governing decisions are resolved, executable sub-issues exist, and their Readiness is Ready."
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "bootstrap",
+      "attributes": {
+        "label": "Task-specific breadcrumbs",
+        "description": "List focused standards, decisions, related issues, and key files in reading order. Do not repeat global bootstrap rules."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "context",
+      "attributes": {
+        "label": "Context and demand signal",
+        "description": "Preserve why this should exist, who needs it, provenance, real-world evidence, and important sequencing."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "design-brief",
+      "attributes": {
+        "label": "Design brief",
+        "description": "Record confirmed facts, product principles, competitive or operational context, and hypotheses that must not be treated as facts."
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "references",
+      "attributes": {
+        "label": "Governing decisions and references",
+        "description": "Reference stable authorities and state what each governs. Identify a missing decision instead of inventing it."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "questions",
+      "attributes": {
+        "label": "Open questions and decisions",
+        "description": "Separate stakeholder questions, research hypotheses, and decisions; name their authority and durable destination when known."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "expected-surfaces",
+      "attributes": {
+        "label": "Expected outcomes and indicative surfaces",
+        "description": "Describe what should ultimately become possible. Mark unratified implementation surfaces as indicative."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "out-of-scope",
+      "attributes": {"label": "Known exclusions and dependencies"},
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "promotion-gate",
+      "attributes": {
+        "label": "Refinement and promotion gate",
+        "description": "Name the research, feedback, ADR/decision, prototype, or decomposition required before executable tasks may become Ready."
+      },
+      "validations": {"required": true}
+    },
+    {
+      "type": "textarea",
+      "id": "parent-acceptance",
+      "attributes": {
+        "label": "Parent outcome and completion evidence",
+        "description": "State feature-level outcomes and evidence used after sub-issues deliver; detailed task tests may be deferred to decomposition."
+      },
+      "validations": {"required": true}
+    }
+  ]
+}

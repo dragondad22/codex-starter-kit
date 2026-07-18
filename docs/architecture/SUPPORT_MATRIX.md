@@ -2,7 +2,8 @@
 
 **Status:** Initial source-runtime support
 **Scope:** Empty-repository `create`, seed `verify`, credential-free in-memory managed-task,
-and deterministic native GitHub-adapter routes through the standalone engine seam
+deterministic native GitHub-adapter routes, and deterministic sandbox bootstrap through
+the standalone engine seam
 **Evidence:** Native CI reports and aggregate semantic comparison retained by the
 completing [Issue #30](../evidence/ISSUE-30.md) pull request
 
@@ -73,6 +74,13 @@ results are development evidence only until the exact completing revision passes
 Linux, macOS, and Windows CI matrix. In-memory and deterministic HTTP fixtures are not
 live GitHub evidence; sandbox mutation and support claims remain `not-configured` until
 #73–#76.
+
+Issue #73 adds strict sandbox inspect/plan/apply/verify/status operations, durable partial
+receipts, exact-marker cleanup, one lifecycle lease, and a role-separated GitHub sandbox
+adapter. Local in-memory and HTTP-fixture tests are supported deterministic behavior. The
+live organization route remains `not-configured` until the approved App permissions,
+human-owned Project workflow, fixtures, cleanup, revocation, and completing native CI
+evidence all pass. The personal Project/classic-PAT route is outside the 1.0 support claim.
 
 ## Native proof contract
 
