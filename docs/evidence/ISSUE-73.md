@@ -19,6 +19,15 @@ Public synthetic data, standard hosted runners, zero-dollar operation, one mutat
 lease, fixture cleanup within 24 hours, 30-day raw-evidence retention, retained baseline
 resources, and separately approved repository deletion are fixed guardrails.
 
+On 2026-07-17 the product owner approved DEC-0022 and execution mandate
+`issue-comment-5009113729`. The mandate replaces repeated exact-plan approval for this
+bounded target. It authorizes the named reconciler, seeder, rules, and reviewer actors;
+governed baseline resources; marker-scoped fixtures and rules; proof transitions;
+credential-revocation evidence; recovery replanning; and cleanup. It expires after the
+bounded #73 run and does not authorize operational targets, broader credentials,
+private/paid data, webhooks, bypass, repository deletion, or unrecognized-resource edits.
+Every effect still records its exact plan and mandate identities.
+
 ## Applied baseline
 
 - Project Status, Readiness, Horizon, and Phase fields/options were created and re-read.
@@ -47,6 +56,11 @@ cleanup that preserves human resources, active-lease refusal, unsupported kinds,
 sensitive-looking manifest rejection. State is integrity protected and receipts contain
 no credentials.
 
+Schema-v2 mandate containment accepts regenerated recovery plans only when target, actor,
+resource/effect kind, marker or baseline key, effect count, recovery owner, and expiry
+remain bounded. Out-of-mandate plans stop before effects. Historical schema-v1 exact-plan
+approval remains readable and executable for replay without rewriting prior evidence.
+
 The production GitHub sandbox adapter validates three distinct expiring App installation
 roles against actor, account, installation, permissions, and the immutable target. It
 uses native versioned REST and GraphQL transport to observe managed labels and Project
@@ -58,8 +72,8 @@ fields/options/views/workflows. Human-owned workflow configuration reports
 - Seeder installation must report `workflows: write` after the human accepts the updated
   App permission.
 - The Project auto-add workflow must be configured in the UI and observed enabled.
-- Marked fixture, temporary fixture-only ruleset, reviewer, cleanup, and revocation cases
-  must execute with retained redacted receipts.
+- The active-rules denial proof, cleanup, and final revocation cases must execute with
+  retained redacted receipts under the approved mandate.
 - The exact completing candidate must pass repository validation, native CI, and distinct
   review before this evidence can record a live pass.
 

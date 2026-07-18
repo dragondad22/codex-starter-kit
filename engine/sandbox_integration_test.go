@@ -439,6 +439,57 @@ func TestSandboxApplyRejectsApprovalForDifferentGeneratedPlan(t *testing.T) {
 	}
 }
 
+func TestSandboxApplyAcceptsRecoveryPlanContainedByApprovedMandate(t *testing.T) {
+	now := time.Date(2026, 7, 17, 21, 0, 0, 0, time.UTC)
+	repository := newSandboxRepository(t)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	manifest := SandboxManifest{
+		SchemaVersion: 1, OperationID: "recovery", SourceRevision: "source-2", ConfigurationRevision: "config",
+		ApprovedBy: "owner", ApprovedPlan: "issue-73-mandate", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:run-1:", Target: target,
+		Resources: []SandboxResourceSpec{{Key: "fixture:issue:1", Kind: SandboxResourceFixtureIssue, Name: "fixture", Marker: "starter-kit-contract:run-1:issue", DesiredState: SandboxResourceAbsent}},
+	}
+	adapter := NewInMemorySandboxAdapter(
+		SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "app", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config", Resources: []SandboxObservedResource{{Key: "fixture:issue:1", Kind: SandboxResourceFixtureIssue, Name: "fixture", ID: "1", Marker: "starter-kit-contract:run-1:issue"}}},
+	)
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mandate := SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-comment-5009113729", ApprovedAt: now.Add(-time.Hour), ExpiresAt: now.Add(24 * time.Hour),
+		Target: target, Actors: []string{"app"}, MarkerPrefix: "starter-kit-contract:run-1:", ResourceKinds: []string{SandboxResourceFixtureIssue}, EffectKinds: []string{"remove-resource"}, MaxEffects: 3, DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "marker-scoped-cleanup", Retention: "30-days", RecoveryOwner: "sandbox-owner",
+	}
+	mandate.ID = digestJSON(sandboxExecutionMandateWithoutID(mandate))
+
+	result, err := lifecycle.ApplySandbox(context.Background(), plan, SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate})
+	if err != nil {
+		t.Fatalf("apply contained recovery plan: %v", err)
+	}
+	if result.Status != SandboxApplyApplied || len(adapter.Effects()) != 1 {
+		t.Fatalf("apply = %#v, effects = %#v", result, adapter.Effects())
+	}
+}
+
+func TestSandboxApplyRejectsPlanOutsideApprovedMandate(t *testing.T) {
+	now := time.Date(2026, 7, 17, 21, 0, 0, 0, time.UTC)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	plan := SandboxPlan{SchemaVersion: 1, Repository: newSandboxRepository(t), OperationID: "operation", SourceRevision: "source", ConfigurationRevision: "config", Target: target, RecoveryOwner: "sandbox-owner", Effects: []SandboxEffect{{Kind: "remove-resource", Resource: SandboxResourceSpec{Key: "fixture:issue:1", Kind: SandboxResourceFixtureIssue, Name: "fixture", Marker: "outside:issue", DesiredState: SandboxResourceAbsent}}}}
+	plan.ID = digestJSON(plan)
+	mandate := SandboxExecutionMandate{SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval", ApprovedAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), Target: target, Actors: []string{"app"}, MarkerPrefix: "starter-kit-contract:", ResourceKinds: []string{SandboxResourceFixtureIssue}, EffectKinds: []string{"remove-resource"}, MaxEffects: 1, DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "marker-scoped-cleanup", Retention: "30-days", RecoveryOwner: "sandbox-owner"}
+	mandate.ID = digestJSON(sandboxExecutionMandateWithoutID(mandate))
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(NewInMemorySandboxAdapter(SandboxCapability{}, SandboxObservation{})))
+
+	if _, err := lifecycle.ApplySandbox(context.Background(), plan, SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate}); err == nil || !strings.Contains(err.Error(), "outside approved mandate") {
+		t.Fatalf("apply error = %v", err)
+	}
+}
+
 func TestSandboxVerificationCannotPassWithObservationProblems(t *testing.T) {
 	now := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
 	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}

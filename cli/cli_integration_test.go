@@ -86,7 +86,7 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	}
 }
 
-func TestSandboxCommandsInterruptForExactPlanApprovalBeforeApply(t *testing.T) {
+func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
 	repository := t.TempDir()
 	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
 		t.Fatalf("initialize sandbox Git repository: %v: %s", err, output)
@@ -130,13 +130,18 @@ func TestSandboxCommandsInterruptForExactPlanApprovalBeforeApply(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repository, ".starter-kit", "sandbox", "state.json")); !os.IsNotExist(err) {
 		t.Fatalf("planning wrote apply state: %v", err)
 	}
+	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-comment-approval", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: target, Actors: []string{"memory-app"}, MarkerPrefix: "starter-kit-contract:", UnmarkedKeys: []string{"label:contract-run"}, ResourceKinds: []string{engine.SandboxResourceLabel}, EffectKinds: []string{"reconcile-resource"}, MaxEffects: 1,
+		DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "none", Retention: "test-only", RecoveryOwner: "sandbox-owner",
+	})
 	applyInput := struct {
 		Manifest    engine.SandboxManifest     `json:"manifest"`
 		Plan        engine.SandboxPlan         `json:"plan"`
 		Approval    engine.SandboxPlanApproval `json:"approval"`
 		Capability  engine.SandboxCapability   `json:"capability"`
 		Observation engine.SandboxObservation  `json:"observation"`
-	}{input.Request.Manifest, planning.Plan, engine.SandboxPlanApproval{SchemaVersion: 1, PlanID: planning.Plan.ID, ApprovedBy: "owner", ApprovalID: "issue-comment-approval", ApprovedAt: now}, input.Capability, input.Observation}
+	}{input.Request.Manifest, planning.Plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate}, input.Capability, input.Observation}
 	content, err = json.Marshal(applyInput)
 	if err != nil {
 		t.Fatal(err)

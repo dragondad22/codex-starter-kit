@@ -128,6 +128,13 @@ claims are not automatically sufficient evidence.
 A Ready GitHub issue containing a human summary and complete implementation brief that an
 authorized AI or developer can execute without new product or policy decisions.
 
+### Execution mandate
+
+A versioned human-owned authorization envelope naming immutable targets and actors,
+permitted semantic effects, data/cost/compatibility/destructive ceilings, expiry, and
+cleanup/recovery ownership. Content-addressed plans may execute without another prompt
+only when the lifecycle engine proves they are wholly contained by the mandate.
+
 ### Feature
 
 A user- or stakeholder-visible capability represented on the Horizon roadmap. A feature

@@ -24,7 +24,7 @@
       "id": "references",
       "attributes": {
         "label": "Governing decisions, personas, policy, and specifications",
-        "description": "Stable IDs, links, and one-line relevance for each."
+        "description": "Stable IDs, links, and one-line relevance for each. Reference standing execution rules; do not copy them into this issue."
       },
       "validations": {"required": true}
     },
@@ -57,7 +57,10 @@
     {
       "type": "textarea",
       "id": "dependencies",
-      "attributes": {"label": "Dependencies, sequencing, and human actions"}
+      "attributes": {
+        "label": "Dependencies, sequencing, and task-specific authority",
+        "description": "Record actual blockers or exceptional authority boundaries. Do not repeat normal branch, PR, review, merge, or reconciliation workflow."
+      }
     },
     {
       "type": "checkboxes",

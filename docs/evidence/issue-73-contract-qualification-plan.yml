@@ -1,0 +1,65 @@
+name: Plan contract sandbox qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        role: [seeder, rules, reviewer]
+    environment: contract-${{ matrix.role }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: 531c418b5c9b23e43d7649b4ba8ec0f535faab0e
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Generate credential-free role input
+        run: >-
+          go -C tool run ./cmd/issue73-contract
+          --stage qualification
+          --role "${{ matrix.role }}"
+          --repository "${{ github.workspace }}"
+          --source-revision 531c418b5c9b23e43d7649b4ba8ec0f535faab0e
+          --success-head 6988ecc5d9a339051b3d7a44c4738a440912c61e
+          --failing-head 3f62b849dc1a5244755230b4e206a79dd8751fda
+          > "${{ matrix.role }}-input.json"
+
+      - name: Inspect and emit immutable role plan
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+          CSK_REVIEWER_TOKEN: ${{ secrets.CSK_REVIEWER_TOKEN }}
+        run: >-
+          go -C tool run ./cmd/starter-kit sandbox-live-plan
+          --input "../${{ matrix.role }}-input.json"
+          > "${{ matrix.role }}-planning.json"
+
+      - name: Retain redacted plan evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-73-qualification-${{ matrix.role }}-planning
+          path: ${{ matrix.role }}-planning.json
+          if-no-files-found: error
+          retention-days: 30

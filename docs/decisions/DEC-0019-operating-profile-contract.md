@@ -37,11 +37,14 @@ addition beyond effective policy, and a `concise` evidence view.
 
 Delegated execution must interrupt before continuing when it encounters an unresolved
 product, architecture, policy, regulatory, or risk decision; new, ambiguous, or broader
-authority; destructive or externally visible effects; installation or network effects;
+authority; destructive, externally visible, installation, or network effects outside an
+approved scoped execution mandate; installation or credential broadening;
 sensitive-data uncertainty or an unassured route; failed, missing, stale, or conflicting
 required evidence; an unsafe/non-recoverable condition; or a material change to the
 approved outcome, plan, assumptions, cost, or compatibility. Conversation and prior
-approval do not imply authority for a different effect.
+approval do not imply authority for a different effect. DEC-0022 governs mandate
+containment: a refreshed plan digest is not a different effect when its semantic delta
+remains wholly inside the approved mandate.
 
 Every delivery produces a quality receipt. Its concise view leads with the requested and
 delivered outcome, applied profile and policy identities, checks and aggregate result,
@@ -59,14 +62,16 @@ rewrites prior receipts, evidence, decisions, exceptions, or claims.
 The product can offer a near-one-shot default without a lower-quality path. Implementers
 must model the three axes separately, retain their source and scope, and compute the
 effective profile alongside effective policy. Plugin prompts may reduce interaction but
-must surface mandatory interrupts and separate effect approvals. The engine must treat a
+must surface mandatory interrupts and mandate-containment failures. The engine must treat a
 changed effective profile as a stale-plan input. Evidence views may vary in depth while
 their underlying results and retention obligations remain identical.
 
 Repository, work-item, and release policy implementations need additive composition and
 explicit conflict handling. Quality-receipt implementations need stable routes from the
 concise view to machine evidence and human-owned authority records. Historical profile
-identity remains part of evidence provenance.
+identity remains part of evidence provenance. DEC-0022 also clarifies that collaborative
+engagement changes visibility and decision cadence rather than requiring confirmation of
+every in-mandate effect.
 
 [DEC-0020](DEC-0020-distinct-pull-request-review.md) requires a distinct PR-review pass in
 every profile. Assurance additions may strengthen its reviewer independence, number, or

@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
 	"github.com/dragondad22/codex-starter-kit/githubadapter"
@@ -28,6 +30,7 @@ type planInput struct {
 	Config   githubadapter.SandboxConfig         `json:"config"`
 	App      githubadapter.AppInstallationConfig `json:"app"`
 	Reviewer githubadapter.UserTokenConfig       `json:"reviewer"`
+	Mandate  engine.SandboxExecutionMandate      `json:"mandate"`
 }
 
 func main() {
@@ -52,7 +55,37 @@ func main() {
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: ownerID, RepositoryID: repositoryID, ProjectID: projectID, RepositoryName: repository}
 	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "issue-73-live-" + *stage + "-" + *role + "-v3", SourceRevision: *source, ConfigurationRevision: configuration, ApprovedBy: "dragondad22", ApprovedPlan: "issue-73-bootstrap-v1", RecoveryOwner: "dragondad22", MarkerPrefix: markerPrefix, Target: target, Resources: resources}
 	config := githubadapter.SandboxConfig{Host: "github.com", RESTBaseURL: "https://api.github.com", GraphQLURL: "https://api.github.com/graphql", APIVersion: "2026-03-10", ConfigurationRevision: configuration, Target: target, RepositoryOwner: "codex-starter-kit-labs", RepositoryName: "codex-starter-kit-sandbox", ProjectNumber: 1, Resources: resources, Roles: map[string]githubadapter.SandboxRoleExpectation{*role: expectation}, EvidenceMode: "live", LiveTargetApproved: true}
-	json.NewEncoder(os.Stdout).Encode(planInput{Role: *role, Request: engine.SandboxRequest{Repository: *repositoryPath, Manifest: manifest}, Config: config, App: app, Reviewer: reviewer})
+	json.NewEncoder(os.Stdout).Encode(planInput{Role: *role, Request: engine.SandboxRequest{Repository: *repositoryPath, Manifest: manifest}, Config: config, App: app, Reviewer: reviewer, Mandate: issue73Mandate(target)})
+}
+
+func issue73Mandate(target engine.SandboxTarget) engine.SandboxExecutionMandate {
+	unmarked := []string{}
+	for _, resource := range reconcilerResources() {
+		if resource.Marker == "" {
+			unmarked = append(unmarked, resource.Key)
+		}
+	}
+	sort.Strings(unmarked)
+	approvedAt := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
+	return engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1,
+		ApprovedBy:    "dragondad22",
+		ApprovalID:    "issue-comment-5009113729",
+		ApprovedAt:    approvedAt,
+		ExpiresAt:     approvedAt.Add(14 * 24 * time.Hour),
+		Target:        target,
+		Actors:        []string{"american-dragon-designs", "codex-starter-kit-labs-reconciler", "codex-starter-kit-labs-rules", "codex-starter-kit-labs-seeder"},
+		MarkerPrefix:  markerPrefix,
+		UnmarkedKeys:  unmarked,
+		ResourceKinds: []string{engine.SandboxResourceLabel, engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView, engine.SandboxResourceProjectWorkflow, engine.SandboxResourceProjectItemProof, engine.SandboxResourceRuleset, engine.SandboxResourceFixtureIssue, engine.SandboxResourceFixtureBranch, engine.SandboxResourceFixturePR, engine.SandboxResourceFixtureWorkflow, engine.SandboxResourceFixtureReview, engine.SandboxResourceFixtureDenial, engine.SandboxResourceTokenRevocation},
+		EffectKinds:   []string{"reconcile-resource", "remove-resource"},
+		MaxEffects:    64,
+		DataClass:     "public-synthetic",
+		CostCeiling:   "zero-dollar",
+		Destructive:   "marker-scoped-fixture-cleanup-only",
+		Retention:     "30-day-raw-evidence",
+		RecoveryOwner: "dragondad22",
+	})
 }
 
 func rolePlan(stage, role, baseSHA, successHead, failingHead string) ([]engine.SandboxResourceSpec, githubadapter.SandboxRoleExpectation, githubadapter.AppInstallationConfig, githubadapter.UserTokenConfig, error) {

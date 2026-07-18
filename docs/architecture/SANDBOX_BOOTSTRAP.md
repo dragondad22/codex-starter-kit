@@ -9,9 +9,9 @@
 The lifecycle engine exposes `InspectSandbox`, `PlanSandbox`, `ApplySandbox`,
 `VerifySandbox`, `SandboxStatus`, and the composed `BootstrapSandbox` journey. A strict
 versioned manifest binds the source revision, configuration revision, immutable GitHub
-owner/repository/Project IDs, approved plan identity, marker prefix, and exact normalized
-resources. Desired policy stays in the engine; adapters can observe and apply only the
-semantic resource effects selected by the engine.
+owner/repository/Project IDs, execution-mandate identity, marker prefix, and exact
+normalized resources. Desired policy stays in the engine; adapters can observe and apply
+only the semantic resource effects selected by the engine.
 
 The approved live target is the public
 `codex-starter-kit-labs/codex-starter-kit-sandbox` repository and organization Project
@@ -22,15 +22,20 @@ paid targets, GHES, webhooks, and repository deletion are outside this contract.
 
 Inspection stops on stale/expired authority, configuration or immutable-target mismatch,
 duplicate keys, unsupported kinds, sensitive-looking manifest material, or an
-unrecognized resource colliding by kind and name. Apply requires the exact digest-bound
-plan ID and recorded human approval, refreshes capability and observation before any
-effect, and holds the repository lifecycle lease. It never steals an active lease.
+unrecognized resource colliding by kind and name. Apply requires an integrity-valid exact
+plan plus either a historical schema-v1 exact-plan approval or a schema-v2 execution
+mandate. The engine proves the plan's target, actor, effect/resource kinds, marker or
+allowlisted baseline key, maximum effects, recovery owner, and validity window remain
+contained before refreshing capability and observation. It then holds the repository
+lifecycle lease and never steals an active lease.
 
 Every attempted effect produces a credential-free receipt. Partial application remains
 `non-pass`; a new inspection plans only the remaining semantic delta. Integrity-protected
-state under `.starter-kit/sandbox/state.json` supports restart status and replay. Cleanup
-accepts only an exact approved marker and removes only that managed key. Unrecognized
-human-owned resources are preserved.
+state under `.starter-kit/sandbox/state.json` supports restart status and replay. A new
+plan digest caused by re-observation, partial completion, retry, or cleanup does not need
+another prompt while its semantic effects remain inside the mandate. Cleanup accepts only
+an approved marker and removes only that managed key. Unrecognized human-owned resources
+are preserved.
 
 Project built-in workflow configuration remains human-owned. The adapter observes and
 verifies its postcondition but returns `needs-review` instead of silently substituting an

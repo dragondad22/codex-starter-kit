@@ -163,13 +163,38 @@ type SandboxPlan struct {
 	NoChange              bool            `json:"no_change"`
 }
 
-// SandboxPlanApproval separately authorizes one exact generated plan.
+// SandboxExecutionMandate authorizes a bounded family of semantic sandbox effects.
+// Exact plans remain content-addressed evidence and must be contained by this mandate.
+type SandboxExecutionMandate struct {
+	SchemaVersion int           `json:"schema_version"`
+	ID            string        `json:"mandate_id"`
+	ApprovedBy    string        `json:"approved_by"`
+	ApprovalID    string        `json:"approval_id"`
+	ApprovedAt    time.Time     `json:"approved_at"`
+	ExpiresAt     time.Time     `json:"expires_at"`
+	Target        SandboxTarget `json:"target"`
+	Actors        []string      `json:"actors"`
+	MarkerPrefix  string        `json:"marker_prefix"`
+	UnmarkedKeys  []string      `json:"unmarked_resource_keys"`
+	ResourceKinds []string      `json:"resource_kinds"`
+	EffectKinds   []string      `json:"effect_kinds"`
+	MaxEffects    int           `json:"max_effects"`
+	DataClass     string        `json:"data_classification"`
+	CostCeiling   string        `json:"cost_ceiling"`
+	Destructive   string        `json:"destructive_ceiling"`
+	Retention     string        `json:"retention"`
+	RecoveryOwner string        `json:"recovery_owner"`
+}
+
+// SandboxPlanApproval accepts legacy exact-plan approval (schema 1) or one approved
+// execution mandate (schema 2). The legacy name remains wire-compatible with v1 evidence.
 type SandboxPlanApproval struct {
-	SchemaVersion int       `json:"schema_version"`
-	PlanID        string    `json:"plan_id"`
-	ApprovedBy    string    `json:"approved_by"`
-	ApprovalID    string    `json:"approval_id"`
-	ApprovedAt    time.Time `json:"approved_at"`
+	SchemaVersion int                      `json:"schema_version"`
+	PlanID        string                   `json:"plan_id,omitempty"`
+	ApprovedBy    string                   `json:"approved_by,omitempty"`
+	ApprovalID    string                   `json:"approval_id,omitempty"`
+	ApprovedAt    time.Time                `json:"approved_at,omitempty"`
+	Mandate       *SandboxExecutionMandate `json:"mandate,omitempty"`
 }
 
 // SandboxEffectResult is the adapter's explicit result for one semantic effect.
@@ -192,6 +217,7 @@ type SandboxEffectReceipt struct {
 	Outcome       string    `json:"outcome"`
 	Detail        string    `json:"detail"`
 	RecoveryOwner string    `json:"recovery_owner"`
+	Authorization string    `json:"authorization_id,omitempty"`
 	RecordedAt    time.Time `json:"recorded_at"`
 }
 
@@ -341,8 +367,9 @@ func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval Sa
 	if plan.ID == "" || plan.ID != digestJSON(sandboxPlanWithoutID(plan)) {
 		return result, errors.New("sandbox apply requires the exact plan identifier")
 	}
-	if approval.SchemaVersion != 1 || approval.PlanID != plan.ID || approval.ApprovedBy == "" || approval.ApprovalID == "" || approval.ApprovedAt.IsZero() {
-		return result, errors.New("sandbox apply requires separate approval of the exact generated plan")
+	authorizationID, err := validateSandboxAuthorization(plan, approval, e.clock.Now())
+	if err != nil {
+		return result, err
 	}
 	root, err := cleanRepositoryRoot(plan.Repository)
 	if err != nil || root != plan.Repository {
@@ -372,6 +399,11 @@ func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval Sa
 		result.Problems = []string{"sandbox plan is stale or authority is unavailable"}
 		return result, writeSandboxApplyState(plan, result)
 	}
+	if approval.SchemaVersion == 2 && !slices.Contains(approval.Mandate.Actors, capability.Actor) {
+		result.Status = SandboxApplyNonPass
+		result.Problems = []string{"sandbox actor is outside approved mandate"}
+		return result, writeSandboxApplyState(plan, result)
+	}
 	observation, err := e.sandboxAdapter.Observe(ctx, plan.Target)
 	if err != nil {
 		return result, fmt.Errorf("refresh sandbox observation: %w", err)
@@ -390,10 +422,10 @@ func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval Sa
 		if applyErr != nil {
 			result.Status = SandboxApplyNonPass
 			result.Problems = append(result.Problems, effect.Resource.Key+": adapter effect failed")
-			result.Receipts = append(result.Receipts, SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: "error", Detail: "sandbox adapter effect failed; inspect provider diagnostics outside retained evidence", RecoveryOwner: plan.RecoveryOwner, RecordedAt: e.clock.Now()})
+			result.Receipts = append(result.Receipts, SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: "error", Detail: "sandbox adapter effect failed; inspect provider diagnostics outside retained evidence", RecoveryOwner: plan.RecoveryOwner, Authorization: authorizationID, RecordedAt: e.clock.Now()})
 			break
 		}
-		receipt := SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, ResourceID: applied.ResourceID, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: applied.Outcome, Detail: applied.Detail, RecoveryOwner: plan.RecoveryOwner, RecordedAt: e.clock.Now()}
+		receipt := SandboxEffectReceipt{SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, ResourceKey: effect.Resource.Key, ResourceKind: effect.Resource.Kind, ResourceID: applied.ResourceID, Actor: capability.Actor, EvidenceMode: capability.EvidenceMode, Outcome: applied.Outcome, Detail: applied.Detail, RecoveryOwner: plan.RecoveryOwner, Authorization: authorizationID, RecordedAt: e.clock.Now()}
 		result.Receipts = append(result.Receipts, receipt)
 		if applied.Outcome != "applied" && applied.Outcome != "no-change" {
 			result.Status = SandboxApplyNonPass
@@ -402,6 +434,62 @@ func (e *Engine) ApplySandbox(ctx context.Context, plan SandboxPlan, approval Sa
 		}
 	}
 	return result, writeSandboxApplyState(plan, result)
+}
+
+func validateSandboxAuthorization(plan SandboxPlan, approval SandboxPlanApproval, now time.Time) (string, error) {
+	if approval.SchemaVersion == 1 {
+		if approval.PlanID != plan.ID || approval.ApprovedBy == "" || approval.ApprovalID == "" || approval.ApprovedAt.IsZero() {
+			return "", errors.New("sandbox apply requires separate approval of the exact generated plan")
+		}
+		return approval.ApprovalID, nil
+	}
+	if approval.SchemaVersion != 2 || approval.Mandate == nil {
+		return "", errors.New("sandbox apply requires an exact-plan approval or execution mandate")
+	}
+	mandate := *approval.Mandate
+	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != digestJSON(sandboxExecutionMandateWithoutID(mandate)) || mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || mandate.ExpiresAt.Before(mandate.ApprovedAt) || len(mandate.Actors) == 0 || mandate.DataClass == "" || mandate.CostCeiling == "" || mandate.Destructive == "" || mandate.Retention == "" || mandate.MaxEffects < 0 {
+		return "", errors.New("sandbox execution mandate is invalid")
+	}
+	if now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt) {
+		return "", errors.New("sandbox execution mandate is not currently valid")
+	}
+	if !equalSandboxTarget(plan.Target, mandate.Target) || plan.RecoveryOwner != mandate.RecoveryOwner || len(plan.Effects) > mandate.MaxEffects {
+		return "", errors.New("sandbox plan is outside approved mandate")
+	}
+	resourceKinds := make(map[string]struct{}, len(mandate.ResourceKinds))
+	for _, kind := range mandate.ResourceKinds {
+		resourceKinds[kind] = struct{}{}
+	}
+	effectKinds := make(map[string]struct{}, len(mandate.EffectKinds))
+	for _, kind := range mandate.EffectKinds {
+		effectKinds[kind] = struct{}{}
+	}
+	for _, effect := range plan.Effects {
+		if _, ok := resourceKinds[effect.Resource.Kind]; !ok {
+			return "", errors.New("sandbox plan is outside approved mandate")
+		}
+		if _, ok := effectKinds[effect.Kind]; !ok {
+			return "", errors.New("sandbox plan is outside approved mandate")
+		}
+		markerAllowed := effect.Resource.Marker != "" && mandate.MarkerPrefix != "" && strings.HasPrefix(effect.Resource.Marker, mandate.MarkerPrefix)
+		if !markerAllowed && !(effect.Resource.Marker == "" && slices.Contains(mandate.UnmarkedKeys, effect.Resource.Key)) {
+			return "", errors.New("sandbox plan is outside approved mandate")
+		}
+	}
+	return mandate.ID, nil
+}
+
+func sandboxExecutionMandateWithoutID(value SandboxExecutionMandate) SandboxExecutionMandate {
+	value.ID = ""
+	return value
+}
+
+// BindSandboxExecutionMandate returns the content-addressed authority envelope retained
+// by callers and receipts. It does not grant authority; ApprovedBy and ApprovalID must
+// identify the separate human-owned decision record.
+func BindSandboxExecutionMandate(value SandboxExecutionMandate) SandboxExecutionMandate {
+	value.ID = digestJSON(sandboxExecutionMandateWithoutID(value))
+	return value
 }
 
 func sandboxPlanWithoutID(value SandboxPlan) SandboxPlan {

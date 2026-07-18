@@ -1,0 +1,126 @@
+name: Apply approved contract role plan
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+      role:
+        required: true
+        type: string
+      planning_run_id:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      source_revision:
+        required: true
+        type: string
+      success_head:
+        required: false
+        type: string
+        default: ""
+      failing_head:
+        required: false
+        type: string
+        default: ""
+      base_sha:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      CSK_APP_PRIVATE_KEY:
+        required: false
+      CSK_REVIEWER_TOKEN:
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  apply:
+    environment: contract-${{ inputs.role }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download reviewed plan artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh run download "${{ inputs.planning_run_id }}"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name "${{ inputs.artifact_name }}"
+          --dir plan
+
+      - name: Rebuild credential-free approved input
+        run: >-
+          go -C tool run ./cmd/issue73-contract
+          --stage "${{ inputs.stage }}"
+          --role "${{ inputs.role }}"
+          --repository "${{ github.workspace }}"
+          --source-revision "${{ inputs.source_revision }}"
+          --base-sha "${{ inputs.base_sha }}"
+          --success-head "${{ inputs.success_head }}"
+          --failing-head "${{ inputs.failing_head }}"
+          > "${{ inputs.role }}-input.json"
+
+      - name: Bind exact plan to approved execution mandate
+        run: |
+          jq -n \
+            --slurpfile generated "${{ inputs.role }}-input.json" \
+            --slurpfile planning "plan/${{ inputs.role }}-planning.json" \
+            '{
+              role: $generated[0].role,
+              manifest: $generated[0].request.manifest,
+              plan: $planning[0].plan,
+              approval: {
+                schema_version: 2,
+                mandate: $generated[0].mandate
+              },
+              config: $generated[0].config,
+              app: $generated[0].app,
+              reviewer: $generated[0].reviewer
+            }' \
+            > "${{ inputs.role }}-apply.json"
+
+      - name: Apply and verify approved role plan
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+          CSK_REVIEWER_TOKEN: ${{ secrets.CSK_REVIEWER_TOKEN }}
+        run: >-
+          go -C tool run ./cmd/starter-kit sandbox-live-apply
+          --input "../${{ inputs.role }}-apply.json"
+          > "${{ inputs.role }}-result.json"
+
+      - name: Retain redacted apply evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-73-${{ inputs.stage }}-${{ inputs.role }}-result
+          path: ${{ inputs.role }}-result.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Require converged verification
+        run: >-
+          jq -e
+          '.apply.status == "applied" and .verification.overall_state == "pass" and .status.disposition == "converged"'
+          "${{ inputs.role }}-result.json"

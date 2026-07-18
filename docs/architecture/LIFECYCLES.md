@@ -196,9 +196,16 @@ addition beyond effective policy, and concise evidence presentation. Collaborati
 engagement adds checkpoints at planning and material decisions or effects. Repository,
 work-item, and release assurance additions compose without weakening broader policy.
 Delegated execution interrupts for unresolved governing decisions, changed or ambiguous
-authority, destructive/external/install/network effects, sensitive-data uncertainty,
+authority, destructive/external/install/network effects outside an approved scoped
+execution mandate, sensitive-data uncertainty,
 failed or stale evidence, unsafe recovery, or a material change to the approved outcome,
 plan, assumptions, cost, or compatibility.
+
+An approved execution mandate binds targets, actors, semantic effect classes, data, cost,
+compatibility, destructive limits, expiry, and recovery. Exact plans remain immutable
+evidence. Re-observation, partial completion, retry, and cleanup may regenerate a digest
+without another checkpoint when the engine proves the semantic delta remains contained.
+Containment failure, not digest change alone, is the interrupt.
 
 A profile change is attributable and prospective. It makes every affected active plan
 stale and regenerates derived views after policy/profile re-evaluation. Historical
