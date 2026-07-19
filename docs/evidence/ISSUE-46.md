@@ -107,7 +107,10 @@ grouping/sorting is not expressible, unavailable user view route, immutable Proj
 field update/replay, verified API user/classic scope, and the existing target,
 configuration, and partial-effect failure cases. It also covers unexpected broader classic
 OAuth scopes, extra Phase options, provider-ID adoption with stale-ID rejection, and both
-configured Project owner routes for option reconciliation.
+configured Project owner routes for option reconciliation. Project-item observation,
+immutable-content lookup, and postcondition reads follow bounded GraphQL cursors; a later-page
+assignment is found and exhaustion remains an explicit non-pass rather than evidence of
+absence.
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"

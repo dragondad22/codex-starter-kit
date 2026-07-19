@@ -339,31 +339,42 @@ func (adapter *SandboxAdapter) applyProjectItemField(ctx context.Context, creden
 }
 
 func (adapter *SandboxAdapter) projectItemID(ctx context.Context, credential Credential, contentID string) (string, error) {
-	var response struct {
-		Data struct {
-			Node struct {
-				Items struct {
-					Nodes []struct {
-						ID      string `json:"id"`
-						Content struct {
-							ID string `json:"id"`
-						} `json:"content"`
-					} `json:"nodes"`
-				} `json:"items"`
-			} `json:"node"`
-		} `json:"data"`
-		Errors []graphQLError `json:"errors"`
-	}
-	query := `query($id:ID!){node(id:$id){... on ProjectV2{items(first:100){nodes{id content{... on Issue{id}}}}}}}`
-	if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID}, &response); err != nil || len(response.Errors) != 0 {
-		return "", errors.New("Project item inventory is unavailable")
-	}
-	for _, item := range response.Data.Node.Items.Nodes {
-		if item.Content.ID == contentID {
-			return item.ID, nil
+	after := ""
+	for page := 0; page < sandboxGraphQLPageLimit; page++ {
+		var response struct {
+			Data struct {
+				Node struct {
+					Items struct {
+						Nodes []struct {
+							ID      string `json:"id"`
+							Content struct {
+								ID string `json:"id"`
+							} `json:"content"`
+						} `json:"nodes"`
+						PageInfo graphQLPageInfo `json:"pageInfo"`
+					} `json:"items"`
+				} `json:"node"`
+			} `json:"data"`
+			Errors []graphQLError `json:"errors"`
+		}
+		query := `query($id:ID!,$after:String){node(id:$id){... on ProjectV2{items(first:100,after:$after){nodes{id content{... on Issue{id}}} pageInfo{hasNextPage endCursor}}}}}`
+		if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID, "after": after}, &response); err != nil || len(response.Errors) != 0 {
+			return "", errors.New("Project item inventory is unavailable")
+		}
+		for _, item := range response.Data.Node.Items.Nodes {
+			if item.Content.ID == contentID {
+				return item.ID, nil
+			}
+		}
+		if !response.Data.Node.Items.PageInfo.HasNextPage {
+			return "", nil
+		}
+		after = response.Data.Node.Items.PageInfo.EndCursor
+		if after == "" {
+			return "", errors.New("Project item inventory pagination exhausted before completion")
 		}
 	}
-	return "", nil
+	return "", errors.New("Project item inventory pagination exhausted before completion")
 }
 
 func (adapter *SandboxAdapter) applyProjectOption(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {

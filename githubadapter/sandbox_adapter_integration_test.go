@@ -423,6 +423,72 @@ func TestSandboxAdapterInventoriesTheCompletePhaseOptionCatalog(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterFollowsProjectItemCursorsForPhaseAssignments(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields" {
+			json.NewEncoder(response).Encode([]any{})
+			return
+		}
+		var input struct {
+			Variables map[string]any `json:"variables"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			t.Fatal(err)
+		}
+		if input.Variables["after"] == nil {
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []map[string]any{{"id": "ITEM_other", "content": map[string]any{"id": "I_other"}}}, "pageInfo": map[string]any{"hasNextPage": true, "endCursor": "cursor-1"}}}}})
+			return
+		}
+		if input.Variables["after"] != "cursor-1" {
+			t.Fatalf("cursor = %#v", input.Variables["after"])
+		}
+		json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"items": map[string]any{"nodes": []map[string]any{{"id": "ITEM_1", "content": map[string]any{"id": "I_feature_1"}, "fieldValues": map[string]any{"nodes": []map[string]any{{"optionId": "O_phase_0", "field": map[string]any{"id": "F_phase"}}}}}}, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	assignment := engine.SandboxResourceSpec{Key: "project-item-field:feature-1-phase", Kind: engine.SandboxResourceProjectItemField, Name: "Feature 1 Phase", Attributes: map[string]string{"content_id": "I_feature_1", "field": "Phase", "field_id": "F_phase", "option_id": "O_phase_0"}}
+	config, providers := userProjectSandboxConfig(server, target, now, assignment)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Problems) != 0 || len(observation.Resources) != 1 || observation.Resources[0].ID != "ITEM_1" {
+		t.Fatalf("paginated Project observation = %#v, %v", observation, err)
+	}
+}
+
+func TestSandboxAdapterReportsProjectItemPaginationExhaustion(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	page := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			json.NewEncoder(response).Encode([]any{})
+			return
+		}
+		page++
+		node := map[string]any{"items": map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": true, "endCursor": fmt.Sprintf("cursor-%d", page)}}}
+		if page == 1 {
+			node["views"] = map[string]any{"nodes": []any{}}
+			node["workflows"] = map[string]any{"nodes": []any{}}
+		}
+		json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": node}})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	assignment := engine.SandboxResourceSpec{Key: "project-item-field:feature-1-phase", Kind: engine.SandboxResourceProjectItemField, Name: "Feature 1 Phase", Attributes: map[string]string{"content_id": "I_feature_1", "field": "Phase", "field_id": "F_phase", "option_id": "O_phase_0"}}
+	config, providers := userProjectSandboxConfig(server, target, now, assignment)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || !strings.Contains(strings.Join(observation.Problems, ";"), "pagination exhausted") {
+		t.Fatalf("pagination exhaustion = %#v, %v", observation, err)
+	}
+}
+
 func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

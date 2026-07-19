@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	SandboxRoleReconciler = "reconciler"
-	SandboxRoleSeeder     = "seeder"
-	SandboxRoleRules      = "rules"
-	SandboxRoleReviewer   = "reviewer"
+	SandboxRoleReconciler   = "reconciler"
+	SandboxRoleSeeder       = "seeder"
+	SandboxRoleRules        = "rules"
+	SandboxRoleReviewer     = "reviewer"
+	sandboxGraphQLPageLimit = 10
 )
 
 var sandboxRoles = []string{SandboxRoleReconciler, SandboxRoleSeeder, SandboxRoleRules}
@@ -384,31 +385,39 @@ type projectGraphQLInventory struct {
 				} `json:"nodes"`
 			} `json:"workflows"`
 			Items struct {
-				Nodes []struct {
-					ID      string `json:"id"`
-					Content struct {
-						ID     string `json:"id"`
-						Number int    `json:"number"`
-						Title  string `json:"title"`
-						Body   string `json:"body"`
-						State  string `json:"state"`
-					} `json:"content"`
-					Status struct {
-						Name string `json:"name"`
-					} `json:"fieldValueByName"`
-					FieldValues struct {
-						Nodes []struct {
-							OptionID string `json:"optionId"`
-							Field    struct {
-								ID string `json:"id"`
-							} `json:"field"`
-						} `json:"nodes"`
-					} `json:"fieldValues"`
-				} `json:"nodes"`
+				Nodes    []projectGraphQLItem `json:"nodes"`
+				PageInfo graphQLPageInfo      `json:"pageInfo"`
 			} `json:"items"`
 		} `json:"node"`
 	} `json:"data"`
 	Errors []graphQLError `json:"errors"`
+}
+
+type graphQLPageInfo struct {
+	HasNextPage bool   `json:"hasNextPage"`
+	EndCursor   string `json:"endCursor"`
+}
+
+type projectGraphQLItem struct {
+	ID      string `json:"id"`
+	Content struct {
+		ID     string `json:"id"`
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Body   string `json:"body"`
+		State  string `json:"state"`
+	} `json:"content"`
+	Status struct {
+		Name string `json:"name"`
+	} `json:"fieldValueByName"`
+	FieldValues struct {
+		Nodes []struct {
+			OptionID string `json:"optionId"`
+			Field    struct {
+				ID string `json:"id"`
+			} `json:"field"`
+		} `json:"nodes"`
+	} `json:"fieldValues"`
 }
 
 func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, []string) {
@@ -418,9 +427,12 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 		return nil, []string{"Project field inventory is unavailable"}
 	}
 	var inventory projectGraphQLInventory
-	query := `query($id:ID!){node(id:$id){... on ProjectV2{views(first:50){nodes{id name number layout filter fields(first:50){nodes{... on ProjectV2FieldCommon{id}}} groupByFields(first:10){nodes{... on ProjectV2FieldCommon{id}}} sortByFields(first:10){nodes{direction field{... on ProjectV2FieldCommon{id}}}}}} workflows(first:50){nodes{id name number enabled}} items(first:100){nodes{id content{... on Issue{id number title body state}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}}}}}}`
+	query := `query($id:ID!){node(id:$id){... on ProjectV2{views(first:50){nodes{id name number layout filter fields(first:50){nodes{... on ProjectV2FieldCommon{id}}} groupByFields(first:10){nodes{... on ProjectV2FieldCommon{id}}} sortByFields(first:10){nodes{direction field{... on ProjectV2FieldCommon{id}}}}}} workflows(first:50){nodes{id name number enabled}} items(first:100){nodes{id content{... on Issue{id number title body state}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}} pageInfo{hasNextPage endCursor}}}}}`
 	if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID}, &inventory); err != nil || len(inventory.Errors) != 0 {
 		return nil, []string{"Project view or workflow inventory is unavailable"}
+	}
+	if problem := adapter.appendProjectItemPages(ctx, credential, &inventory); problem != "" {
+		return nil, []string{problem}
 	}
 	result := []engine.SandboxObservedResource{}
 	problems := adapter.projectCatalogProblems(fields)
@@ -475,6 +487,34 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 		}
 	}
 	return result, problems
+}
+
+func (adapter *SandboxAdapter) appendProjectItemPages(ctx context.Context, credential Credential, inventory *projectGraphQLInventory) string {
+	pageInfo := inventory.Data.Node.Items.PageInfo
+	for page := 1; pageInfo.HasNextPage; page++ {
+		if page >= sandboxGraphQLPageLimit || pageInfo.EndCursor == "" {
+			return "Project item inventory pagination exhausted before completion"
+		}
+		var response struct {
+			Data struct {
+				Node struct {
+					Items struct {
+						Nodes    []projectGraphQLItem `json:"nodes"`
+						PageInfo graphQLPageInfo      `json:"pageInfo"`
+					} `json:"items"`
+				} `json:"node"`
+			} `json:"data"`
+			Errors []graphQLError `json:"errors"`
+		}
+		query := `query($id:ID!,$after:String!){node(id:$id){... on ProjectV2{items(first:100,after:$after){nodes{id content{... on Issue{id number title body state}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}} pageInfo{hasNextPage endCursor}}}}}`
+		if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID, "after": pageInfo.EndCursor}, &response); err != nil || len(response.Errors) != 0 {
+			return "Project item inventory page is unavailable"
+		}
+		inventory.Data.Node.Items.Nodes = append(inventory.Data.Node.Items.Nodes, response.Data.Node.Items.Nodes...)
+		pageInfo = response.Data.Node.Items.PageInfo
+	}
+	inventory.Data.Node.Items.PageInfo = pageInfo
+	return ""
 }
 
 func (adapter *SandboxAdapter) projectCatalogProblems(fields []projectField) []string {
