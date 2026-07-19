@@ -273,6 +273,48 @@ func TestManagedTaskApplyRejectsChangedObservation(t *testing.T) {
 	}
 }
 
+func TestManagedTaskApplyRejectsRelationshipOnlyObservationChange(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.Readiness = "blocked"
+	request.Intent.Task.Blockers = []engine.WorkDependency{{ManagedID: "issue:64", Closed: false}}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", BlockedBy: []string{"issue:64"},
+		ReadinessOption: "option:blocked", StatusOption: "option:next", Phase: "Phase 3",
+		Review: request.Intent.Task.Review,
+	}
+	observation.Relationships = engine.WorkRelationshipObservation{Observed: true, Blockers: []engine.WorkDependency{{ManagedID: "issue:64", Closed: false}}}
+	observation.Revision = "observation:blocker-open"
+	adapter.SetObservation(observation)
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := adapter.Observation()
+	changed.Relationships.Blockers[0].Closed = true
+	changed.Revision = "observation:blocker-closed"
+	adapter.SetObservation(changed)
+
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("relationship-only observation drift must reject the retained plan")
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Disposition != "stale" || len(status.Receipts) != 0 {
+		t.Fatalf("relationship-only drift must stop before effects: %#v", status)
+	}
+}
+
 func TestManagedTaskApplyRejectsChangedCapability(t *testing.T) {
 	t.Parallel()
 

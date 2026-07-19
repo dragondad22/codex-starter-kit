@@ -256,6 +256,14 @@ func TestObserveIncludesBoundedParentAndDirectDependentSlice(t *testing.T) {
 	if !observation.Relationships.Observed || observation.Relationships.ParentManagedID != "issue:4" || len(observation.Relationships.OtherChildren) != 1 || observation.Relationships.OtherChildren[0].ManagedID != "issue:46" || len(observation.Relationships.Dependents) != 1 || len(observation.Relationships.Dependents[0].Blockers) != 2 {
 		t.Fatalf("native hierarchy or dependency facts were lost: %#v", observation.Relationships)
 	}
+	issues[2].(map[string]any)["state"] = "closed"
+	changed, err := adapter.Observe(context.Background(), target, "issue:15", "issue:4", "issue:74")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Revision == observation.Revision || !changed.Relationships.OtherChildren[0].Closed || !changed.Relationships.Dependents[0].Blockers[1].Closed {
+		t.Fatalf("relationship-only change must produce a fresh authoritative revision: before=%s after=%#v", observation.Revision, changed)
+	}
 }
 
 func TestObserveFailsClosedWhenNativeDependencyEndpointIsUnavailable(t *testing.T) {

@@ -224,11 +224,12 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		observation.RelatedTasks = related
 	}
 	observation.Revision = digest(struct {
-		Task     *engine.WorkObservedTask
-		Related  []engine.WorkObservedTask
-		State    string
-		Problems []string
-	}{observation.Task, observation.RelatedTasks, observation.Disposition, observation.Problems})
+		Task          *engine.WorkObservedTask
+		Related       []engine.WorkObservedTask
+		Relationships engine.WorkRelationshipObservation
+		State         string
+		Problems      []string
+	}{observation.Task, observation.RelatedTasks, observation.Relationships, observation.Disposition, observation.Problems})
 	return observation, nil
 }
 

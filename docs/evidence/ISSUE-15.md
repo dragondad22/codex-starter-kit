@@ -99,6 +99,8 @@ Focused deterministic coverage now includes:
 - partial related-effect denial, restart, residual-only plan, and convergence;
 - bounded production-adapter observation of native parent/sub-issue and complete direct
   dependency slices with selected and related immutable identities;
+- relationship-only closure changes produce a new observation revision and stale retained
+  plans stop before effects;
 - fail-closed behavior when GitHub's native dependency endpoint is unavailable;
 - parent issue closure and Status correction without rewriting human content; and
 - existing stale target/configuration, permission denial, partial response, rate,
