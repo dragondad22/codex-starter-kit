@@ -39,6 +39,7 @@ func run(ctx context.Context, arguments []string) error {
 	stage := flags.String("stage", "", "plan or apply")
 	repository := flags.String("repository", "", "local evidence-state repository")
 	source := flags.String("source-revision", "", "reviewed source revision")
+	observedAtText := flags.String("observed-at", "", "pinned capability observation time in RFC3339")
 	expectedPlan := flags.String("expected-plan-id", "", "exact reviewed plan identity")
 	approvalID := flags.String("approval-id", "", "durable owner approval record")
 	approvedAtText := flags.String("approved-at", "", "owner approval time in RFC3339")
@@ -46,14 +47,17 @@ func run(ctx context.Context, arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
-	if (*stage != "plan" && *stage != "apply") || *repository == "" || *source == "" || flags.NArg() != 0 {
-		return errors.New("--stage plan|apply, --repository, and --source-revision are required; positional arguments are unsupported")
+	if (*stage != "plan" && *stage != "apply") || *repository == "" || *source == "" || *observedAtText == "" || flags.NArg() != 0 {
+		return errors.New("--stage plan|apply, --repository, --source-revision, and --observed-at are required; positional arguments are unsupported")
 	}
 	token := os.Getenv(tokenEnvironment)
 	if token == "" {
 		return fmt.Errorf("%s is required", tokenEnvironment)
 	}
-	now := time.Now().UTC()
+	now, err := time.Parse(time.RFC3339, *observedAtText)
+	if err != nil {
+		return errors.New("--observed-at must be RFC3339")
+	}
 	resources := phaseResources()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_kgDOTVs5Hg", ProjectID: "PVT_kwHOASd_cc4BdI9q", RepositoryName: "dragondad22/codex-starter-kit"}
 	expectation := githubadapter.SandboxRoleExpectation{Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", RequiredPermissions: []string{"projects:write"}}
@@ -66,11 +70,11 @@ func run(ctx context.Context, arguments []string) error {
 	provider := githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
 		return githubadapter.Credential{Token: token, Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", Permissions: []string{"projects:write"}, ExpiresAt: now.Add(time.Hour)}, nil
 	})
-	adapter, err := githubadapter.NewSandbox(config, map[string]githubadapter.CredentialProvider{githubadapter.SandboxRoleReconciler: provider}, http.DefaultClient)
+	adapter, err := githubadapter.NewSandbox(config, map[string]githubadapter.CredentialProvider{githubadapter.SandboxRoleReconciler: provider}, http.DefaultClient, githubadapter.WithSandboxClock(func() time.Time { return now }))
 	if err != nil {
 		return err
 	}
-	lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
+	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithSandboxAdapter(adapter))
 	authority := engine.SandboxAuthorityProfile{
 		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleReconciler, expectation)},
 		Permissions:          []string{"reconciler:projects:write"}, EvidenceMode: "live", Compatibility: "github.com:api.github.com:2026-03-10:native-rest-graphql",
@@ -130,6 +134,10 @@ func run(ctx context.Context, arguments []string) error {
 	output.Mandate, output.Apply, output.Verification, output.ReplayPlan, output.ReplayApply = &mandate, &apply, &verification, &replayPlan, &replayApply
 	return json.NewEncoder(os.Stdout).Encode(output)
 }
+
+type fixedClock struct{ now time.Time }
+
+func (clock fixedClock) Now() time.Time { return clock.now }
 
 func phaseResources() []engine.SandboxResourceSpec {
 	resources := []engine.SandboxResourceSpec{{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select", "node_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k"}}}
