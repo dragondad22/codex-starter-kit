@@ -71,9 +71,12 @@ version-pinned GitHub parent, sub-issue, `blocked_by`, and `blocking` endpoints.
 retains governed relationship identities, parent-completion satisfaction, Ready
 eligibility, and lifecycle policy, but cannot override an observed issue closure, sibling
 progress, or blocker closure facts. Governed intent may request closure, but it cannot
-reverse a native closure merely because its input is stale. The engine compares the complete bounded graph
-with that policy and stops on mismatches, unavailable endpoints, missing stable identities or
-Project items, incomplete parent membership, ambiguity, or pagination exhaustion.
+reverse a native closure merely because its input is stale. The engine compares the
+complete bounded graph with that policy and stops on mismatches, unavailable endpoints,
+missing stable identities or Project items, incomplete parent membership, ambiguity, or
+pagination exhaustion. Observed parent Status and closure also replace caller copies
+before child progress is derived, so stale `Done`/closed input cannot control an open,
+unstarted native parent.
 
 ## Verification
 
@@ -93,9 +96,12 @@ Focused deterministic coverage now includes:
 - all-children-complete parent closure plus effect-free replay;
 - rejection of unexplained open parents after every child closes;
 - no dependent promotion while any blocker remains open;
+- public-seam fuzz seeds covering every open/closed sibling and other-blocker combination;
 - rejection of a direct dependent cycle before durable state;
 - restoring explicit lifecycle fields for a natively reopened issue without rewriting its
   issue state;
+- ignoring stale caller parent lifecycle facts in favor of the observed parent and native
+  child-progress baseline;
 - partial related-effect denial, restart, residual-only plan, and convergence;
 - bounded production-adapter observation of native parent/sub-issue and complete direct
   dependency slices with selected and related immutable identities;

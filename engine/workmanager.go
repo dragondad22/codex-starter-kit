@@ -1043,8 +1043,10 @@ func effectiveManagedTask(task DesiredManagedTask, observation WorkObservation, 
 			return DesiredManagedTask{}, errors.New("native parent is missing its managed Project observation")
 		}
 		parent := *task.ParentContext
+		parent.Status = observedStatus(*parentObserved, target)
+		parent.Closed = parentObserved.Closed
 		parent.OtherChildren = slices.Clone(observation.Relationships.OtherChildren)
-		if observedStatus(*parentObserved, target) == "" || !sameManagedIDsFromRelated(task.ParentContext.OtherChildren, parent.OtherChildren) {
+		if parent.Status == "" || !sameManagedIDsFromRelated(task.ParentContext.OtherChildren, parent.OtherChildren) {
 			return DesiredManagedTask{}, errors.New("native parent child slice differs from governed intent")
 		}
 		effective.ParentContext = &parent
@@ -1184,6 +1186,11 @@ func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
 	} else if anyStarted {
 		facts.ParentStatus = "in-progress"
 		facts.ParentClosed = false
+	} else {
+		facts.ParentClosed = false
+		if facts.ParentStatus == "in-progress" || facts.ParentStatus == "done" {
+			facts.ParentStatus = "backlog"
+		}
 	}
 	return facts
 }
@@ -1221,6 +1228,11 @@ func deriveRelatedManagedTasks(task DesiredManagedTask) []DesiredManagedTask {
 		} else if anyStarted {
 			parent.Status = "in-progress"
 			parent.Closed = false
+		} else {
+			parent.Closed = false
+			if parent.Status == "in-progress" || parent.Status == "done" {
+				parent.Status = "backlog"
+			}
 		}
 		related = append(related, parent)
 	}

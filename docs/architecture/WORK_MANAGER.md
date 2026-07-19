@@ -80,8 +80,10 @@ sub-issue slice, the selected issue's blockers and direct dependents, and every 
 complete blocker slice. A native issue closure cannot be reversed by stale intent, while
 governed intent may still request closure; native relationship facts remain authoritative.
 The intent retains only governed identities, parent-completion satisfaction, Ready
-eligibility, and desired lifecycle policy. Missing endpoints, stable identities, Project
-items, lifecycle options, expected relationships, or an exact selected-child membership
+eligibility, and desired lifecycle policy. Observed parent Status and closure form the
+baseline before native child progress derives `backlog`, `in-progress`, or `done`; caller
+copies of those lifecycle facts are not trusted. Missing endpoints, stable identities,
+Project items, lifecycle options, expected relationships, or exact selected-child membership
 produce a non-pass instead of falling back to issue prose or caller-supplied state.
 #74 composes this reconciliation path with authoritative issue bodies, subtype completion,
 Horizon, Phase, and broader executable-work governance.
