@@ -132,7 +132,13 @@ its stale Project Status `Next`, reproducing a missed close-to-Done transition r
 combining ordinary issue closure with reconciliation. Every stage validates the executing
 commit, workflow digest, resource digest, exact App permission profile, approval record,
 and bounded lease. The setup receipt establishes the immutable issue IDs used by later
-Project setup and cleanup; marker text alone cannot authorize mutation. The live result
-remains `not-configured` until those exact values receive a new bounded mandate and the
-resulting run passes; it is the final #15 acceptance gate before this issue or its draft PR
-can complete.
+Project setup, planning, apply, and cleanup; marker text alone cannot authorize mutation.
+The installed workflow replaces its reviewed source placeholder with one exact commit
+before installation, so dispatch cannot select code that receives App authority. Runtime
+also hashes the executing sandbox workflow and resolves the numeric public GitHub comment
+to an owner-authored approval containing the exact source, workflow, resource, and expiry
+facts. Cleanup tombstones synthetic issue bodies and removes active markers, preserving
+artifact evidence while allowing a later bounded run to use fresh immutable IDs. The live
+result remains `not-configured` until those exact values receive a new bounded mandate and
+the resulting run passes; it is the final #15 acceptance gate before this issue or its
+draft PR can complete.

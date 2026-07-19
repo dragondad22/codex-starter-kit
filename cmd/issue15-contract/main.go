@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,6 +62,7 @@ type roleConfig struct {
 type planningEvidence struct {
 	SchemaVersion int                   `json:"schema_version"`
 	Mandate       contractMandate       `json:"mandate"`
+	FixtureDigest string                `json:"fixture_digest"`
 	Inspection    engine.WorkInspection `json:"inspection"`
 	Plan          engine.WorkPlan       `json:"plan"`
 }
@@ -125,8 +127,10 @@ func main() {
 	if _, intentErr := contractIntent(*source); intentErr != nil {
 		fatal("%v", intentErr)
 	}
-	if err := verifyReviewedSource(*source, *workflowPath, *workflowDigest); err != nil {
-		fatal("%v", err)
+	if *stage != "mandate" {
+		if err := verifyReviewedSource(*source, *workflowPath, *workflowDigest); err != nil {
+			fatal("%v", err)
+		}
 	}
 	mandate, mandateErr := bindContractMandate(*source, *approvalID, *approvedAt, *expiresAt, *workflowDigest)
 	if mandateErr != nil {
@@ -136,8 +140,13 @@ func main() {
 	if *stage != "mandate" && (*mandateDigest == "" || mandate.Digest != *mandateDigest || now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt)) {
 		fatal("execution mandate is absent, mismatched, or expired")
 	}
+	if *stage != "mandate" {
+		if err := verifyOwnerApproval(ctx, mandate); err != nil {
+			fatal("%v", err)
+		}
+	}
 	lease := []fixtureEvidence{}
-	if *stage == "project-setup" || *stage == "cleanup" {
+	if *stage == "project-setup" || *stage == "plan" || *stage == "apply" || *stage == "cleanup" {
 		var fixture fixtureEvidence
 		if *fixturePath == "" || readStrictJSON(*fixturePath, &fixture) != nil {
 			fatal("--fixture must name the exact valid setup evidence for %s", *stage)
@@ -154,12 +163,12 @@ func main() {
 	case "cleanup":
 		result, err = runFixtureStage(ctx, "cleanup", "seeder", mandate, lease...)
 	case "plan":
-		result, err = runPlan(ctx, *repository, *source, mandate)
+		result, err = runPlan(ctx, *repository, *source, mandate, lease[0])
 	case "apply":
 		if *planPath == "" || *planID == "" {
 			fatal("--plan and --plan-id are required for apply")
 		}
-		result, err = runApply(ctx, *repository, *source, *planPath, *planID, mandate)
+		result, err = runApply(ctx, *repository, *source, *planPath, *planID, mandate, lease[0])
 	}
 	if err != nil {
 		fatal("%v", err)
@@ -171,12 +180,16 @@ func main() {
 	}
 }
 
-func runPlan(ctx context.Context, repository, source string, mandate contractMandate) (planningEvidence, error) {
+func runPlan(ctx context.Context, repository, source string, mandate contractMandate, lease fixtureEvidence) (planningEvidence, error) {
+	if err := verifyContractLease(ctx, "reconciler", mandate, lease); err != nil {
+		return planningEvidence{}, err
+	}
 	adapter, err := newWorkAdapter("reconciler")
 	if err != nil {
 		return planningEvidence{}, err
 	}
-	intent, err := contractIntent(source)
+	fixtureDigest := digestJSON(lease)
+	intent, err := contractIntent(source, fixtureDigest)
 	if err != nil {
 		return planningEvidence{}, err
 	}
@@ -189,10 +202,13 @@ func runPlan(ctx context.Context, repository, source string, mandate contractMan
 	if err != nil {
 		return planningEvidence{}, err
 	}
-	return planningEvidence{SchemaVersion: 1, Mandate: mandate, Inspection: inspection, Plan: plan}, nil
+	return planningEvidence{SchemaVersion: 1, Mandate: mandate, FixtureDigest: fixtureDigest, Inspection: inspection, Plan: plan}, nil
 }
 
-func runApply(ctx context.Context, repository, source, path, expectedPlanID string, mandate contractMandate) (applyEvidence, error) {
+func runApply(ctx context.Context, repository, source, path, expectedPlanID string, mandate contractMandate, lease fixtureEvidence) (applyEvidence, error) {
+	if err := verifyContractLease(ctx, "reconciler", mandate, lease); err != nil {
+		return applyEvidence{}, err
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return applyEvidence{}, fmt.Errorf("read planning evidence: %w", err)
@@ -207,7 +223,7 @@ func runApply(ctx context.Context, repository, source, path, expectedPlanID stri
 	if err != nil {
 		return applyEvidence{}, err
 	}
-	if planning.SchemaVersion != 1 || planning.Mandate.Digest != mandate.Digest || planning.Plan.ID != expectedPlanID || planning.Plan.SourceRevision != source || planning.Plan.Repository != filepath.Clean(root) {
+	if planning.SchemaVersion != 1 || planning.Mandate.Digest != mandate.Digest || planning.FixtureDigest != digestJSON(lease) || planning.Plan.ID != expectedPlanID || planning.Plan.SourceRevision != source || planning.Plan.Repository != filepath.Clean(root) {
 		return applyEvidence{}, errors.New("planning evidence differs from the approved plan, source, or repository")
 	}
 	adapter, err := newWorkAdapter("reconciler")
@@ -233,15 +249,22 @@ func runApply(ctx context.Context, repository, source, path, expectedPlanID stri
 	return applyEvidence{SchemaVersion: 1, Mandate: mandate, Apply: apply, Verification: verification, Status: status}, nil
 }
 
-func contractIntent(source string) (engine.WorkDesiredIntent, error) {
+func contractIntent(source string, fixtureDigest ...string) (engine.WorkDesiredIntent, error) {
 	if !isCommit(source) {
 		return engine.WorkDesiredIntent{}, errors.New("--source-revision must be an exact 40- or 64-character hexadecimal commit")
 	}
 	target := workTarget()
 	task := contractTask()
+	inputDigests := map[string]string{"fixture-spec": contractResourceDigest()}
+	if len(fixtureDigest) != 0 {
+		if len(fixtureDigest) != 1 || !isSHA256(fixtureDigest[0]) {
+			return engine.WorkDesiredIntent{}, errors.New("managed-task intent fixture lease digest is invalid")
+		}
+		inputDigests["fixture-lease"] = fixtureDigest[0]
+	}
 	return engine.WorkDesiredIntent{
 		SchemaVersion: 1, OperationID: "issue-15-live-native-reconciliation-v1", SourceRevision: source,
-		OperatingProfileRevision: operatingProfile, InputDigests: map[string]string{"fixture-spec": contractResourceDigest()},
+		OperatingProfileRevision: operatingProfile, InputDigests: inputDigests,
 		Credential: engine.WorkCredentialExpectation{Mode: "app-installation", Actor: reconcilerActor}, Target: target, Task: task,
 	}, nil
 }
@@ -341,17 +364,28 @@ func newWorkAdapter(role string) (*githubadapter.Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	provider, err := appProvider(configuration.App)
+	rawProvider, err := appProvider(configuration.App)
 	if err != nil {
 		return nil, err
 	}
+	provider := githubadapter.CredentialProviderFunc(func(ctx context.Context) (githubadapter.Credential, error) {
+		credential, credentialErr := rawProvider.Credential(ctx)
+		if credentialErr != nil {
+			return credential, credentialErr
+		}
+		if !exactPermissions(credential.Permissions, configuration.RequiredPermissions) {
+			return githubadapter.Credential{}, errors.New("GitHub App permission profile differs from the approved raw authority")
+		}
+		credential.Permissions = []string{"issues:write", "metadata:read", "projects:write", "pull_requests:read"}
+		return credential, nil
+	})
 	target := workTarget()
 	return githubadapter.New(githubadapter.Config{
 		Host: "github.com", RESTBaseURL: restBaseURL, GraphQLURL: graphQLURL, APIVersion: apiVersion,
 		Mode: "app-installation", Actor: configuration.App.Actor, ActorKind: "app", Account: repositoryOwner,
 		InstallationID: configuration.App.InstallationID, RepositoryOwner: repositoryOwner, RepositoryName: repositoryName,
 		RepositoryID: repositoryID, ProjectOwner: repositoryOwner, ProjectOwnerKind: "organization", ProjectID: projectID,
-		FieldIDs: target.FieldIDs, OptionIDs: target.OptionIDs, RequiredPermissions: configuration.RequiredPermissions,
+		FieldIDs: target.FieldIDs, OptionIDs: target.OptionIDs, RequiredPermissions: []string{"issues:write", "metadata:read", "projects:write", "pull_requests:read"},
 		MaxPages: 10, EvidenceMode: "live", LiveTargetApproved: true,
 	}, provider, http.DefaultClient)
 }
@@ -414,6 +448,55 @@ func verifyReviewedSource(source, workflowPath, expectedWorkflowDigest string) e
 	digest := sha256.Sum256(content)
 	if hex.EncodeToString(digest[:]) != expectedWorkflowDigest {
 		return errors.New("executing workflow source does not match its approved digest")
+	}
+	return nil
+}
+
+func verifyOwnerApproval(ctx context.Context, mandate contractMandate) error {
+	return verifyOwnerApprovalAt(ctx, mandate, "https://api.github.com", http.DefaultClient)
+}
+
+func verifyOwnerApprovalAt(ctx context.Context, mandate contractMandate, baseURL string, client *http.Client) error {
+	commentID, err := strconv.ParseInt(mandate.ApprovalID, 10, 64)
+	if err != nil || commentID <= 0 {
+		return errors.New("approval record must be a numeric GitHub issue-comment identity")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/repos/dragondad22/codex-starter-kit/issues/comments/"+strconv.FormatInt(commentID, 10), nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", apiVersion)
+	request.Header.Set("User-Agent", "codex-starter-kit")
+	response, err := client.Do(request)
+	if err != nil {
+		return errors.New("owner approval record is unavailable")
+	}
+	defer response.Body.Close()
+	var comment struct {
+		Body              string    `json:"body"`
+		CreatedAt         time.Time `json:"created_at"`
+		AuthorAssociation string    `json:"author_association"`
+		User              struct {
+			Login string `json:"login"`
+			Type  string `json:"type"`
+		} `json:"user"`
+	}
+	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&comment) != nil {
+		return errors.New("owner approval record is absent or invalid")
+	}
+	required := []string{
+		"starter-kit-mandate: issue-15", "decision: approved", "source_revision: " + mandate.SourceRevision,
+		"workflow_digest: " + mandate.WorkflowDigest, "resource_digest: " + mandate.ResourceDigest,
+		"expires_at: " + mandate.ExpiresAt.Format(time.RFC3339),
+	}
+	if comment.User.Login != "dragondad22" || comment.User.Type != "User" || comment.AuthorAssociation != "OWNER" || !comment.CreatedAt.Equal(mandate.ApprovedAt) {
+		return errors.New("approval record actor or timestamp differs from the mandate")
+	}
+	for _, fact := range required {
+		if !strings.Contains(comment.Body, fact) {
+			return errors.New("approval record does not contain every exact mandate fact")
+		}
 	}
 	return nil
 }

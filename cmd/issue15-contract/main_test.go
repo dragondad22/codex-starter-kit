@@ -117,6 +117,38 @@ func TestExactPermissionsRejectBroadenedFixtureAuthority(t *testing.T) {
 	}
 }
 
+func TestOwnerApprovalRequiresExactOwnerAuthoredMandateFacts(t *testing.T) {
+	t.Parallel()
+	mandate, err := bindContractMandate(strings.Repeat("a", 40), "123", "2026-07-19T12:00:00Z", "2026-07-20T12:00:00Z", strings.Repeat("b", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Join([]string{
+		"starter-kit-mandate: issue-15", "decision: approved", "source_revision: " + mandate.SourceRevision,
+		"workflow_digest: " + mandate.WorkflowDigest, "resource_digest: " + mandate.ResourceDigest,
+		"expires_at: " + mandate.ExpiresAt.Format("2006-01-02T15:04:05Z07:00"),
+	}, "\n")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/dragondad22/codex-starter-kit/issues/comments/123" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"body": body, "created_at": "2026-07-19T12:00:00Z", "author_association": "OWNER",
+			"user": map[string]string{"login": "dragondad22", "type": "User"},
+		})
+	}))
+	defer server.Close()
+	if err := verifyOwnerApprovalAt(context.Background(), mandate, server.URL, server.Client()); err != nil {
+		t.Fatal(err)
+	}
+	mandate.WorkflowDigest = strings.Repeat("c", 64)
+	if err := verifyOwnerApprovalAt(context.Background(), mandate, server.URL, server.Client()); err == nil {
+		t.Fatal("changed workflow digest must not reuse approval")
+	}
+}
+
 func TestFixtureRelationshipsUsePinnedNativeRequestShapes(t *testing.T) {
 	t.Parallel()
 	requests := []struct {

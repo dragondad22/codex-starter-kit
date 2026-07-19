@@ -17,6 +17,8 @@ import (
 	"github.com/dragondad22/codex-starter-kit/githubadapter"
 )
 
+const fixtureTombstone = "Contract fixture retired. Immutable evidence is retained in the 30-day workflow artifact for issue #15."
+
 type fixtureIssue struct {
 	ID     int64  `json:"id"`
 	NodeID string `json:"node_id"`
@@ -36,6 +38,8 @@ type fixtureEvidence struct {
 	Issues        map[string]fixtureIssue `json:"issues"`
 	Relationships []string                `json:"relationships"`
 	ProjectStates map[string]string       `json:"project_states,omitempty"`
+	Disposition   string                  `json:"disposition"`
+	Problems      []string                `json:"problems"`
 }
 
 type fixtureAPI struct {
@@ -43,6 +47,27 @@ type fixtureAPI struct {
 	token      string
 	restBase   string
 	graphQLURL string
+}
+
+func verifyContractLease(ctx context.Context, role string, mandate contractMandate, lease fixtureEvidence) error {
+	configuration, err := roleConfiguration(role)
+	if err != nil {
+		return err
+	}
+	provider, err := appProvider(configuration.App)
+	if err != nil {
+		return err
+	}
+	credential, err := provider.Credential(ctx)
+	if err != nil {
+		return err
+	}
+	if credential.Actor != configuration.App.Actor || !exactPermissions(credential.Permissions, configuration.RequiredPermissions) {
+		return errors.New("lease verification credential differs from the reviewed role contract")
+	}
+	api := &fixtureAPI{client: http.DefaultClient, token: credential.Token, restBase: restBaseURL, graphQLURL: graphQLURL}
+	_, err = api.verifyLease(ctx, mandate, []fixtureEvidence{lease}, true)
+	return err
 }
 
 func runFixtureStage(ctx context.Context, stage, role string, mandate contractMandate, lease ...fixtureEvidence) (fixtureEvidence, error) {
@@ -63,6 +88,8 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 	}
 	api := &fixtureAPI{client: http.DefaultClient, token: credential.Token, restBase: restBaseURL, graphQLURL: graphQLURL}
 	issues := map[string]fixtureIssue{}
+	disposition := "configured"
+	problems := []string{}
 	switch stage {
 	case "setup":
 		issues, err = api.findFixtures(ctx)
@@ -74,19 +101,26 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 		}
 		issues, err = api.setup(ctx, issues)
 		if err != nil {
+			setupErr := err
 			recoveryIssues, discoveryErr := api.findFixtures(ctx)
 			if discoveryErr == nil {
 				issues = recoveryIssues
 			}
 			cleanupErr := api.cleanupPartial(ctx, issues)
 			if cleanupErr != nil {
-				err = fmt.Errorf("setup failed and automatic marker-scoped recovery also failed: %v; recovery: %w", err, cleanupErr)
+				disposition = "needs-recovery"
+				problems = []string{setupErr.Error(), cleanupErr.Error()}
 			} else if discoveryErr != nil {
-				err = fmt.Errorf("setup failed and recovery discovery was non-pass: %v; recovery: %w", err, discoveryErr)
+				disposition = "needs-recovery"
+				problems = []string{setupErr.Error(), discoveryErr.Error()}
+			} else {
+				disposition = "recovered-non-pass"
+				problems = []string{setupErr.Error()}
 			}
+			err = nil
 		}
 	case "project-setup":
-		issues, err = api.verifyLease(ctx, mandate, lease)
+		issues, err = api.verifyLease(ctx, mandate, lease, true)
 		if err == nil {
 			err = api.setProjectBaseline(ctx, issues)
 			if err == nil {
@@ -94,7 +128,7 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 			}
 		}
 	case "cleanup":
-		issues, err = api.verifyLease(ctx, mandate, lease)
+		issues, err = api.verifyLease(ctx, mandate, lease, false)
 		if err == nil {
 			err = api.cleanup(ctx, issues)
 		}
@@ -104,8 +138,8 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 	if err != nil {
 		return fixtureEvidence{}, err
 	}
-	evidence := fixtureEvidence{SchemaVersion: 1, Mandate: mandate, Stage: stage, Marker: runMarker, Role: role, Actor: credential.Actor, Issues: issues, Relationships: []string{}}
-	if stage == "setup" || stage == "project-setup" {
+	evidence := fixtureEvidence{SchemaVersion: 1, Mandate: mandate, Stage: stage, Marker: runMarker, Role: role, Actor: credential.Actor, Issues: issues, Relationships: []string{}, Disposition: disposition, Problems: problems}
+	if disposition == "configured" && (stage == "setup" || stage == "project-setup") {
 		evidence.Relationships = []string{parentManagedID + "->" + selectedManagedID, parentManagedID + "->" + siblingManagedID, selectedManagedID + "->" + dependentManagedID, blockerManagedID + "->" + dependentManagedID}
 	}
 	if stage == "project-setup" {
@@ -215,7 +249,7 @@ func (api *fixtureAPI) cleanupPartial(ctx context.Context, issues map[string]fix
 		if issue.ID == 0 {
 			continue
 		}
-		if err := api.rest(ctx, http.MethodPatch, issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{"state": "closed", "state_reason": "completed"}, &issue); err != nil {
+		if err := api.rest(ctx, http.MethodPatch, issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{"state": "closed", "state_reason": "completed", "body": fixtureTombstone, "labels": []string{}}, &issue); err != nil {
 			return err
 		}
 	}
@@ -225,12 +259,29 @@ func (api *fixtureAPI) cleanupPartial(ctx context.Context, issues map[string]fix
 	return nil
 }
 
-func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate, leases []fixtureEvidence) (map[string]fixtureIssue, error) {
+func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate, leases []fixtureEvidence, requireComplete bool) (map[string]fixtureIssue, error) {
 	if len(leases) != 1 || leases[0].SchemaVersion != 1 || leases[0].Stage != "setup" || leases[0].Mandate.Digest != mandate.Digest || leases[0].Marker != runMarker {
 		return nil, errors.New("exact setup fixture lease is absent or outside the approved mandate")
 	}
-	if err := requireFixtureSet(leases[0].Issues); err != nil {
-		return nil, err
+	if len(leases[0].Issues) == 0 {
+		return nil, errors.New("setup fixture lease contains no immutable resources")
+	}
+	if requireComplete {
+		if err := requireFixtureSet(leases[0].Issues); err != nil {
+			return nil, err
+		}
+	}
+	if len(leases[0].Issues) > len(fixtureOrder()) {
+		return nil, errors.New("setup fixture lease exceeds the reviewed resource count")
+	}
+	allowed := map[string]bool{}
+	for _, managedID := range fixtureOrder() {
+		allowed[managedID] = true
+	}
+	for managedID := range leases[0].Issues {
+		if !allowed[managedID] {
+			return nil, errors.New("setup fixture lease contains an unreviewed managed identity")
+		}
 	}
 	observed := map[string]fixtureIssue{}
 	for managedID, expected := range leases[0].Issues {
@@ -238,8 +289,10 @@ func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate,
 		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(expected.Number), nil, &issue); err != nil {
 			return nil, err
 		}
-		identity, ok := managedIDFromBody(issue.Body)
-		if !ok || identity != managedID || issue.ID != expected.ID || issue.NodeID != expected.NodeID || !strings.Contains(issue.Body, "<!-- "+runMarker+" -->") {
+		identity, active := managedIDFromBody(issue.Body)
+		active = active && identity == managedID && strings.Contains(issue.Body, "<!-- "+runMarker+" -->")
+		retired := !requireComplete && issue.Body == fixtureTombstone && strings.EqualFold(issue.State, "closed")
+		if (!active && !retired) || issue.ID != expected.ID || issue.NodeID != expected.NodeID {
 			return nil, fmt.Errorf("fixture lease identity changed for %s", managedID)
 		}
 		observed[managedID] = issue
@@ -420,16 +473,16 @@ func (api *fixtureAPI) verifyCleanup(ctx context.Context, issues map[string]fixt
 			return errors.New("marked dependency relationship remains after cleanup")
 		}
 	}
-	observed, err := api.findFixtures(ctx)
-	if err != nil {
-		return err
-	}
-	if err := requireFixtureSet(observed); err != nil {
-		return err
-	}
-	for managedID, issue := range observed {
+	for managedID, expected := range issues {
+		var issue fixtureIssue
+		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(expected.Number), nil, &issue); err != nil {
+			return err
+		}
 		if !strings.EqualFold(issue.State, "closed") {
 			return fmt.Errorf("fixture %s remains open after cleanup", managedID)
+		}
+		if strings.Contains(issue.Body, runMarker) || strings.Contains(issue.Body, "starter-kit-managed:") {
+			return fmt.Errorf("fixture %s retains active ownership markers after cleanup", managedID)
 		}
 	}
 	return nil

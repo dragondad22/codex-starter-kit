@@ -12,10 +12,6 @@ on:
           - plan
           - apply
           - cleanup
-      source_revision:
-        description: Exact reviewed Starter Kit commit
-        required: true
-        type: string
       planning_run_id:
         description: Plan workflow run for apply
         required: false
@@ -70,7 +66,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: ${{ inputs.source_revision }}
+          ref: __APPROVED_SOURCE_REVISION__
           path: tool
 
       - name: Install pinned Go
@@ -86,7 +82,8 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage setup
           --repository "${{ github.workspace }}"
-          --source-revision "${{ inputs.source_revision }}"
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
           --approval-id "${{ inputs.approval_id }}"
           --approved-at "${{ inputs.approved_at }}"
           --expires-at "${{ inputs.expires_at }}"
@@ -103,6 +100,9 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Require a complete configured fixture lease
+        run: jq -e '.disposition == "configured" and (.issues | length) == 5' issue-15-setup.json
+
   setup-project:
     if: inputs.action == 'setup'
     needs: setup-issues
@@ -116,7 +116,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: ${{ inputs.source_revision }}
+          ref: __APPROVED_SOURCE_REVISION__
           path: tool
 
       - name: Install pinned Go
@@ -142,7 +142,8 @@ jobs:
           --stage project-setup
           --repository "${{ github.workspace }}"
           --fixture ../issue-15-setup.json
-          --source-revision "${{ inputs.source_revision }}"
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
           --approval-id "${{ inputs.approval_id }}"
           --approved-at "${{ inputs.approved_at }}"
           --expires-at "${{ inputs.expires_at }}"
@@ -170,7 +171,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: ${{ inputs.source_revision }}
+          ref: __APPROVED_SOURCE_REVISION__
           path: tool
 
       - name: Install pinned Go
@@ -179,6 +180,17 @@ jobs:
           go-version: 1.26.5
           cache-dependency-path: tool/go.sum
 
+      - name: Require and download exact setup fixture lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SETUP_RUN_ID: ${{ inputs.setup_run_id }}
+        run: >-
+          test -n "$SETUP_RUN_ID" &&
+          gh run download "$SETUP_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-setup
+          --dir "${{ github.workspace }}"
+
       - name: Inspect and emit immutable Work Manager plan
         env:
           CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
@@ -186,7 +198,9 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage plan
           --repository "${{ github.workspace }}"
-          --source-revision "${{ inputs.source_revision }}"
+          --fixture ../issue-15-setup.json
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
           --approval-id "${{ inputs.approval_id }}"
           --approved-at "${{ inputs.approved_at }}"
           --expires-at "${{ inputs.expires_at }}"
@@ -223,7 +237,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: ${{ inputs.source_revision }}
+          ref: __APPROVED_SOURCE_REVISION__
           path: tool
 
       - name: Install pinned Go
@@ -241,6 +255,17 @@ jobs:
           --name issue-15-planning
           --dir "${{ github.workspace }}"
 
+      - name: Download exact setup fixture lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SETUP_RUN_ID: ${{ inputs.setup_run_id }}
+        run: >-
+          test -n "$SETUP_RUN_ID" &&
+          gh run download "$SETUP_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-setup
+          --dir "${{ github.workspace }}"
+
       - name: Apply, verify, and report durable status
         env:
           CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
@@ -248,7 +273,9 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage apply
           --repository "${{ github.workspace }}"
-          --source-revision "${{ inputs.source_revision }}"
+          --fixture ../issue-15-setup.json
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
           --plan ../issue-15-planning.json
           --plan-id "${{ inputs.approved_plan_id }}"
           --approval-id "${{ inputs.approval_id }}"
@@ -282,7 +309,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           repository: dragondad22/codex-starter-kit
-          ref: ${{ inputs.source_revision }}
+          ref: __APPROVED_SOURCE_REVISION__
           path: tool
 
       - name: Install pinned Go
@@ -310,7 +337,8 @@ jobs:
           --stage cleanup
           --repository "${{ github.workspace }}"
           --fixture ../issue-15-setup.json
-          --source-revision "${{ inputs.source_revision }}"
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
           --approval-id "${{ inputs.approval_id }}"
           --approved-at "${{ inputs.approved_at }}"
           --expires-at "${{ inputs.expires_at }}"
