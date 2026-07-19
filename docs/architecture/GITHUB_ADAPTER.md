@@ -127,8 +127,9 @@ HTTP portability, not a GitHub permission or service claim. No live target, toke
 Project, issue, or paid feature was created or mutated for #72. #73 subsequently
 qualified the isolated sandbox baseline, and #46 applied and re-read the approved
 operational Phase catalog through an owner CLI route. Neither result is a live pass for
-the routine Work Adapter Phase effect. #46's saved `Phases` view remains `not-configured`;
-#76 owns aggregate qualification and support claims.
+the routine Work Adapter Phase effect. #46 observed the matching human-created `Phases`
+view; automated creation remains `not-configured` when the required grouping and sorting
+cannot be expressed. #76 owns aggregate qualification and support claims.
 
 The Project-configuration route plans the complete Phase field/option catalog, the saved
 `Phases` view, and feature #1–#9 assignments as immutable resources. Existing name/type,
