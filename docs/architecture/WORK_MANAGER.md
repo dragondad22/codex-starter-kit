@@ -49,7 +49,7 @@ the emitted JSON plus black-box behavior through the CLI and engine seam.
 ## Policy and adapter ownership
 
 Work Manager derives the effective task before planning. It promotes a blocked task to
-Readiness `ready` only when every supplied native blocker is closed, never changes Status
+Readiness `ready` only when every natively observed blocker is closed, never changes Status
 as a side effect of that promotion, reports Phase from the parent when direct Phase is
 absent, maps a closed task to Status `done`, and preserves parent, blocker, promotion, and
 distinct-review facts. The adapter observes and attempts semantic effects; it cannot
@@ -68,11 +68,35 @@ Unsupported values, missing/stale identities, or an unjustified direct assignmen
 before durable state. Reconciliation sets a justified direct option and clears a copied
 option from ordinary child work.
 
-For the selected task, the immutable plan also reports derived parent status/closure from
-the supplied parent and sibling facts. This represents the #64 rule that a started child
-keeps an incomplete parent `in-progress` and all closed children close it `done`; the
-one-task route does not apply a second parent effect. Multi-item reconciliation remains
-#74.
+For the selected task, the immutable plan derives and applies a bounded reconciliation
+slice containing the selected item, its one parent, and its direct dependents. A closed
+selected item becomes Status `done`; any started or completed child keeps an incomplete
+parent `in-progress`; and all closed children close the parent as `done` only when the
+input explicitly confirms that the parent completion contract is satisfied. An
+all-children-closed parent without that confirmation is rejected instead of being left
+open as an unexplained placeholder.
+
+Each direct dependent supplies governed identity and an explicit Ready-eligibility fact;
+the adapter supplies its complete native blocker slice. The final closed blocker promotes
+an eligible dependent from `blocked` to `ready`
+without selecting Status `next`; any open blocker retains `blocked`. Related corrections
+are ordered parent-first and then by dependent managed ID. Their plans and receipts retain
+the exact target, operations, semantic before/after lifecycle values, source, observation,
+actor, authority, attempt, and result. Completed related effects survive interruption,
+and the next plan contains only residual drift.
+
+The adapter refreshes the selected issue's native parent, the parent's complete bounded
+sub-issue slice, the selected issue's blockers and direct dependents, and every dependent's
+complete blocker slice. A native issue closure cannot be reversed by stale intent, while
+governed intent may still request closure; native relationship facts remain authoritative.
+The intent retains only governed identities, parent-completion satisfaction, Ready
+eligibility, and desired lifecycle policy. Observed parent Status and closure form the
+baseline before native child progress derives `backlog`, `in-progress`, or `done`; caller
+copies of those lifecycle facts are not trusted. Missing endpoints, stable identities,
+Project items, lifecycle options, expected relationships, or exact selected-child membership
+produce a non-pass instead of falling back to issue prose or caller-supplied state.
+#74 composes this reconciliation path with authoritative issue bodies, subtype completion,
+Horizon, Phase, and broader executable-work governance.
 
 Creating a missing task and reconciling its Project/relationship state are separate
 effects. A completed create receipt therefore survives a denied or interrupted Project
@@ -111,14 +135,15 @@ transport outcomes, and simulated/live receipt separation. See the
 [GitHub adapter contract](GITHUB_ADAPTER.md).
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
-qualified separately approved sandbox provisioning. #46 applied and re-read the
-operational Phase catalog through an approved owner CLI route, not through Work Manager.
-#74 owns full intake, hierarchy, subtype, Horizon, Phase, and Project governance; #75 owns
-branch/PR/review/gate delivery; and #76 owns aggregate live qualification.
+owns separately approved sandbox provisioning. #15 owns the deterministic reconciliation
+backstop; #46 owns governed Phase field, option, assignment, and saved-view configuration;
+#74 consumes those results while owning full intake, subtype, Horizon, Phase, and Project
+governance; #75 owns branch/PR/review/gate delivery; and #76 owns aggregate live
+qualification, including the live item/parent/dependent reconciliation receipt.
 
-The current route manages one task at a time. It does not create credentials, provision
-repositories or Projects, configure rules, workflows, or Project views, publish a release,
-or claim private/paid/GHES support. Routine Work Adapter live mutation remains
-`not-configured`; the separately applied Phase catalog does not broaden that claim. Native
-Linux, macOS, and Windows support is claimed only after the exact completing revision
-passes the repository matrix.
+The current route manages one selected task plus its bounded parent/direct-dependent
+reconciliation slice, discovers native relationships read-only, and reconciles an existing
+Phase assignment by immutable option identity. It does not create credentials, provision
+repositories or Projects, configure rules or workflows, publish a release, or claim
+private/paid/GHES support. Native Linux, macOS, and Windows support is claimed only after
+the exact completing revision passes the repository matrix.

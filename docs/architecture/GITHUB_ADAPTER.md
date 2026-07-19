@@ -38,8 +38,8 @@ not runtime dependencies.
 
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
-| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; routine Work Adapter effects remain unqualified live |
-| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's operational Phase catalog was applied through the separately approved owner CLI route; that is not a live Work Adapter user-token qualification |
+| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; the Work Adapter's multi-item reconciliation route remains unqualified live |
+| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's operational Phase catalog was applied through a separately approved owner CLI route; that result is `needs-review`, not a live Work Adapter user-token qualification |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
 App installation mode rejects a user-owned Project rather than selecting a user token.
@@ -75,17 +75,24 @@ the exact non-secret `starter-kit-managed:<managed-id>` marker, and normalizes i
 Project item, lifecycle option, native parent, parent Phase option, and managed metadata
 identities. The capability handshake requires exactly one single-select `Phase` field and
 the complete named Phase 0–8 option catalog whenever Phase is configured. Renamed,
-duplicate, wrong-type, missing, extra, or stale catalog state is `needs-review`. Zero
-selected matches means the task is absent. Multiple matches are `ambiguous`. GraphQL
-partial data plus errors is `needs-review`, never a partial pass.
+duplicate, wrong-type, missing, extra, or stale catalog state is `needs-review`. For an existing selected
+issue it reads the version-pinned native parent, sub-issue, `blocked_by`, and `blocking`
+endpoints; reads each dependent's complete blocker slice; and resolves the parent,
+siblings, and dependents through immutable issue and Project-item identities. The engine
+compares that graph with governed intent before planning. Zero selected matches means the
+task is absent. Multiple markers are `ambiguous`; unavailable relationship endpoints,
+missing stable identities or Project items, incomplete parent membership, pagination
+exhaustion, and GraphQL partial data are explicit non-pass results, never partial success
+or a fallback to issue prose.
 
 The adapter accepts only the two semantic effects produced by Work Manager:
 
 - `create-task` re-reads the marker before POST. One existing match recovers a lost
   response; multiple matches remain ambiguous.
 - `reconcile-task` carries an ordered list containing only the remaining semantic
-  operations: issue metadata, Project membership, Readiness, Status, and direct Phase. It preserves
-  human-authored body text and unrelated labels, skips already-converged operations, and
+  operations: issue metadata, issue closure/reopening, Project membership, Readiness, and
+  Status, plus direct Phase where configured. A related parent closure patches only issue state and therefore does not rewrite
+  human-owned title, body, or labels. The adapter skips already-converged operations and
   re-reads every mutation before reporting it applied. Phase is set by immutable option ID
   for directly assigned work and cleared from ordinary children that derive it from a parent.
 
@@ -103,7 +110,8 @@ and public lifecycle seam. They cover both supported owner routes, complete
 create/project/update/verify/no-change replay, secret-free state, REST/GraphQL pagination,
 one-less permission, identity/owner mismatch, expiry/reconnect, ambiguous markers,
 lost-response recovery, hidden resources, validation, partial GraphQL data, rate
-scheduling, Actions limitations, and unsupported combinations.
+scheduling, native hierarchy/dependency observation, unavailable relationship endpoints,
+Actions limitations, and unsupported combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,
