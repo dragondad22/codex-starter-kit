@@ -132,10 +132,10 @@ transport outcomes, and simulated/live receipt separation. See the
 [GitHub adapter contract](GITHUB_ADAPTER.md).
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
-owns separately approved sandbox provisioning. #15 still needs renewed bounded authority
-and a passing live item/parent/dependent reconciliation receipt. #74 consumes that result
-while owning full intake, subtype, Horizon, Phase, and Project governance; #75 owns
-branch/PR/review/gate delivery; and #76 owns aggregate live qualification.
+owns separately approved sandbox provisioning. #15 owns the deterministic reconciliation
+backstop; #74 consumes that result while owning full intake, subtype, Horizon, Phase, and
+Project governance; #75 owns branch/PR/review/gate delivery; and #76 owns aggregate live
+qualification, including the live item/parent/dependent reconciliation receipt.
 
 The current draft route manages one selected task plus its bounded parent/direct-dependent
 reconciliation slice and discovers native relationships read-only. It does not create
