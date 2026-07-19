@@ -72,12 +72,15 @@ does not broaden authority or switch credentials.
 
 Observation follows bounded REST `Link` pages and GraphQL Project-item cursors, matches
 the exact non-secret `starter-kit-managed:<managed-id>` marker, and normalizes issue,
-Project item, lifecycle option, and managed metadata identities. Work Manager may request
-one bounded ordered set of already-governed parent and direct-dependent IDs; every
-requested related item must resolve uniquely with immutable issue
-and Project-item identities or the observation is non-pass. Zero selected matches means
-the task is absent. Multiple matches are `ambiguous`. Missing/ambiguous related items and
-GraphQL partial data are `needs-review`, never partial success.
+Project item, lifecycle option, and managed metadata identities. For an existing selected
+issue it reads the version-pinned native parent, sub-issue, `blocked_by`, and `blocking`
+endpoints; reads each dependent's complete blocker slice; and resolves the parent,
+siblings, and dependents through immutable issue and Project-item identities. The engine
+compares that graph with governed intent before planning. Zero selected matches means the
+task is absent. Multiple markers are `ambiguous`; unavailable relationship endpoints,
+missing stable identities or Project items, incomplete parent membership, pagination
+exhaustion, and GraphQL partial data are explicit non-pass results, never partial success
+or a fallback to issue prose.
 
 The adapter accepts only the two semantic effects produced by Work Manager:
 
@@ -103,7 +106,8 @@ and public lifecycle seam. They cover both supported owner routes, complete
 create/project/update/verify/no-change replay, secret-free state, REST/GraphQL pagination,
 one-less permission, identity/owner mismatch, expiry/reconnect, ambiguous markers,
 lost-response recovery, hidden resources, validation, partial GraphQL data, rate
-scheduling, Actions limitations, and unsupported combinations.
+scheduling, native hierarchy/dependency observation, unavailable relationship endpoints,
+Actions limitations, and unsupported combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,

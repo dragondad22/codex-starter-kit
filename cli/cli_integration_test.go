@@ -61,7 +61,7 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 			Task: engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}}},
 		}},
 		Capability:  engine.WorkCapability{SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
-		Observation: engine.WorkObservation{SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1", Target: target},
+		Observation: engine.WorkObservation{SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1", Target: target, Relationships: engine.WorkRelationshipObservation{Observed: true}},
 	}
 	content, err := json.Marshal(input)
 	if err != nil {

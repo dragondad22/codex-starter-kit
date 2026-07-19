@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "issue-15-project-state-reconciliation",
-  "summary": "Reconcile closed items, parents, and direct dependents through immutable lifecycle plans with before-and-after receipts.",
+  "summary": "Reconcile closed items, native parent progress, and direct dependencies through immutable lifecycle plans with before-and-after receipts.",
   "category": "fixed",
   "audiences": ["users", "operators", "developers"],
   "components": ["engine", "github-workflow"],

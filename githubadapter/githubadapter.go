@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,33 +206,22 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		return adapter.failedObservation(target, managedID, &credential, err), nil
 	}
 	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target)
-	seenRelated := map[string]bool{}
+	seenRequested := map[string]bool{}
 	for _, relatedManagedID := range relatedManagedIDs {
-		if relatedManagedID == "" || relatedManagedID == managedID || seenRelated[relatedManagedID] {
+		if relatedManagedID == "" || relatedManagedID == managedID || seenRequested[relatedManagedID] {
 			observation.Disposition = "needs-review"
 			observation.Problems = []string{"related managed-task observation request is invalid or ambiguous"}
 			break
 		}
-		seenRelated[relatedManagedID] = true
-		relatedIssues, relatedErr := adapter.findManagedIssues(ctx, credential, relatedManagedID)
-		if relatedErr != nil {
-			return adapter.failedObservation(target, relatedManagedID, &credential, relatedErr), nil
+		seenRequested[relatedManagedID] = true
+	}
+	if observation.Disposition == "observed" {
+		relationships, related, relationshipErr := adapter.observeNativeRelationships(ctx, credential, issue, target)
+		if relationshipErr != nil {
+			return adapter.failedObservation(target, managedID, &credential, relationshipErr), nil
 		}
-		if len(relatedIssues) != 1 {
-			observation.Disposition = "needs-review"
-			observation.Problems = []string{"required related managed task is absent or ambiguous"}
-			break
-		}
-		relatedItem, relatedErr := adapter.findProjectItem(ctx, credential, relatedIssues[0].NodeID, target)
-		if relatedErr != nil {
-			if errors.Is(relatedErr, errGraphQLPartial) {
-				observation.Disposition = "needs-review"
-				observation.Problems = []string{errGraphQLPartial.Error()}
-				break
-			}
-			return adapter.failedObservation(target, relatedManagedID, &credential, relatedErr), nil
-		}
-		observation.RelatedTasks = append(observation.RelatedTasks, *normalizeObservedTask(relatedIssues[0], relatedItem, relatedManagedID, target))
+		observation.Relationships = relationships
+		observation.RelatedTasks = related
 	}
 	observation.Revision = digest(struct {
 		Task     *engine.WorkObservedTask
@@ -240,6 +230,172 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		Problems []string
 	}{observation.Task, observation.RelatedTasks, observation.Disposition, observation.Problems})
 	return observation, nil
+}
+
+func (adapter *Adapter) observeNativeRelationships(ctx context.Context, credential Credential, selected githubIssue, target engine.WorkTarget) (engine.WorkRelationshipObservation, []engine.WorkObservedTask, error) {
+	relationships := engine.WorkRelationshipObservation{Observed: true, OtherChildren: []engine.WorkRelatedTask{}, Blockers: []engine.WorkDependency{}, Dependents: []engine.WorkObservedDependent{}}
+	relatedTasks := []engine.WorkObservedTask{}
+	base := adapter.issuePath() + "/" + strconv.Itoa(selected.Number)
+
+	var parent githubIssue
+	_, parentErr := adapter.rest(ctx, credential, http.MethodGet, base+"/parent", nil, &parent)
+	if parentErr != nil && !isResponseStatus(parentErr, http.StatusNotFound) {
+		return relationships, nil, parentErr
+	}
+	if parentErr == nil {
+		parentManagedID, ok := managedIDFromIssue(parent)
+		if !ok || parentManagedID == "" {
+			return relationships, nil, errors.New("native parent lacks one stable managed identity")
+		}
+		relationships.ParentManagedID = parentManagedID
+		parentObserved, err := adapter.normalizeRelatedIssue(ctx, credential, parent, parentManagedID, target)
+		if err != nil {
+			return relationships, nil, err
+		}
+		relatedTasks = append(relatedTasks, parentObserved)
+
+		children, err := adapter.listRelationshipIssues(ctx, credential, adapter.issuePath()+"/"+strconv.Itoa(parent.Number)+"/sub_issues")
+		if err != nil {
+			return relationships, nil, err
+		}
+		selectedCount := 0
+		seenChildren := map[string]bool{}
+		for _, child := range children {
+			childManagedID, ok := managedIDFromIssue(child)
+			if !ok || childManagedID == "" || seenChildren[childManagedID] {
+				return relationships, nil, errors.New("native parent child slice contains missing or duplicate managed identities")
+			}
+			seenChildren[childManagedID] = true
+			if child.NodeID == selected.NodeID {
+				selectedCount++
+				continue
+			}
+			childItem, err := adapter.findProjectItem(ctx, credential, child.NodeID, target)
+			if err != nil {
+				return relationships, nil, err
+			}
+			if childItem == nil {
+				return relationships, nil, errors.New("native sibling is missing its managed Project item")
+			}
+			childObserved := normalizeObservedTask(child, childItem, childManagedID, target)
+			status := semanticOption(target, "status", childObserved.StatusOption)
+			if status == "" {
+				return relationships, nil, errors.New("native sibling is missing a recognized Project Status")
+			}
+			relationships.OtherChildren = append(relationships.OtherChildren, engine.WorkRelatedTask{ManagedID: childManagedID, Status: status, Closed: childObserved.Closed})
+		}
+		if selectedCount != 1 {
+			return relationships, nil, errors.New("native parent child slice does not contain the selected issue exactly once")
+		}
+	}
+
+	blockedBy, err := adapter.listRelationshipIssues(ctx, credential, base+"/dependencies/blocked_by")
+	if err != nil {
+		return relationships, nil, err
+	}
+	relationships.Blockers, err = normalizedDependencies(blockedBy)
+	if err != nil {
+		return relationships, nil, err
+	}
+
+	blocking, err := adapter.listRelationshipIssues(ctx, credential, base+"/dependencies/blocking")
+	if err != nil {
+		return relationships, nil, err
+	}
+	seenDependents := map[string]bool{}
+	for _, dependent := range blocking {
+		dependentManagedID, ok := managedIDFromIssue(dependent)
+		if !ok || dependentManagedID == "" || seenDependents[dependentManagedID] {
+			return relationships, nil, errors.New("native direct-dependent slice contains missing or duplicate managed identities")
+		}
+		seenDependents[dependentManagedID] = true
+		dependentObserved, err := adapter.normalizeRelatedIssue(ctx, credential, dependent, dependentManagedID, target)
+		if err != nil {
+			return relationships, nil, err
+		}
+		relatedTasks = append(relatedTasks, dependentObserved)
+		blockers, err := adapter.listRelationshipIssues(ctx, credential, adapter.issuePath()+"/"+strconv.Itoa(dependent.Number)+"/dependencies/blocked_by")
+		if err != nil {
+			return relationships, nil, err
+		}
+		normalized, err := normalizedDependencies(blockers)
+		if err != nil {
+			return relationships, nil, err
+		}
+		relationships.Dependents = append(relationships.Dependents, engine.WorkObservedDependent{ManagedID: dependentManagedID, Blockers: normalized})
+	}
+	sort.Slice(relationships.OtherChildren, func(i, j int) bool {
+		return relationships.OtherChildren[i].ManagedID < relationships.OtherChildren[j].ManagedID
+	})
+	sort.Slice(relationships.Blockers, func(i, j int) bool { return relationships.Blockers[i].ManagedID < relationships.Blockers[j].ManagedID })
+	sort.Slice(relationships.Dependents, func(i, j int) bool {
+		return relationships.Dependents[i].ManagedID < relationships.Dependents[j].ManagedID
+	})
+	sort.Slice(relatedTasks, func(i, j int) bool { return relatedTasks[i].ManagedID < relatedTasks[j].ManagedID })
+	return relationships, relatedTasks, nil
+}
+
+func (adapter *Adapter) normalizeRelatedIssue(ctx context.Context, credential Credential, issue githubIssue, managedID string, target engine.WorkTarget) (engine.WorkObservedTask, error) {
+	item, err := adapter.findProjectItem(ctx, credential, issue.NodeID, target)
+	if err != nil {
+		return engine.WorkObservedTask{}, err
+	}
+	if item == nil {
+		return engine.WorkObservedTask{}, errors.New("native related issue is missing its managed Project item")
+	}
+	return *normalizeObservedTask(issue, item, managedID, target), nil
+}
+
+func (adapter *Adapter) listRelationshipIssues(ctx context.Context, credential Credential, initialPath string) ([]githubIssue, error) {
+	path := initialPath
+	issues := []githubIssue{}
+	for page := 0; page < adapter.config.MaxPages && path != ""; page++ {
+		separator := "?"
+		if strings.Contains(path, "?") {
+			separator = "&"
+		}
+		if !strings.Contains(path, "per_page=") {
+			path += separator + "per_page=100"
+		}
+		var pageIssues []githubIssue
+		response, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &pageIssues)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, pageIssues...)
+		path, err = adapter.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if path != "" {
+		return nil, errors.New("GitHub native relationship pagination exceeded the configured bound")
+	}
+	return issues, nil
+}
+
+func normalizedDependencies(issues []githubIssue) ([]engine.WorkDependency, error) {
+	result := make([]engine.WorkDependency, 0, len(issues))
+	seen := map[string]bool{}
+	for _, issue := range issues {
+		managedID, ok := managedIDFromIssue(issue)
+		if !ok || managedID == "" || seen[managedID] {
+			return nil, errors.New("native dependency slice contains missing or duplicate managed identities")
+		}
+		seen[managedID] = true
+		result = append(result, engine.WorkDependency{ManagedID: managedID, Closed: strings.EqualFold(issue.State, "closed")})
+	}
+	return result, nil
+}
+
+func semanticOption(target engine.WorkTarget, field, optionID string) string {
+	for key, candidate := range target.OptionIDs {
+		name, value, ok := strings.Cut(key, ":")
+		if ok && name == field && candidate == optionID {
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget) *engine.WorkObservedTask {
@@ -686,6 +842,24 @@ func parseManagedMetadata(body string) (engine.DesiredManagedTask, bool) {
 		return engine.DesiredManagedTask{}, false
 	}
 	return desired, true
+}
+
+func managedIDFromIssue(issue githubIssue) (string, bool) {
+	const prefix = "<!-- starter-kit-managed:"
+	start := strings.Index(issue.Body, prefix)
+	if start < 0 {
+		return "", false
+	}
+	start += len(prefix)
+	end := strings.Index(issue.Body[start:], " -->")
+	if end < 0 {
+		return "", false
+	}
+	managedID := strings.TrimSpace(issue.Body[start : start+end])
+	if managedID == "" || strings.ContainsAny(managedID, "\r\n<>") {
+		return "", false
+	}
+	return managedID, true
 }
 
 func issueMatchesDesired(issue githubIssue, desired engine.DesiredManagedTask) bool {

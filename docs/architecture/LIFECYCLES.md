@@ -146,7 +146,7 @@ of every native child closes the parent as Done unless an unsatisfied parent cri
 represented by a concrete outstanding child.
 
 The implemented Work Manager route projects this policy for one selected task and its
-bounded parent/direct-dependent reconciliation slice through an explicit
+bounded, natively observed parent/direct-dependent reconciliation slice through an explicit
 `inspect → plan → apply → verify → status` sequence. Apply rechecks the governed source,
 operating profile, normalized observation, actor, permission, target/configuration IDs,
 and expiry. Offline intent is retained without credentials; reconnect requires a fresh

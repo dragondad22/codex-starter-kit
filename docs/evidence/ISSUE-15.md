@@ -66,10 +66,14 @@ parent correction retains both results; refreshed inspection produces a plan con
 only the unconverged parent and dependent. Parent closure uses a state-only GitHub patch
 and preserves human-owned title, body, and labels.
 
-This is a partial #15 result. The current route receives bounded relationship facts from
-its caller; it does not yet refresh native GitHub hierarchy and dependency observations.
-#15 retains that work because #74 consumes the completed reconciliation contract. Native
-relationships must be observed rather than inferred from issue prose.
+The production adapter now refreshes native hierarchy and dependency facts through the
+version-pinned GitHub parent, sub-issue, `blocked_by`, and `blocking` endpoints. The caller
+retains governed relationship identities, parent-completion satisfaction, Ready
+eligibility, and lifecycle policy, but cannot override an observed issue closure, sibling
+progress, or blocker closure facts. Governed intent may request closure, but it cannot
+reverse a native closure merely because its input is stale. The engine compares the complete bounded graph
+with that policy and stops on mismatches, unavailable endpoints, missing stable identities or
+Project items, incomplete parent membership, ambiguity, or pagination exhaustion.
 
 ## Verification
 
@@ -78,6 +82,11 @@ failed because parent completion, direct dependent context, and related observat
 absent. It then passed after the engine planned, applied, and verified the selected,
 parent, and dependent corrections.
 
+The native-observation extension was also recorded RED: the lifecycle test did not compile
+because a normalized relationship observation did not exist. After the interface was
+added, the test proved that stale caller claims cannot close a parent or promote a
+dependent while the native sibling/blocker observation remains open.
+
 Focused deterministic coverage now includes:
 
 - closed-item Status repair, incomplete-parent progress, and final-blocker promotion;
@@ -85,9 +94,12 @@ Focused deterministic coverage now includes:
 - rejection of unexplained open parents after every child closes;
 - no dependent promotion while any blocker remains open;
 - rejection of a direct dependent cycle before durable state;
-- reopening to an explicit lifecycle state;
+- restoring explicit lifecycle fields for a natively reopened issue without rewriting its
+  issue state;
 - partial related-effect denial, restart, residual-only plan, and convergence;
-- bounded production-adapter observation of selected and related immutable identities;
+- bounded production-adapter observation of native parent/sub-issue and complete direct
+  dependency slices with selected and related immutable identities;
+- fail-closed behavior when GitHub's native dependency endpoint is unavailable;
 - parent issue closure and Status correction without rewriting human content; and
 - existing stale target/configuration, permission denial, partial response, rate,
   ambiguity, replay, and native portability cases.
@@ -102,6 +114,6 @@ git diff --check
 
 The exact completing revision must pass native Linux, macOS, and Windows CI and a distinct
 Standards/Spec review before merge. The approved #73 sandbox supplies only built-in
-close-to-Done evidence. #15's native relationship observation and `GH-WORK-08` multi-item
-live result are `not-configured` pending renewed bounded authority; they remain #15
-acceptance gates and must pass before this issue or its draft PR can complete.
+close-to-Done evidence. #15's `GH-WORK-08` multi-item live result is `not-configured`
+pending a new source-bound bounded mandate; it remains the final #15 acceptance gate
+before this issue or its draft PR can complete.

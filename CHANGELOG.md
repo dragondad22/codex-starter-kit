@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:b38de120c5cd4c1b33d6d4fe7ba41be8709185aa17d1d9ad5d845cbc600230a5 -->
+<!-- source-digest: sha256:458885e0a61ccb1ec833973d007018e1a440e10c6979bfbbee608a8b0085552b -->
 
 ## [Unreleased]
 
@@ -24,4 +24,4 @@ All notable Codex Starter Kit changes are generated from structured change recor
 - Qualify plugin routing, capability modes, fallback behavior, and native development installation while preserving unpublished-engine limitations. (#54)
 
 ### Fixed
-- Reconcile closed items, parents, and direct dependents through immutable lifecycle plans with before-and-after receipts. (#15)
+- Reconcile closed items, native parent progress, and direct dependencies through immutable lifecycle plans with before-and-after receipts. (#15)
