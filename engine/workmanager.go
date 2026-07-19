@@ -534,7 +534,7 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		OperatingProfileRevision: inspection.Intent.OperatingProfileRevision,
 		InspectionID:             inspection.ID, ObservationRevision: inspection.Observation.Revision,
 		ConfigurationRevision: inspection.Capability.ConfigurationRevision, Target: cloneWorkTarget(inspection.Intent.Target), ExpectedCredential: inspection.Intent.Credential,
-		CapabilityDigest: digestJSON(inspection.Capability),
+		CapabilityDigest: workCapabilityContractDigest(inspection.Capability),
 		Preconditions:    []string{"unchanged desired source", "fresh expected actor", "minimum declared permissions", "matching immutable target and configuration identities", "unexpired capability and plan"},
 		Impact:           []string{"reconcile the selected managed task and its bounded parent/direct-dependent Project slice"},
 		Recovery:         []string{"retain completed receipts", "refresh capability and observation", "create a new immutable plan for remaining semantic differences"},
@@ -600,7 +600,7 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 		return WorkApplyResult{}, fmt.Errorf("refresh managed-task observation: %w", err)
 	}
 	problems := validateWorkHandshake(state.Request.Intent, capability, observation, e.clock.Now())
-	if digestJSON(capability) != plan.CapabilityDigest || capability.ConfigurationRevision != plan.ConfigurationRevision {
+	if workCapabilityContractDigest(capability) != plan.CapabilityDigest || capability.ConfigurationRevision != plan.ConfigurationRevision {
 		problems = append(problems, "adapter capability changed after planning")
 	}
 	if observation.Revision != plan.ObservationRevision {
@@ -963,6 +963,14 @@ func validateManagedTaskPlan(plan WorkPlan) error {
 		}
 	}
 	return nil
+}
+
+func workCapabilityContractDigest(capability WorkCapability) string {
+	capability.ObservedAt = time.Time{}
+	capability.ExpiresAt = time.Time{}
+	capability.RESTRate = nil
+	capability.GraphQLRate = nil
+	return digestJSON(capability)
 }
 
 func validateWorkEffectResult(result WorkEffectResult) error {

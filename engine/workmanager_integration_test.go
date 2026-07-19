@@ -342,6 +342,41 @@ func TestManagedTaskApplyRejectsChangedCapability(t *testing.T) {
 	}
 }
 
+func TestManagedTaskApplyAcceptsFreshCapabilitySnapshotWithSameAuthority(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	initialCapability, _ := adapter.Capability(context.Background())
+	initialCapability.RESTRate = &engine.WorkRateBudget{Resource: "rest", Limit: 5000, Used: 10, Remaining: 4990, ResetAt: now.Add(time.Hour)}
+	initialCapability.GraphQLRate = &engine.WorkRateBudget{Resource: "graphql", Limit: 5000, Used: 20, Remaining: 4980, ResetAt: now.Add(time.Hour)}
+	adapter.SetCapability(initialCapability)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, _ := adapter.Capability(context.Background())
+	capability.ObservedAt = now.Add(time.Minute)
+	capability.ExpiresAt = now.Add(2 * time.Hour)
+	if capability.RESTRate != nil {
+		capability.RESTRate.Remaining--
+		capability.RESTRate.Used++
+	}
+	if capability.GraphQLRate != nil {
+		capability.GraphQLRate.Remaining--
+		capability.GraphQLRate.Used++
+	}
+	adapter.SetCapability(capability)
+
+	refreshed := engine.New(engine.WithClock(fixedWorkClock{now.Add(time.Minute)}), engine.WithWorkAdapter(adapter))
+	if _, err := refreshed.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatalf("fresh token and rate snapshots with unchanged authority must remain eligible: %v", err)
+	}
+}
+
 func TestManagedTaskApplyRejectsChangedOperatingProfile(t *testing.T) {
 	t.Parallel()
 

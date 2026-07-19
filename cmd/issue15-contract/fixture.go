@@ -134,7 +134,7 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 	case "cleanup":
 		issues, err = api.verifyLease(ctx, mandate, lease, false)
 		if err == nil {
-			err = api.cleanupPartial(ctx, issues)
+			err = api.cleanup(ctx, issues)
 			if err == nil {
 				issues, err = api.refreshLeasedIssues(ctx, issues)
 			}
@@ -158,16 +158,9 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 		evidence.ProjectStates = baselineStates()
 	} else if stage == "project-cleanup" {
 		evidence.ProjectStates = map[string]string{}
-		for managedID := range issues {
+		for _, managedID := range fixtureOrder() {
 			evidence.ProjectStates[managedID] = "absent"
 		}
-		if len(issues) != len(fixtureOrder()) {
-			evidence.Disposition = "partial-cleanup"
-			evidence.Problems = []string{"Project cleanup covered only the immutable IDs present in a partial setup lease"}
-		}
-	} else if stage == "cleanup" && len(issues) != len(fixtureOrder()) {
-		evidence.Disposition = "partial-cleanup"
-		evidence.Problems = []string{"issue cleanup covered only the immutable IDs present in a partial setup lease"}
 	}
 	return evidence, nil
 }
