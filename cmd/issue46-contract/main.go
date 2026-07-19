@@ -74,7 +74,7 @@ func run(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithSandboxAdapter(adapter))
+	lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
 	authority := engine.SandboxAuthorityProfile{
 		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleReconciler, expectation)},
 		Permissions:          []string{"reconciler:projects:write"}, EvidenceMode: "live", Compatibility: "github.com:api.github.com:2026-03-10:native-rest-graphql",
@@ -134,10 +134,6 @@ func run(ctx context.Context, arguments []string) error {
 	output.Mandate, output.Apply, output.Verification, output.ReplayPlan, output.ReplayApply = &mandate, &apply, &verification, &replayPlan, &replayApply
 	return json.NewEncoder(os.Stdout).Encode(output)
 }
-
-type fixedClock struct{ now time.Time }
-
-func (clock fixedClock) Now() time.Time { return clock.now }
 
 func phaseResources() []engine.SandboxResourceSpec {
 	resources := []engine.SandboxResourceSpec{{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select", "node_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k"}}}
