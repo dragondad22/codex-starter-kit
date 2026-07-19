@@ -64,6 +64,8 @@ accepts only an independently retained mandate JSON artifact whose approver and 
 owner match the pinned target owner, whose approval identity is a retained #46 owner record,
 target, actors, timestamps, authority profile, resource digests, ceilings, retention, and
 recovery owner validate through the lifecycle seam; caller flags cannot manufacture it.
+The command checks the trusted execution time is within the retained approval interval
+before constructing transport for either planning or apply.
 The adapter re-observes view and item postconditions through GraphQL and rejects stale
 identity or human-owned drift rather than duplicating it. Clean-create tests omit
 provider-assigned field/option identities, retain GitHub's returned IDs, converge, and

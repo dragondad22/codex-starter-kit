@@ -66,7 +66,7 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	resources := phaseResources()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_kgDOTVs5Hg", ProjectID: "PVT_kwHOASd_cc4BdI9q", RepositoryName: "dragondad22/codex-starter-kit"}
-	if err := validateRetainedMandate(mandate, target, resources); err != nil {
+	if err := validateRetainedMandate(mandate, target, resources, time.Now()); err != nil {
 		return err
 	}
 	token := os.Getenv(tokenEnvironment)
@@ -148,7 +148,7 @@ func readMandate(path string) (engine.SandboxExecutionMandate, error) {
 	return mandate, nil
 }
 
-func validateRetainedMandate(mandate engine.SandboxExecutionMandate, target engine.SandboxTarget, resources []engine.SandboxResourceSpec) error {
+func validateRetainedMandate(mandate engine.SandboxExecutionMandate, target engine.SandboxTarget, resources []engine.SandboxResourceSpec, executionTime time.Time) error {
 	suppliedDigests := slices.Clone(mandate.ResourceDigests)
 	mandate.ResourceDigests = nil
 	expected := engine.BindSandboxExecutionMandate(mandate, resources...)
@@ -158,6 +158,9 @@ func validateRetainedMandate(mandate engine.SandboxExecutionMandate, target engi
 	}
 	if mandate.ApprovedBy != issue46Owner || !strings.HasPrefix(mandate.ApprovalID, "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-") || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || !mandate.ApprovedAt.Before(mandate.ExpiresAt) {
 		return errors.New("retained execution mandate lacks owner identity or valid approval timestamps")
+	}
+	if executionTime.Before(mandate.ApprovedAt) || !executionTime.Before(mandate.ExpiresAt) {
+		return errors.New("retained execution mandate is not currently valid")
 	}
 	if mandate.Target != target || mandate.RecoveryOwner != issue46Owner || !slices.Equal(mandate.Actors, []string{githubadapter.SandboxRoleReconciler}) || !slices.Equal(mandate.UnmarkedKeys, resourceKeys(resources)) {
 		return errors.New("retained execution mandate does not bind the exact owner, target, actor, recovery owner, and resources")

@@ -60,6 +60,26 @@ func TestIssue46CommandRejectsAMandateThatDoesNotBindTheExactResourcesBeforeTran
 	if err == nil || !strings.Contains(err.Error(), "owner identity") {
 		t.Fatalf("wrong-owner mandate error = %v", err)
 	}
+	future := time.Now().Add(time.Hour)
+	mandate.ApprovedBy = issue46Owner
+	mandate.ApprovalID = "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-123"
+	mandate.ApprovedAt = future
+	mandate.ExpiresAt = future.Add(time.Hour)
+	mandate.RecoveryOwner = issue46Owner
+	mandate.ResourceDigests = nil
+	mandate = engine.BindSandboxExecutionMandate(mandate, resources...)
+	encoded, err = json.Marshal(mandate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(t.TempDir(), "future-mandate.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = run(context.Background(), []string{"--stage", "plan", "--repository", t.TempDir(), "--source-revision", "source", "--observed-at", "2026-07-19T18:05:19Z", "--mandate", path})
+	if err == nil || !strings.Contains(err.Error(), "not currently valid") {
+		t.Fatalf("future mandate error = %v", err)
+	}
 }
 
 func TestIssue46CommandRequiresAnIndependentlyRetainedMandateArtifact(t *testing.T) {
