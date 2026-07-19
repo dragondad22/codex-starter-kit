@@ -25,6 +25,8 @@ func TestSandboxAdapterAggregatesRoleAuthorityAndObservesManagedLabels(t *testin
 			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
 		}
 		switch request.URL.Path {
+		case "/orgs/labs/projectsV2/1":
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "project-id", "number": 1, "owner": map[string]any{"login": "labs", "id": "owner-id", "type": "Organization"}})
 		case "/repos/labs/sandbox/labels":
 			json.NewEncoder(response).Encode([]map[string]any{{"id": 7, "node_id": "LA_label", "name": "type:task", "color": "0075CA", "description": "Task"}})
 		case "/orgs/labs/projectsV2/1/fields":
@@ -492,11 +494,18 @@ func TestSandboxAdapterReportsProjectItemPaginationExhaustion(t *testing.T) {
 func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.URL.Path != "/user" {
+		if request.Method != http.MethodGet {
 			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
 		}
-		response.Header().Set("X-OAuth-Scopes", "gist, project, repo")
-		json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		switch request.URL.Path {
+		case "/user":
+			response.Header().Set("X-OAuth-Scopes", "gist, project, repo")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case "/users/dragondad22/projectsV2/8":
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "P_project", "number": 8, "owner": map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
 	}))
 	defer server.Close()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
@@ -511,6 +520,33 @@ func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 	capability, err := adapter.Capability(context.Background())
 	if err != nil || !capability.Available || capability.Actor != githubadapter.SandboxRoleReconciler || !slices.Equal(capability.Permissions, []string{"reconciler:classic-scope:gist", "reconciler:classic-scope:project", "reconciler:classic-scope:repo", "reconciler:projects:write"}) {
 		t.Fatalf("user Project capability = %#v, %v", capability, err)
+	}
+}
+
+func TestSandboxAdapterRejectsProjectIdentityThatDoesNotMatchGraphQLTarget(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case "/users/dragondad22/projectsV2/8":
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "P_other", "number": 8, "owner": map[string]any{"login": "someone-else", "id": 42, "type": "User"}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Available || !strings.Contains(strings.Join(capability.Problems, ";"), "Project immutable identity or owner") {
+		t.Fatalf("mismatched Project capability = %#v, %v", capability, err)
 	}
 }
 
@@ -684,6 +720,8 @@ func TestSandboxAdapterAdoptsProviderAssignedPhaseIdentitiesOnCleanCreate(t *tes
 		case request.Method == http.MethodGet && request.URL.Path == "/user":
 			response.Header().Set("X-OAuth-Scopes", "project")
 			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8":
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "P_project", "number": 8, "owner": map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"}})
 		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
 			fields := []any{}
 			if created {

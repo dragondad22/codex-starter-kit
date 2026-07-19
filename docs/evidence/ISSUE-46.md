@@ -66,6 +66,10 @@ target, actors, timestamps, authority profile, resource digests, ceilings, reten
 recovery owner validate through the lifecycle seam; caller flags cannot manufacture it.
 The command checks the trusted execution time is within the retained approval interval
 before constructing transport for either planning or apply.
+Before observation, the adapter also resolves the configured user/Project-number REST
+route and requires its Project node ID plus owner login, immutable ID, and kind to match
+the GraphQL target and retained owner. A mixed REST/GraphQL target is therefore non-pass
+before any effect.
 The adapter re-observes view and item postconditions through GraphQL and rejects stale
 identity or human-owned drift rather than duplicating it. Clean-create tests omit
 provider-assigned field/option identities, retain GitHub's returned IDs, converge, and
@@ -107,7 +111,8 @@ grouping/sorting is not expressible, unavailable user view route, immutable Proj
 field update/replay, verified API user/classic scope, and the existing target,
 configuration, and partial-effect failure cases. It also covers unexpected broader classic
 OAuth scopes, extra Phase options, provider-ID adoption with stale-ID rejection, and both
-configured Project owner routes for option reconciliation. Project-item observation,
+configured Project owner routes for option reconciliation, including rejection when the
+REST Project identity or owner differs from the GraphQL target. Project-item observation,
 immutable-content lookup, and postcondition reads follow bounded GraphQL cursors; a later-page
 assignment is found and exhaustion remains an explicit non-pass rather than evidence of
 absence.

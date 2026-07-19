@@ -205,6 +205,13 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 				continue
 			}
 		}
+		if role == SandboxRoleReconciler {
+			if err := adapter.verifyProjectIdentity(ctx, credential); err != nil {
+				capability.Available = false
+				capability.Fresh = false
+				capability.Problems = append(capability.Problems, role+": Project immutable identity or owner is unavailable or mismatched")
+			}
+		}
 	}
 	sort.Strings(capability.Permissions)
 	sort.Strings(capability.CredentialIdentities)
@@ -606,6 +613,56 @@ func (adapter *SandboxAdapter) projectRESTPath() string {
 		return "/users/" + url.PathEscape(adapter.config.RepositoryOwner) + "/projectsV2/" + strconv.Itoa(adapter.config.ProjectNumber)
 	}
 	return "/orgs/" + url.PathEscape(adapter.config.RepositoryOwner) + "/projectsV2/" + strconv.Itoa(adapter.config.ProjectNumber)
+}
+
+func (adapter *SandboxAdapter) verifyProjectIdentity(ctx context.Context, credential Credential) error {
+	var project struct {
+		NodeID string           `json:"node_id"`
+		Number int              `json:"number"`
+		Owner  sandboxRESTOwner `json:"owner"`
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, adapter.projectRESTPath(), nil, &project); err != nil {
+		return err
+	}
+	if project.NodeID != adapter.config.Target.ProjectID ||
+		project.Number != adapter.config.ProjectNumber ||
+		project.Owner.Login != adapter.config.RepositoryOwner ||
+		project.Owner.ID.String() != adapter.config.Target.OwnerID ||
+		!strings.EqualFold(project.Owner.Type, adapter.config.ProjectOwnerKind) {
+		return errors.New("GitHub Project identity does not match the immutable target")
+	}
+	return nil
+}
+
+type sandboxRESTOwner struct {
+	Login string        `json:"login"`
+	ID    sandboxRESTID `json:"id"`
+	Type  string        `json:"type"`
+}
+
+type sandboxRESTID string
+
+func (id *sandboxRESTID) UnmarshalJSON(value []byte) error {
+	if len(value) == 0 || bytes.Equal(value, []byte("null")) {
+		return errors.New("GitHub REST identity is absent")
+	}
+	var textID string
+	if value[0] == '"' {
+		if err := json.Unmarshal(value, &textID); err != nil {
+			return err
+		}
+	} else {
+		textID = string(value)
+	}
+	if textID == "" {
+		return errors.New("GitHub REST identity is empty")
+	}
+	*id = sandboxRESTID(textID)
+	return nil
+}
+
+func (id sandboxRESTID) String() string {
+	return string(id)
 }
 
 type sandboxLabel struct {

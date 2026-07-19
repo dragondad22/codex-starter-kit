@@ -25,8 +25,10 @@ without making any one credential a fallback for another. See
 operational Project configuration; it does not reuse sandbox authority. The retained v1
 type names are wire-compatibility labels. For a user-owned Project, the adapter binds the
 numeric owner and Project identities to one explicitly selected user-token route, verifies
-the API actor and complete observed classic OAuth scope set (including `project`), inventories fields through REST and views/items
-through GraphQL, and permits only the reviewed Project resources. GitHub App and
+the API actor and complete observed classic OAuth scope set (including `project`), and
+resolves the owner/number REST route to the same immutable Project node used by GraphQL.
+It inventories fields through REST and views/items through GraphQL, and permits only the
+reviewed Project resources. GitHub App and
 fine-grained-token routes are rejected for user-owned saved-view creation.
 
 `githubadapter.New` accepts one credential-free configuration, an injected credential
@@ -62,7 +64,8 @@ credential-free facts:
 1. expected mode and ephemeral credential identity, expiry, and permissions;
 2. API actor kind and login, or App slug plus installation ID/account from the authenticated App installation response;
 3. repository node ID and owner;
-4. Project node ID, owner login, and owner kind;
+4. Project number and node ID plus owner login, immutable ID, and kind, proving that the
+   REST owner route and GraphQL target identify the same Project;
 5. pinned REST version `2026-03-10` and a successful GraphQL compatibility query;
 6. required versus granted permissions, retaining and exactly binding every observed
    classic-user scope or the
