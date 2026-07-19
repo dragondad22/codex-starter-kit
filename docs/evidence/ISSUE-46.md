@@ -54,14 +54,21 @@ The live application result is therefore `needs-review`, not a qualification pas
 though its current postcondition is correct. The field and mappings are retained; recovery
 must inspect them by immutable identity rather than rerun field creation.
 
-The production adapter now validates the complete existing catalog before item effects.
+The production adapter now validates the complete existing catalog—including the exact
+option count, names, and immutable IDs—before item effects.
 The engine's content-addressed external-resource lifecycle also plans the exact Phase
 field, nine options, `Phases` view, and nine feature assignments under a separate
 operational target and DEC-0022 mandate. It verifies the API user and classic `project`
-scope, creates a missing user-owned view only through the version-pinned REST route,
-re-observes view and item postconditions through GraphQL, and rejects stale identity or
-human-owned drift rather than duplicating it. The historical `Sandbox*` type names remain
-v1 compatibility labels; the operational mandate does not inherit sandbox authority.
+scope while retaining and exactly binding every other observed classic OAuth scope. Apply
+accepts only an independently retained mandate JSON artifact whose owner, approval record,
+target, actors, timestamps, authority profile, resource digests, ceilings, retention, and
+recovery owner validate through the lifecycle seam; caller flags cannot manufacture it.
+The adapter re-observes view and item postconditions through GraphQL and rejects stale
+identity or human-owned drift rather than duplicating it. Clean-create tests omit
+provider-assigned field/option identities, retain GitHub's returned IDs, converge, and
+separately prove that an already-pinned stale identity remains non-pass. The historical
+`Sandbox*` type names remain v1 compatibility labels; the operational mandate does not
+inherit sandbox authority.
 
 ## Saved view and current live state
 
@@ -73,11 +80,16 @@ progress. This makes Phase membership and progress understandable without making
 release or completion signal.
 
 GitHub API version `2026-03-10` documents saved-view creation for user-owned Projects at
-`POST /users/{user_id}/projectsV2/{project_number}/views`. That endpoint does not support
+[`POST /users/{user_id}/projectsV2/{project_number}/views`](https://docs.github.com/en/rest/projects/views#create-a-view-for-a-user-owned-project).
+That endpoint does not support
 GitHub App user, App installation, or fine-grained personal access tokens. The adapter
 therefore uses the classic user-token route only after native actor/scope verification.
-The exact-source live configuration plan, mandate-bound apply/no-change receipt, replay,
-and final independent review remain required before this record claims pass.
+Its request schema does not expose grouping or sorting. The adapter consequently returns
+`not-configured` without creating a partial view when the required grouped/ascending-sorted
+`Phases` view is absent; it can still verify and replay the existing matching human-created
+view. No live Project effect was attempted for this correction. A fresh independently
+retained mandate covering the exact final source, full observed scope set, and final resource
+digests is required before effect-free live planning/apply/replay can be final evidence.
 
 ## Deterministic verification
 
@@ -85,9 +97,12 @@ Coverage includes direct immutable-option projection and replay, native-parent-b
 context without copied assignment, clearing a duplicated child value, justified
 cross-cutting assignment, invalid Phase, orphan/duplicate parent assignment, incomplete
 catalog, renamed option, duplicate/wrong-type field, stale option identity, exact saved-
-view observation/creation/re-read, unavailable user view route, immutable Project-item
+view observation and re-read, explicit non-pass without partial creation when required
+grouping/sorting is not expressible, unavailable user view route, immutable Project-item
 field update/replay, verified API user/classic scope, and the existing target,
-configuration, and partial-effect failure cases.
+configuration, and partial-effect failure cases. It also covers unexpected broader classic
+OAuth scopes, extra Phase options, provider-ID adoption with stale-ID rejection, and both
+configured Project owner routes for option reconciliation.
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"

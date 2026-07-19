@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -383,6 +386,43 @@ func TestSandboxAdapterObservesUserOwnedPhaseViewAndAssignment(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterInventoriesTheCompletePhaseOptionCatalog(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	options := []map[string]any{}
+	resources := []engine.SandboxResourceSpec{{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select", "node_id": "F_phase"}}}
+	for index := 0; index <= 8; index++ {
+		name := fmt.Sprintf("Phase %d", index)
+		id := fmt.Sprintf("O_phase_%d", index)
+		options = append(options, map[string]any{"id": id, "name": name, "color": "GRAY", "description": ""})
+		resources = append(resources, engine.SandboxResourceSpec{Key: fmt.Sprintf("project-option:phase-%d", index), Kind: engine.SandboxResourceProjectOption, Name: name, Attributes: map[string]string{"field": "Phase", "color": "GRAY", "description": "", "option_id": id}})
+	}
+	options = append(options, map[string]any{"id": "O_phase_extra", "name": "Phase 9", "color": "GRAY", "description": ""})
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
+			json.NewEncoder(response).Encode([]map[string]any{{"id": 50, "node_id": "F_phase", "name": "Phase", "data_type": "single_select", "options": options}})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}}}}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now, resources...)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || !strings.Contains(strings.Join(observation.Problems, ";"), "complete Phase option catalog") {
+		t.Fatalf("Phase catalog observation = %#v, %v", observation, err)
+	}
+}
+
 func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -395,17 +435,20 @@ func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 	defer server.Close()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
 	config, providers := userProjectSandboxConfig(server, target, now)
+	expectation := config.Roles[githubadapter.SandboxRoleReconciler]
+	expectation.ClassicOAuthScopes = []string{"gist", "project", "repo"}
+	config.Roles[githubadapter.SandboxRoleReconciler] = expectation
 	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}
 	capability, err := adapter.Capability(context.Background())
-	if err != nil || !capability.Available || capability.Actor != githubadapter.SandboxRoleReconciler {
+	if err != nil || !capability.Available || capability.Actor != githubadapter.SandboxRoleReconciler || !slices.Equal(capability.Permissions, []string{"reconciler:classic-scope:gist", "reconciler:classic-scope:project", "reconciler:classic-scope:repo", "reconciler:projects:write"}) {
 		t.Fatalf("user Project capability = %#v, %v", capability, err)
 	}
 }
 
-func TestSandboxAdapterCreatesAndReobservesUserOwnedProjectView(t *testing.T) {
+func TestSandboxAdapterRejectsUnexpressibleRequiredProjectViewConfigurationWithoutCreating(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	created := false
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -429,15 +472,71 @@ func TestSandboxAdapterCreatesAndReobservesUserOwnedProjectView(t *testing.T) {
 	}))
 	defer server.Close()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
-	view := engine.SandboxResourceSpec{Key: "project-view:phases", Kind: engine.SandboxResourceProjectView, Name: "Phases", Attributes: map[string]string{"layout": "table", "filter": "", "visible_fields": "F_phase,F_status", "group_by": "", "sort_by": "", "input:visible_fields": "50,51"}}
+	view := engine.SandboxResourceSpec{Key: "project-view:phases", Kind: engine.SandboxResourceProjectView, Name: "Phases", Attributes: map[string]string{"layout": "table", "filter": "", "visible_fields": "F_phase,F_status", "group_by": "F_phase", "sort_by": "F_phase:asc", "input:visible_fields": "50,51"}}
 	config, providers := userProjectSandboxConfig(server, target, now, view)
 	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: view})
-	if err != nil || result.Outcome != "applied" || result.ResourceID != "V_phases" || !created {
+	if err != nil || result.Outcome != "not-configured" || created {
 		t.Fatalf("view result = %#v, created=%v, err=%v", result, created, err)
+	}
+}
+
+func TestSandboxAdapterAdoptsTheProviderAssignedIdentityForAnExpressibleCreatedView(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	created := false
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
+			json.NewEncoder(response).Encode([]any{})
+		case request.Method == http.MethodPost && request.URL.Path == "/users/dragondad22/projectsV2/8/views":
+			created = true
+			json.NewEncoder(response).Encode(map[string]any{"value": map[string]any{"node_id": "V_provider"}})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			views := []any{}
+			if created {
+				views = append(views, map[string]any{"id": "V_provider", "name": "All work", "number": 7, "layout": "TABLE_LAYOUT", "filter": "", "fields": map[string]any{"nodes": []map[string]any{{"id": "F_status"}}}, "groupByFields": map[string]any{"nodes": []any{}}, "sortByFields": map[string]any{"nodes": []any{}}})
+			}
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": views}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}}}}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	view := engine.SandboxResourceSpec{Key: "project-view:all-work", Kind: engine.SandboxResourceProjectView, Name: "All work", Attributes: map[string]string{"layout": "table", "filter": "", "visible_fields": "F_status", "group_by": "", "sort_by": "", "input:visible_fields": "50"}}
+	config, providers := userProjectSandboxConfig(server, target, now, view)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: view})
+	if err != nil || result.Outcome != "applied" || result.ResourceID != "V_provider" {
+		t.Fatalf("view identity adoption = %#v, %v", result, err)
+	}
+}
+
+func TestSandboxAdapterRejectsUnexpectedClassicOAuthScope(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("X-OAuth-Scopes", "gist, project, repo")
+		json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	expectation := config.Roles[githubadapter.SandboxRoleReconciler]
+	expectation.ClassicOAuthScopes = []string{"project"}
+	config.Roles[githubadapter.SandboxRoleReconciler] = expectation
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Available || !slices.Equal(capability.Permissions, []string{"reconciler:classic-scope:gist", "reconciler:classic-scope:project", "reconciler:classic-scope:repo", "reconciler:projects:write"}) || !strings.Contains(strings.Join(capability.Problems, ";"), "scope set") {
+		t.Fatalf("expanded scope capability = %#v, %v", capability, err)
 	}
 }
 
@@ -468,6 +567,149 @@ func TestSandboxAdapterReportsUnavailableUserViewRoute(t *testing.T) {
 		t.Fatalf("unavailable view route = %#v, %v", result, err)
 	}
 }
+
+func TestSandboxAdapterReconcilesProjectOptionsThroughConfiguredOwnerRoute(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		ownerKind string
+		fieldPath string
+	}{
+		{name: "user", ownerKind: "user", fieldPath: "/users/dragondad22/projectsV2/8/fields"},
+		{name: "organization", ownerKind: "organization", fieldPath: "/orgs/dragondad22/projectsV2/8/fields"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch {
+				case request.Method == http.MethodGet && request.URL.Path == test.fieldPath:
+					json.NewEncoder(response).Encode([]map[string]any{{"node_id": "F_phase", "name": "Phase", "data_type": "single_select", "options": []any{}}})
+				case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+					json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"updateProjectV2Field": map[string]any{"projectV2Field": map[string]any{"id": "F_phase"}}}})
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+			option := engine.SandboxResourceSpec{Key: "project-option:phase-0", Kind: engine.SandboxResourceProjectOption, Name: "Phase 0", Attributes: map[string]string{"field": "Phase", "color": "GRAY", "description": ""}}
+			config, providers := userProjectSandboxConfig(server, target, now, option)
+			config.ProjectOwnerKind = test.ownerKind
+			adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: option})
+			if err != nil || result.Outcome != "applied" {
+				t.Fatalf("option reconciliation = %#v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestSandboxAdapterAdoptsProviderAssignedPhaseIdentitiesOnCleanCreate(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	resources := []engine.SandboxResourceSpec{{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select"}}}
+	for index := 0; index <= 8; index++ {
+		resources = append(resources, engine.SandboxResourceSpec{Key: fmt.Sprintf("project-option:phase-%d", index), Kind: engine.SandboxResourceProjectOption, Name: fmt.Sprintf("Phase %d", index), Attributes: map[string]string{"field": "Phase", "color": "GRAY", "description": ""}})
+	}
+	created := false
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
+			fields := []any{}
+			if created {
+				options := []map[string]any{}
+				for index := 0; index <= 8; index++ {
+					options = append(options, map[string]any{"id": fmt.Sprintf("O_provider_%d", index), "name": fmt.Sprintf("Phase %d", index), "color": "GRAY", "description": ""})
+				}
+				fields = append(fields, map[string]any{"id": 50, "node_id": "F_provider", "name": "Phase", "data_type": "single_select", "options": options})
+			}
+			json.NewEncoder(response).Encode(fields)
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			var input struct {
+				Query string `json:"query"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(input.Query, "createProjectV2Field") {
+				created = true
+				json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"createProjectV2Field": map[string]any{"projectV2Field": map[string]any{"id": "F_provider"}}}})
+				return
+			}
+			if strings.Contains(input.Query, "updateProjectV2Field") {
+				t.Fatal("already-converged provider options must not be rewritten")
+			}
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}}}}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now, resources...)
+	expectation := config.Roles[githubadapter.SandboxRoleReconciler]
+	expectation.ClassicOAuthScopes = []string{"project"}
+	config.Roles[githubadapter.SandboxRoleReconciler] = expectation
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := engine.SandboxAuthorityProfile{
+		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleReconciler, expectation)},
+		Permissions:          []string{"reconciler:classic-scope:project", "reconciler:projects:write"},
+		EvidenceMode:         "simulated", Compatibility: "github.com:api.github.com:2026-03-10:native-rest-graphql",
+		DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "30-days",
+	}
+	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "clean-phase-create", SourceRevision: "source", ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "owner", ApprovedPlan: "approval-record", RecoveryOwner: "owner", MarkerPrefix: "starter-kit-contract:phase", Target: target, Authority: authority, Resources: resources}
+	lifecycle := engine.New(engine.WithClock(adapterFixedClock{now}), engine.WithSandboxAdapter(adapter))
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	inspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil || len(plan.Effects) != 10 {
+		t.Fatalf("clean-create plan = %#v, %v", plan, err)
+	}
+	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-record", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour), Target: target,
+		Actors: []string{githubadapter.SandboxRoleReconciler}, MarkerPrefix: manifest.MarkerPrefix, ResourceKinds: []string{engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption}, EffectKinds: []string{"reconcile-resource"}, MaxEffects: 10,
+		DataClass: authority.DataClass, CostCeiling: authority.CostCeiling, Destructive: authority.Destructive, Retention: authority.Retention, RecoveryOwner: manifest.RecoveryOwner, Authority: authority,
+	}, resources...)
+	apply, err := lifecycle.ApplySandbox(context.Background(), plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate})
+	if err != nil || apply.Status != engine.SandboxApplyApplied || len(apply.Receipts) != 10 || apply.Receipts[0].ResourceID != "F_provider" || apply.Receipts[1].ResourceID != "O_provider_0" {
+		t.Fatalf("clean-create apply = %#v, %v", apply, err)
+	}
+	verification, err := lifecycle.VerifySandbox(context.Background(), manifest)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("clean-create verification = %#v, %v", verification, err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Problems) != 0 || len(observation.Resources) != 10 || observation.Resources[0].ID != "F_provider" {
+		t.Fatalf("provider-bound observation = %#v, %v", observation, err)
+	}
+	config.Resources[0].Attributes["node_id"] = "F_stale"
+	config.Resources[1].Attributes["option_id"] = "O_stale"
+	staleAdapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleObservation, err := staleAdapter.Observe(context.Background(), target)
+	if err != nil || !strings.Contains(strings.Join(staleObservation.Problems, ";"), "immutable identity") {
+		t.Fatalf("stale provider identities = %#v, %v", staleObservation, err)
+	}
+}
+
+type adapterFixedClock struct{ now time.Time }
+
+func (clock adapterFixedClock) Now() time.Time { return clock.now }
 
 func TestSandboxAdapterReconcilesProjectItemFieldByImmutableIdentity(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)

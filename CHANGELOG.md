@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:26916848f189f7d7d812e3c1e9c1bbddc21b1d5a30e6c96025917aa2dda8fba7 -->
+<!-- source-digest: sha256:f4770e7a91c4bcfdfde2d127fe8bf93b9a1b3345d751859058e819378451e297 -->
 
 ## [Unreleased]
 
@@ -10,7 +10,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 - Create managed repositories through reviewable, immutable plans and an evidence-backed apply operation. (#26)
 - Verify seed controls without converting fail, not-applicable, not-configured, needs-review, or accepted-exception states into a pass. (#27)
 - Qualify equivalent Phase 1 lifecycle semantics on native Linux, macOS, and Windows runners. (#30)
-- Project roadmap Phase directly on features while child work derives context without duplicated assignments. (#46)
+- Governed Project Phase configuration with parent-derived child context, exact authority/catalog evidence, and truthful view support. (#46)
 - Add an installable Codex plugin status tracer that fails closed when engine compatibility or provenance is insufficient. (#51)
 - Guide managed-repository creation through separate input, notice, plan, effect-approval, and recovery steps in the Codex plugin. (#52)
 - Guide truthful verification through immutable plans, explicit evidence effects, redaction, and preserved control states in the Codex plugin. (#53)

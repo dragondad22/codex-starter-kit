@@ -193,6 +193,9 @@ func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credent
 				return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: resource.ID, Detail: "existing Project view drift requires human-owned view reconciliation"}, nil
 			}
 		}
+		if effect.Resource.Attributes["group_by"] != "" || effect.Resource.Attributes["sort_by"] != "" {
+			return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "Project view creation cannot express required grouping or sorting through the approved public API route"}, nil
+		}
 		body := map[string]any{"name": effect.Resource.Name, "layout": effect.Resource.Attributes["layout"]}
 		if filter := effect.Resource.Attributes["filter"]; filter != "" {
 			body["filter"] = filter
@@ -373,6 +376,19 @@ func (adapter *SandboxAdapter) applyProjectOption(ctx context.Context, credentia
 		if field.Name != fieldName {
 			continue
 		}
+		for _, option := range field.Options {
+			if string(option.Name) != effect.Resource.Name {
+				continue
+			}
+			matches := option.Color == effect.Resource.Attributes["color"] && string(option.Description) == effect.Resource.Attributes["description"]
+			if expectedID := effect.Resource.Attributes["option_id"]; expectedID != "" {
+				matches = matches && option.ID == expectedID
+			}
+			if matches {
+				return engine.SandboxEffectResult{Outcome: "no-change", ResourceID: option.ID, Detail: "Project option already matches and its provider identity was retained"}, nil
+			}
+			return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: option.ID, Detail: "existing Project option drift requires immutable-identity review"}, nil
+		}
 		options := adapter.desiredProjectOptions(fieldName)
 		input := map[string]any{"fieldId": field.NodeID, "singleSelectOptions": options}
 		var response struct {
@@ -409,7 +425,7 @@ func (adapter *SandboxAdapter) desiredProjectOptions(field string) []map[string]
 
 func (adapter *SandboxAdapter) projectFields(ctx context.Context, credential Credential) ([]projectField, error) {
 	var fields []projectField
-	path := "/orgs/" + url.PathEscape(adapter.config.RepositoryOwner) + "/projectsV2/" + strconv.Itoa(adapter.config.ProjectNumber) + "/fields"
+	path := adapter.projectRESTPath() + "/fields"
 	_, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &fields)
 	return fields, err
 }

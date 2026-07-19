@@ -7,8 +7,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
@@ -41,18 +44,19 @@ func run(ctx context.Context, arguments []string) error {
 	source := flags.String("source-revision", "", "reviewed source revision")
 	observedAtText := flags.String("observed-at", "", "pinned capability observation time in RFC3339")
 	expectedPlan := flags.String("expected-plan-id", "", "exact reviewed plan identity")
-	approvalID := flags.String("approval-id", "", "durable owner approval record")
-	approvedAtText := flags.String("approved-at", "", "owner approval time in RFC3339")
-	expiresAtText := flags.String("expires-at", "", "mandate expiry in RFC3339")
+	mandatePath := flags.String("mandate", "", "independently retained owner-approved execution mandate JSON")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
-	if (*stage != "plan" && *stage != "apply") || *repository == "" || *source == "" || *observedAtText == "" || flags.NArg() != 0 {
-		return errors.New("--stage plan|apply, --repository, --source-revision, and --observed-at are required; positional arguments are unsupported")
+	if (*stage != "plan" && *stage != "apply") || *repository == "" || *source == "" || *observedAtText == "" || *mandatePath == "" || flags.NArg() != 0 {
+		return errors.New("--stage plan|apply, --repository, --source-revision, --observed-at, and --mandate are required; positional arguments are unsupported")
 	}
-	token := os.Getenv(tokenEnvironment)
-	if token == "" {
-		return fmt.Errorf("%s is required", tokenEnvironment)
+	if *stage == "apply" && *expectedPlan == "" {
+		return errors.New("apply requires the exact --expected-plan-id")
+	}
+	mandate, err := readMandate(*mandatePath)
+	if err != nil {
+		return err
 	}
 	now, err := time.Parse(time.RFC3339, *observedAtText)
 	if err != nil {
@@ -60,7 +64,14 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	resources := phaseResources()
 	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_kgDOTVs5Hg", ProjectID: "PVT_kwHOASd_cc4BdI9q", RepositoryName: "dragondad22/codex-starter-kit"}
-	expectation := githubadapter.SandboxRoleExpectation{Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", RequiredPermissions: []string{"projects:write"}}
+	if err := validateRetainedMandate(mandate, target, resources); err != nil {
+		return err
+	}
+	token := os.Getenv(tokenEnvironment)
+	if token == "" {
+		return fmt.Errorf("%s is required", tokenEnvironment)
+	}
+	expectation := githubadapter.SandboxRoleExpectation{Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", RequiredPermissions: []string{"projects:write"}, ClassicOAuthScopes: mandateClassicScopes(mandate)}
 	config := githubadapter.SandboxConfig{
 		Host: "github.com", RESTBaseURL: "https://api.github.com", GraphQLURL: "https://api.github.com/graphql", APIVersion: "2026-03-10",
 		ConfigurationRevision: "issue-46-phase-configuration-v1", Target: target, RepositoryOwner: "dragondad22", RepositoryName: "codex-starter-kit", ProjectNumber: 8, ProjectOwnerKind: "user",
@@ -68,19 +79,14 @@ func run(ctx context.Context, arguments []string) error {
 		Roles: map[string]githubadapter.SandboxRoleExpectation{githubadapter.SandboxRoleReconciler: expectation},
 	}
 	provider := githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
-		return githubadapter.Credential{Token: token, Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", Permissions: []string{"projects:write"}, ExpiresAt: now.Add(time.Hour)}, nil
+		return githubadapter.Credential{Token: token, Mode: "user-token", Actor: "dragondad22", Account: "dragondad22", AccountID: "19365745", Permissions: []string{"projects:write"}, ExpiresAt: mandate.ExpiresAt}, nil
 	})
 	adapter, err := githubadapter.NewSandbox(config, map[string]githubadapter.CredentialProvider{githubadapter.SandboxRoleReconciler: provider}, http.DefaultClient, githubadapter.WithSandboxClock(func() time.Time { return now }))
 	if err != nil {
 		return err
 	}
 	lifecycle := engine.New(engine.WithSandboxAdapter(adapter))
-	authority := engine.SandboxAuthorityProfile{
-		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleReconciler, expectation)},
-		Permissions:          []string{"reconciler:projects:write"}, EvidenceMode: "live", Compatibility: "github.com:api.github.com:2026-03-10:native-rest-graphql",
-		DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete-no-overwrite-human-view", Retention: "30-days",
-	}
-	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "issue-46-phase-configuration", SourceRevision: *source, ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "dragondad22", ApprovedPlan: "dec-0022:issue-46", RecoveryOwner: "dragondad22", MarkerPrefix: "starter-kit-contract:issue-46", Target: target, Authority: authority, Resources: resources}
+	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "issue-46-phase-configuration", SourceRevision: *source, ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: mandate.ApprovedBy, ApprovedPlan: mandate.ApprovalID, RecoveryOwner: mandate.RecoveryOwner, MarkerPrefix: mandate.MarkerPrefix, Target: target, Authority: mandate.Authority, Resources: resources}
 	inspection, err := lifecycle.InspectSandbox(ctx, engine.SandboxRequest{Repository: *repository, Manifest: manifest})
 	if err != nil {
 		return err
@@ -89,27 +95,13 @@ func run(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	output := result{SchemaVersion: 1, Planning: engine.SandboxPlanningResult{SchemaVersion: 1, Inspection: inspection, Plan: plan}}
+	output := result{SchemaVersion: 1, Planning: engine.SandboxPlanningResult{SchemaVersion: 1, Inspection: inspection, Plan: plan}, Mandate: &mandate}
 	if *stage == "plan" {
 		return json.NewEncoder(os.Stdout).Encode(output)
 	}
-	if *expectedPlan == "" || plan.ID != *expectedPlan || *approvalID == "" {
-		return errors.New("apply requires the exact --expected-plan-id and --approval-id")
+	if plan.ID != *expectedPlan {
+		return errors.New("apply requires the exact --expected-plan-id")
 	}
-	approvedAt, err := time.Parse(time.RFC3339, *approvedAtText)
-	if err != nil {
-		return errors.New("--approved-at must be RFC3339")
-	}
-	expiresAt, err := time.Parse(time.RFC3339, *expiresAtText)
-	if err != nil {
-		return errors.New("--expires-at must be RFC3339")
-	}
-	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
-		SchemaVersion: 1, ApprovedBy: "dragondad22", ApprovalID: *approvalID, ApprovedAt: approvedAt, ExpiresAt: expiresAt, Target: target,
-		Actors: []string{githubadapter.SandboxRoleReconciler}, MarkerPrefix: manifest.MarkerPrefix, UnmarkedKeys: resourceKeys(resources),
-		ResourceKinds: []string{engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView, engine.SandboxResourceProjectItemField}, EffectKinds: []string{"reconcile-resource"}, MaxEffects: len(resources),
-		DataClass: authority.DataClass, CostCeiling: authority.CostCeiling, Destructive: authority.Destructive, Retention: authority.Retention, RecoveryOwner: manifest.RecoveryOwner, Authority: authority,
-	}, resources...)
 	approval := engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate}
 	apply, err := lifecycle.ApplySandbox(ctx, plan, approval)
 	if err != nil {
@@ -131,8 +123,58 @@ func run(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	output.Mandate, output.Apply, output.Verification, output.ReplayPlan, output.ReplayApply = &mandate, &apply, &verification, &replayPlan, &replayApply
+	output.Apply, output.Verification, output.ReplayPlan, output.ReplayApply = &apply, &verification, &replayPlan, &replayApply
 	return json.NewEncoder(os.Stdout).Encode(output)
+}
+
+func readMandate(path string) (engine.SandboxExecutionMandate, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return engine.SandboxExecutionMandate{}, errors.New("read retained execution mandate")
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+	var mandate engine.SandboxExecutionMandate
+	if err := decoder.Decode(&mandate); err != nil {
+		return engine.SandboxExecutionMandate{}, errors.New("decode retained execution mandate")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return engine.SandboxExecutionMandate{}, errors.New("retained execution mandate contains trailing or invalid JSON")
+	}
+	return mandate, nil
+}
+
+func validateRetainedMandate(mandate engine.SandboxExecutionMandate, target engine.SandboxTarget, resources []engine.SandboxResourceSpec) error {
+	suppliedDigests := slices.Clone(mandate.ResourceDigests)
+	mandate.ResourceDigests = nil
+	expected := engine.BindSandboxExecutionMandate(mandate, resources...)
+	scopes := mandateClassicScopes(mandate)
+	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != expected.ID || !slices.Equal(suppliedDigests, expected.ResourceDigests) {
+		return errors.New("retained execution mandate does not bind the exact Phase resource digests")
+	}
+	if mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || !mandate.ApprovedAt.Before(mandate.ExpiresAt) {
+		return errors.New("retained execution mandate lacks owner identity or valid approval timestamps")
+	}
+	if mandate.Target != target || mandate.RecoveryOwner == "" || !slices.Equal(mandate.Actors, []string{githubadapter.SandboxRoleReconciler}) || !slices.Equal(mandate.UnmarkedKeys, resourceKeys(resources)) {
+		return errors.New("retained execution mandate does not bind the exact owner, target, actor, recovery owner, and resources")
+	}
+	if !slices.Contains(scopes, "project") {
+		return errors.New("retained execution mandate does not bind the complete classic OAuth scope set including project")
+	}
+	return nil
+}
+
+func mandateClassicScopes(mandate engine.SandboxExecutionMandate) []string {
+	const prefix = githubadapter.SandboxRoleReconciler + ":classic-scope:"
+	values := []string{}
+	for _, permission := range mandate.Authority.Permissions {
+		if strings.HasPrefix(permission, prefix) {
+			values = append(values, strings.TrimPrefix(permission, prefix))
+		}
+	}
+	return values
 }
 
 func phaseResources() []engine.SandboxResourceSpec {

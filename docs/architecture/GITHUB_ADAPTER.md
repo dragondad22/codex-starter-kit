@@ -25,7 +25,7 @@ without making any one credential a fallback for another. See
 operational Project configuration; it does not reuse sandbox authority. The retained v1
 type names are wire-compatibility labels. For a user-owned Project, the adapter binds the
 numeric owner and Project identities to one explicitly selected user-token route, verifies
-the API actor and classic `project` scope, inventories fields through REST and views/items
+the API actor and complete observed classic OAuth scope set (including `project`), inventories fields through REST and views/items
 through GraphQL, and permits only the reviewed Project resources. GitHub App and
 fine-grained-token routes are rejected for user-owned saved-view creation.
 
@@ -64,7 +64,8 @@ credential-free facts:
 3. repository node ID and owner;
 4. Project node ID, owner login, and owner kind;
 5. pinned REST version `2026-03-10` and a successful GraphQL compatibility query;
-6. required versus granted permissions, using observed classic-user scopes or the
+6. required versus granted permissions, retaining and exactly binding every observed
+   classic-user scope or the
    App-installation mint response bound to its permission revision;
 7. current Project lifecycle field and option identities before any effect; and
 8. REST and GraphQL limit, used, remaining, and reset budgets, limitations,
@@ -133,6 +134,17 @@ The Project-configuration route plans the complete Phase field/option catalog, t
 `Phases` view, and feature #1–#9 assignments as immutable resources. Existing name/type,
 option, node, item, layout, visible-field, grouping, sorting, or assignment conflicts stop
 instead of creating duplicates or overwriting human state. A missing view may be created
-through the version-pinned REST route and must be re-observed through GraphQL; `404`,
-denial, partial data, and missing postconditions retain explicit non-pass results. Feature
-assignments update only the approved item, field, and option IDs and are re-read before pass.
+through the version-pinned REST route only when that route can express its complete desired
+configuration, and must be re-observed through GraphQL. GitHub's current create-view request
+accepts name, layout, filter, and visible fields but not grouping or sorting, so a missing
+grouped/sorted `Phases` view is `not-configured` without creating a partial view; an existing
+matching human-created view remains observable and replayable. `404`, denial, partial data,
+and missing postconditions retain explicit non-pass results. Feature assignments update only
+the approved item, field, and option IDs and are re-read before pass.
+
+Clean creation may leave field, option, and view identities unbound in desired input. The
+adapter retains GitHub's returned immutable IDs in receipts and normalized observation, and
+subsequent effects in that lifecycle adopt the observed identities. A manifest that already
+pins an identity still fails closed when the provider identity changes. Option inventory and
+mutation use the configured user- or organization-owner route rather than assuming one owner
+kind.

@@ -38,6 +38,7 @@ type SandboxRoleExpectation struct {
 	AccountID           string   `json:"account_id"`
 	InstallationID      string   `json:"installation_id,omitempty"`
 	RequiredPermissions []string `json:"required_permissions"`
+	ClassicOAuthScopes  []string `json:"classic_oauth_scopes,omitempty"`
 }
 
 // SandboxConfig is the credential-free, immutable allowlist for one contract sandbox.
@@ -135,6 +136,7 @@ func newSandbox(config SandboxConfig, providers map[string]CredentialProvider, r
 			}
 		}
 		expectation.RequiredPermissions = slices.Clone(expectation.RequiredPermissions)
+		expectation.ClassicOAuthScopes = normalizedHeaderTokens(strings.Join(expectation.ClassicOAuthScopes, ","))
 		roleCopy[role] = expectation
 		providerCopy[role] = provider
 	}
@@ -177,6 +179,12 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 			capability.Problems = append(capability.Problems, role+": credential unavailable or mismatched")
 			continue
 		}
+		for _, permission := range credential.Permissions {
+			capability.Permissions = append(capability.Permissions, role+":"+permission)
+		}
+		if capability.ExpiresAt.IsZero() || credential.ExpiresAt.Before(capability.ExpiresAt) {
+			capability.ExpiresAt = credential.ExpiresAt
+		}
 		if credential.Mode == "user-token" {
 			var actor struct {
 				Login string `json:"login"`
@@ -185,18 +193,16 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 			}
 			response, identityErr := adapter.rest(ctx, credential, http.MethodGet, "/user", nil, &actor)
 			expectation := adapter.config.Roles[role]
-			if identityErr != nil || actor.Login != expectation.Actor || strconv.FormatInt(actor.ID, 10) != expectation.AccountID || actor.Type != "User" || !headerContainsToken(response, "X-OAuth-Scopes", "project") {
+			observedScopes := responseHeaderTokens(response, "X-OAuth-Scopes")
+			for _, scope := range observedScopes {
+				capability.Permissions = append(capability.Permissions, role+":classic-scope:"+scope)
+			}
+			if identityErr != nil || actor.Login != expectation.Actor || strconv.FormatInt(actor.ID, 10) != expectation.AccountID || actor.Type != "User" || !slices.Contains(observedScopes, "project") || len(expectation.ClassicOAuthScopes) != 0 && !sameStringSet(observedScopes, expectation.ClassicOAuthScopes) {
 				capability.Available = false
 				capability.Fresh = false
-				capability.Problems = append(capability.Problems, role+": user-token actor or classic Project scope is unavailable")
+				capability.Problems = append(capability.Problems, role+": user-token actor or exact classic OAuth scope set is unavailable")
 				continue
 			}
-		}
-		for _, permission := range credential.Permissions {
-			capability.Permissions = append(capability.Permissions, role+":"+permission)
-		}
-		if capability.ExpiresAt.IsZero() || credential.ExpiresAt.Before(capability.ExpiresAt) {
-			capability.ExpiresAt = credential.ExpiresAt
 		}
 	}
 	sort.Strings(capability.Permissions)
@@ -205,16 +211,27 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 	return capability, nil
 }
 
-func headerContainsToken(response *http.Response, name, expected string) bool {
+func responseHeaderTokens(response *http.Response, name string) []string {
 	if response == nil {
-		return false
+		return nil
 	}
-	for _, value := range strings.Split(response.Header.Get(name), ",") {
-		if strings.TrimSpace(value) == expected {
-			return true
+	return normalizedHeaderTokens(response.Header.Get(name))
+}
+
+func normalizedHeaderTokens(header string) []string {
+	values := []string{}
+	seen := map[string]struct{}{}
+	for _, value := range strings.Split(header, ",") {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			if _, duplicate := seen[value]; !duplicate {
+				values = append(values, value)
+				seen[value] = struct{}{}
+			}
 		}
 	}
-	return false
+	sort.Strings(values)
+	return values
 }
 
 // SandboxCredentialIdentity returns the credential-free identity bound into plans and mandates.
@@ -406,6 +423,7 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 		return nil, []string{"Project view or workflow inventory is unavailable"}
 	}
 	result := []engine.SandboxObservedResource{}
+	problems := adapter.projectCatalogProblems(fields)
 	for _, desired := range adapter.config.Resources {
 		switch desired.Kind {
 		case engine.SandboxResourceProjectField:
@@ -456,7 +474,61 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 			}
 		}
 	}
-	return result, nil
+	return result, problems
+}
+
+func (adapter *SandboxAdapter) projectCatalogProblems(fields []projectField) []string {
+	var desiredField *engine.SandboxResourceSpec
+	desiredOptions := map[string]engine.SandboxResourceSpec{}
+	for index := range adapter.config.Resources {
+		resource := &adapter.config.Resources[index]
+		if resource.Kind == engine.SandboxResourceProjectField && resource.Name == "Phase" {
+			desiredField = resource
+		}
+		if resource.Kind == engine.SandboxResourceProjectOption && resource.Attributes["field"] == "Phase" {
+			desiredOptions[resource.Name] = *resource
+		}
+	}
+	if desiredField == nil {
+		return nil
+	}
+	matching := []projectField{}
+	for _, field := range fields {
+		if field.Name == desiredField.Name {
+			matching = append(matching, field)
+		}
+	}
+	if len(matching) == 0 {
+		return nil
+	}
+	if len(matching) != 1 {
+		return []string{"Project must expose exactly one governed Phase field"}
+	}
+	field := matching[0]
+	if normalizeProjectDataType(field.DataType) != normalizeProjectDataType(desiredField.Attributes["data_type"]) || desiredField.Attributes["node_id"] != "" && field.NodeID != desiredField.Attributes["node_id"] {
+		return []string{"Project Phase field type or immutable identity conflicts with the governed catalog"}
+	}
+	if len(field.Options) != len(desiredOptions) {
+		return []string{"Project must expose the complete Phase option catalog with no extras"}
+	}
+	seenNames := map[string]struct{}{}
+	seenIDs := map[string]struct{}{}
+	for _, option := range field.Options {
+		name := string(option.Name)
+		desired, exists := desiredOptions[name]
+		_, duplicateName := seenNames[name]
+		_, duplicateID := seenIDs[option.ID]
+		if !exists || duplicateName || duplicateID || desired.Attributes["option_id"] != "" && option.ID != desired.Attributes["option_id"] {
+			return []string{"Project must expose the complete Phase option catalog with stable names and immutable IDs"}
+		}
+		seenNames[name] = struct{}{}
+		seenIDs[option.ID] = struct{}{}
+	}
+	return nil
+}
+
+func normalizeProjectDataType(value string) string {
+	return strings.ReplaceAll(strings.ToLower(value), "_", "")
 }
 
 func normalizeProjectLayout(value string) string {
