@@ -147,3 +147,10 @@ Phase assignment by immutable option identity. It does not create credentials, p
 repositories or Projects, configure rules or workflows, publish a release, or claim
 private/paid/GHES support. Native Linux, macOS, and Windows support is claimed only after
 the exact completing revision passes the repository matrix.
+
+Project-level Phase configuration uses the engine's existing content-addressed external-
+resource lifecycle rather than the one-task intent. Its v1 implementation names remain
+`Sandbox*` for compatibility, but #46 supplies a distinct operational target, user-token
+authority profile, manifest, mandate, and state repository. The plan covers exactly one
+Phase catalog, one `Phases` view, and feature #1–#9 assignments; it cannot inherit #73's
+sandbox authority or widen routine Work Manager effects.

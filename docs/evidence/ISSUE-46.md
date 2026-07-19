@@ -44,9 +44,9 @@ field or naming collision. Actor `dragondad22` (account `19365745`, node
 | Phase 8 | `6d252c8e` | #9 |
 
 A postcondition read confirmed features #1–#9 map respectively to Phase 0–Phase 8 and
-that no other item has a direct Phase. The run made one field creation attempt followed by
-nine item assignment attempts; all returned success and the read matched the intended
-state.
+that no other item has a direct Phase. Their immutable issue-content and Project-item IDs
+are now retained by the reviewed #46 configuration manifest rather than rediscovered by
+title or issue number.
 
 The owner authorized proceeding through #46, but the CLI effects were not preceded by a
 retained immutable effect-plan/review identity and no safe create replay was attempted.
@@ -54,34 +54,40 @@ The live application result is therefore `needs-review`, not a qualification pas
 though its current postcondition is correct. The field and mappings are retained; recovery
 must inspect them by immutable identity rather than rerun field creation.
 
-The production adapter now validates the complete existing catalog before item effects,
-but Work Manager does not yet own an idempotent field/option/view creation plan. Therefore
-the requested repeatable configuration reconciliation is also incomplete; direct CLI
-field creation is not the supported fallback.
+The production adapter now validates the complete existing catalog before item effects.
+The engine's content-addressed external-resource lifecycle also plans the exact Phase
+field, nine options, `Phases` view, and nine feature assignments under a separate
+operational target and DEC-0022 mandate. It verifies the API user and classic `project`
+scope, creates a missing user-owned view only through the version-pinned REST route,
+re-observes view and item postconditions through GraphQL, and rejects stale identity or
+human-owned drift rather than duplicating it. The historical `Sandbox*` type names remain
+v1 compatibility labels; the operational mandate does not inherit sandbox authority.
 
-## Explicit non-pass
+## Saved view and current live state
 
-The required saved `Phases` view is `not-configured`. GitHub's public CLI and GraphQL
-schema expose no Project-view creation mutation, so the agent cannot create or verify the
-human-owned view without changing authority or using an unsupported interface. The owner
-must create one `Phases` view in Project #8, grouped or ordered by Phase and showing useful
-Status, Readiness, and native sub-issue progress context. That action must not imply phase
-or release completion.
+The owner created and renamed the human-facing view before the supported automation route
+was applied. A native GraphQL read now identifies `Phases` as
+`PVTV_lAHOASd_cc4BdI9qzgLBdLU`, table view number 6. It is grouped and sorted ascending by
+the immutable Phase field and displays Title, Status, Readiness, and native sub-issue
+progress. This makes Phase membership and progress understandable without making Phase a
+release or completion signal.
 
-A native GraphQL read found the existing `All Tasks`, `Roadmap`, `Current Work`, `Backlog`,
-and `Needs Refinement` views and no `Phases` view. This distinguishes a confirmed missing
-view from an unavailable inventory while retaining creation as a human action.
-
-Issue #46 and its PR cannot pass until the view exists, its identity/layout is re-read,
-and distinct Spec review accepts the complete result.
+GitHub API version `2026-03-10` documents saved-view creation for user-owned Projects at
+`POST /users/{user_id}/projectsV2/{project_number}/views`. That endpoint does not support
+GitHub App user, App installation, or fine-grained personal access tokens. The adapter
+therefore uses the classic user-token route only after native actor/scope verification.
+The exact-source live configuration plan, mandate-bound apply/no-change receipt, replay,
+and final independent review remain required before this record claims pass.
 
 ## Deterministic verification
 
 Coverage includes direct immutable-option projection and replay, native-parent-bound
 context without copied assignment, clearing a duplicated child value, justified
 cross-cutting assignment, invalid Phase, orphan/duplicate parent assignment, incomplete
-catalog, renamed option, duplicate/wrong-type field, stale option identity, and the
-existing target/configuration/partial-effect failure cases.
+catalog, renamed option, duplicate/wrong-type field, stale option identity, exact saved-
+view observation/creation/re-read, unavailable user view route, immutable Project-item
+field update/replay, verified API user/classic scope, and the existing target,
+configuration, and partial-effect failure cases.
 
 ```text
 python3 -m unittest discover -s tests -p "test_*.py"

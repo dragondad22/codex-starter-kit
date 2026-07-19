@@ -21,6 +21,14 @@ credential providers. It aggregates reconciler, seeder, and rules installation a
 without making any one credential a fallback for another. See
 [GitHub Sandbox Bootstrap](SANDBOX_BOOTSTRAP.md).
 
+#46 reuses that content-addressed external-resource lifecycle for a separately authorized
+operational Project configuration; it does not reuse sandbox authority. The retained v1
+type names are wire-compatibility labels. For a user-owned Project, the adapter binds the
+numeric owner and Project identities to one explicitly selected user-token route, verifies
+the API actor and classic `project` scope, inventories fields through REST and views/items
+through GraphQL, and permits only the reviewed Project resources. GitHub App and
+fine-grained-token routes are rejected for user-owned saved-view creation.
+
 `githubadapter.New` accepts one credential-free configuration, an injected credential
 provider, and a native Go HTTP client. The configuration names the host, pinned REST
 version, expected mode and actor, repository and Project immutable IDs/owners, lifecycle
@@ -120,3 +128,11 @@ qualified the isolated sandbox baseline, and #46 applied and re-read the approve
 operational Phase catalog through an owner CLI route. Neither result is a live pass for
 the routine Work Adapter Phase effect. #46's saved `Phases` view remains `not-configured`;
 #76 owns aggregate qualification and support claims.
+
+The Project-configuration route plans the complete Phase field/option catalog, the saved
+`Phases` view, and feature #1–#9 assignments as immutable resources. Existing name/type,
+option, node, item, layout, visible-field, grouping, sorting, or assignment conflicts stop
+instead of creating duplicates or overwriting human state. A missing view may be created
+through the version-pinned REST route and must be re-observed through GraphQL; `404`,
+denial, partial data, and missing postconditions retain explicit non-pass results. Feature
+assignments update only the approved item, field, and option IDs and are re-read before pass.
