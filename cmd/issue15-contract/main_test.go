@@ -209,3 +209,21 @@ func TestFixtureGraphQLFailsClosedOnPartialResponse(t *testing.T) {
 		t.Fatal("partial GraphQL response must be non-pass")
 	}
 }
+
+func TestPartialRecoveryVerifiesRetiredImmutableFixture(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != issuePath()+"/12" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":2,"node_id":"I_2","number":12,"state":"closed","body":"` + fixtureTombstone + `"}`))
+	}))
+	defer server.Close()
+	api := fixtureAPI{client: server.Client(), token: "test", restBase: server.URL, graphQLURL: server.URL + "/graphql"}
+	issues := map[string]fixtureIssue{selectedManagedID: {ID: 2, NodeID: "I_2", Number: 12}}
+	if err := api.verifyCleanup(context.Background(), issues); err != nil {
+		t.Fatal(err)
+	}
+}
