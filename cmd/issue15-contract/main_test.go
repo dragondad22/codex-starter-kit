@@ -225,7 +225,7 @@ func TestFixtureGraphQLFailsClosedOnPartialResponse(t *testing.T) {
 func TestPartialRecoveryVerifiesRetiredImmutableFixture(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.URL.Path != issuePath()+"/12" {
+		if request.URL.Path != issuePath()+"/12" || request.Method != http.MethodGet && request.Method != http.MethodPatch {
 			http.NotFound(writer, request)
 			return
 		}
@@ -235,7 +235,7 @@ func TestPartialRecoveryVerifiesRetiredImmutableFixture(t *testing.T) {
 	defer server.Close()
 	api := fixtureAPI{client: server.Client(), token: "test", restBase: server.URL, graphQLURL: server.URL + "/graphql"}
 	issues := map[string]fixtureIssue{selectedManagedID: {ID: 2, NodeID: "I_2", Number: 12}}
-	if err := api.verifyCleanup(context.Background(), issues); err != nil {
+	if err := api.cleanupPartial(context.Background(), issues); err != nil {
 		t.Fatal(err)
 	}
 }
