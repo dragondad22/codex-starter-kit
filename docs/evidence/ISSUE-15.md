@@ -107,8 +107,6 @@ Focused deterministic coverage now includes:
   dependency slices with selected and related immutable identities;
 - relationship-only closure changes produce a new observation revision and stale retained
   plans stop before effects;
-- fresh App-token timestamps and rate snapshots preserve an unexpired plan only when its
-  semantic actor, authority, target, and configuration contract is unchanged;
 - fail-closed behavior when GitHub's native dependency endpoint is unavailable;
 - parent issue closure and Status correction without rewriting human content; and
 - existing stale target/configuration, permission denial, partial response, rate,
@@ -123,25 +121,7 @@ git diff --check
 ```
 
 The exact completing revision must pass native Linux, macOS, and Windows CI and a distinct
-Standards/Spec review before merge. A source-bound `issue15-contract` runner and reviewed
-dispatch workflow now define the isolated `GH-WORK-08` setup, immutable plan, approved
-apply, verification/status, retained evidence, and cleanup route. Seeder and reconciler
-GitHub Apps remain role-separated; all fixtures use one public-synthetic marker and the
-workflow retains evidence for 30 days. Setup closes the selected issue before assigning
-its stale Project Status `Next`, reproducing a missed close-to-Done transition rather than
-combining ordinary issue closure with reconciliation. Every stage validates the executing
-commit, workflow digest, resource digest, exact App permission profile, approval record,
-and bounded lease. The setup receipt establishes the immutable issue IDs used by later
-Project setup, planning, apply, and cleanup; marker text alone cannot authorize mutation.
-The installed workflow replaces its reviewed source placeholder with one exact commit
-before installation, so dispatch cannot select code that receives App authority. Runtime
-also hashes the executing sandbox workflow and resolves the numeric public GitHub comment
-to an unedited owner-authored six-line approval containing only the exact source, workflow,
-resource, decision, and expiry facts. Explicit non-pass setup evidence cannot authorize
-planning or apply. Cleanup first uses the reconciler to remove and re-observe all leased
-Project items, then uses the seeder to remove native relationships and tombstone synthetic
-issue bodies. Active markers disappear while immutable artifact evidence remains, allowing
-a later bounded run to use fresh IDs without accumulating Project residue. The live result
-remains `not-configured` until those exact values receive a new bounded mandate and the
-resulting run passes; it is the final #15 acceptance gate before this issue or its draft PR
-can complete.
+Standards/Spec review before merge. The approved #73 sandbox supplies only built-in
+close-to-Done evidence. #15's `GH-WORK-08` multi-item live result remains explicitly
+`not-configured`; aggregate live qualification and its current scoped mandate are owned by
+#76 and do not block this deterministic implementation.
