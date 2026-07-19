@@ -33,6 +33,9 @@ func TestContractIntentBindsReviewedSourceAndNativeGraph(t *testing.T) {
 	if !intent.Task.Closed || intent.Task.Status != "next" || intent.Task.Readiness != "ready" {
 		t.Fatalf("selected policy must exercise closure-derived Done: %#v", intent.Task)
 	}
+	if fixtureIssueStates()[selectedManagedID] != "closed" || baselineStates()[selectedManagedID] != readinessReady+":"+statusNext {
+		t.Fatal("fixture must begin as an already-closed issue with stale non-Done Project status")
+	}
 }
 
 func TestManagedBodyRoundTripsExactTaskMetadata(t *testing.T) {
@@ -72,10 +75,10 @@ func TestRoleConfigurationsAreLeastPurposeSeparated(t *testing.T) {
 	if seeder.App.Actor != seederActor || reconciler.App.Actor != reconcilerActor {
 		t.Fatalf("role actors = %#v / %#v", seeder.App, reconciler.App)
 	}
-	if strings.Join(seeder.RequiredPermissions, ",") != "issues:write,metadata:read" {
+	if strings.Join(seeder.RequiredPermissions, ",") != "contents:write,issues:write,metadata:read,pull-requests:write,workflows:write" {
 		t.Fatalf("seeder permissions = %v", seeder.RequiredPermissions)
 	}
-	if strings.Join(reconciler.RequiredPermissions, ",") != "issues:write,metadata:read,organization-projects:write" {
+	if strings.Join(reconciler.RequiredPermissions, ",") != "actions:read,checks:read,issues:write,metadata:read,organization-projects:write,pull-requests:read,statuses:read" {
 		t.Fatalf("reconciler permissions = %v", reconciler.RequiredPermissions)
 	}
 }
@@ -83,6 +86,34 @@ func TestRoleConfigurationsAreLeastPurposeSeparated(t *testing.T) {
 func TestContractIntentRejectsNonCommitRevision(t *testing.T) {
 	if _, err := contractIntent("main"); err == nil {
 		t.Fatal("expected source revision rejection")
+	}
+}
+
+func TestContractMandateBindsSourceWorkflowResourcesAndLease(t *testing.T) {
+	source := strings.Repeat("a", 40)
+	workflow := strings.Repeat("b", 64)
+	mandate, err := bindContractMandate(source, "issue-comment:123", "2026-07-19T12:00:00Z", "2026-07-21T12:00:00Z", workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mandate.Digest == "" || mandate.SourceRevision != source || mandate.WorkflowDigest != workflow || mandate.ResourceDigest != contractResourceDigest() {
+		t.Fatalf("mandate = %#v", mandate)
+	}
+	changed, err := bindContractMandate(source, "issue-comment:123", "2026-07-19T12:00:00Z", "2026-07-21T12:00:00Z", strings.Repeat("c", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Digest == mandate.Digest {
+		t.Fatal("workflow change must change mandate identity")
+	}
+}
+
+func TestExactPermissionsRejectBroadenedFixtureAuthority(t *testing.T) {
+	if !exactPermissions([]string{"issues:write", "metadata:read"}, []string{"metadata:read", "issues:write"}) {
+		t.Fatal("same permission set should pass")
+	}
+	if exactPermissions([]string{"contents:write", "issues:write", "metadata:read"}, []string{"issues:write", "metadata:read"}) {
+		t.Fatal("broadened permission set must not pass")
 	}
 }
 

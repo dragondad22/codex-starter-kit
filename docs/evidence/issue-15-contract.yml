@@ -24,6 +24,30 @@ on:
         description: Exact approved Work Manager plan identity
         required: false
         type: string
+      setup_run_id:
+        description: Setup workflow run whose immutable fixture lease authorizes cleanup
+        required: false
+        type: string
+      approval_id:
+        description: Durable owner approval record
+        required: true
+        type: string
+      approved_at:
+        description: Approval time in RFC3339
+        required: true
+        type: string
+      expires_at:
+        description: Bounded mandate expiry in RFC3339
+        required: true
+        type: string
+      workflow_digest:
+        description: SHA-256 of this installed reviewed workflow
+        required: true
+        type: string
+      mandate_digest:
+        description: Exact approved execution-mandate digest
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -62,9 +86,16 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage setup
           --repository "${{ github.workspace }}"
+          --source-revision "${{ inputs.source_revision }}"
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
           > issue-15-setup.json
 
       - name: Retain setup evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: issue-15-setup
@@ -94,6 +125,15 @@ jobs:
           go-version: 1.26.5
           cache-dependency-path: tool/go.sum
 
+      - name: Download exact setup fixture lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh run download "${{ github.run_id }}"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-setup
+          --dir "${{ github.workspace }}"
+
       - name: Establish reviewed Project baseline
         env:
           CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
@@ -101,6 +141,13 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage project-setup
           --repository "${{ github.workspace }}"
+          --fixture ../issue-15-setup.json
+          --source-revision "${{ inputs.source_revision }}"
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
           > issue-15-project-setup.json
 
       - name: Retain Project setup evidence
@@ -140,6 +187,11 @@ jobs:
           --stage plan
           --repository "${{ github.workspace }}"
           --source-revision "${{ inputs.source_revision }}"
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
           > issue-15-planning.json
 
       - name: Retain plan and observation state
@@ -199,6 +251,11 @@ jobs:
           --source-revision "${{ inputs.source_revision }}"
           --plan ../issue-15-planning.json
           --plan-id "${{ inputs.approved_plan_id }}"
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
           > issue-15-result.json
 
       - name: Retain apply evidence
@@ -234,6 +291,17 @@ jobs:
           go-version: 1.26.5
           cache-dependency-path: tool/go.sum
 
+      - name: Require and download exact setup fixture lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SETUP_RUN_ID: ${{ inputs.setup_run_id }}
+        run: >-
+          test -n "$SETUP_RUN_ID" &&
+          gh run download "$SETUP_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-setup
+          --dir "${{ github.workspace }}"
+
       - name: Remove native relationships and close marked fixtures
         env:
           CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
@@ -241,6 +309,13 @@ jobs:
           go -C tool run ./cmd/issue15-contract
           --stage cleanup
           --repository "${{ github.workspace }}"
+          --fixture ../issue-15-setup.json
+          --source-revision "${{ inputs.source_revision }}"
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
           > issue-15-cleanup.json
 
       - name: Retain cleanup evidence

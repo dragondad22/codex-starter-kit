@@ -28,6 +28,7 @@ type fixtureIssue struct {
 
 type fixtureEvidence struct {
 	SchemaVersion int                     `json:"schema_version"`
+	Mandate       contractMandate         `json:"mandate"`
 	Stage         string                  `json:"stage"`
 	Marker        string                  `json:"marker"`
 	Role          string                  `json:"role"`
@@ -44,7 +45,7 @@ type fixtureAPI struct {
 	graphQLURL string
 }
 
-func runFixtureStage(ctx context.Context, stage, role string) (fixtureEvidence, error) {
+func runFixtureStage(ctx context.Context, stage, role string, mandate contractMandate, lease ...fixtureEvidence) (fixtureEvidence, error) {
 	configuration, err := roleConfiguration(role)
 	if err != nil {
 		return fixtureEvidence{}, err
@@ -57,30 +58,45 @@ func runFixtureStage(ctx context.Context, stage, role string) (fixtureEvidence, 
 	if err != nil {
 		return fixtureEvidence{}, err
 	}
-	if credential.Actor != configuration.App.Actor || !containsPermissions(credential.Permissions, configuration.RequiredPermissions) {
+	if credential.Actor != configuration.App.Actor || !exactPermissions(credential.Permissions, configuration.RequiredPermissions) {
 		return fixtureEvidence{}, errors.New("fixture credential differs from its reviewed role contract")
 	}
 	api := &fixtureAPI{client: http.DefaultClient, token: credential.Token, restBase: restBaseURL, graphQLURL: graphQLURL}
-	issues, err := api.findFixtures(ctx)
-	if err != nil {
-		return fixtureEvidence{}, err
-	}
+	issues := map[string]fixtureIssue{}
 	switch stage {
 	case "setup":
+		issues, err = api.findFixtures(ctx)
+		if err == nil && len(issues) != 0 {
+			err = errors.New("marked fixture state already exists without this execution lease")
+		}
+		if err != nil {
+			return fixtureEvidence{}, err
+		}
 		issues, err = api.setup(ctx, issues)
+		if err != nil {
+			recoveryIssues, discoveryErr := api.findFixtures(ctx)
+			if discoveryErr == nil {
+				issues = recoveryIssues
+			}
+			cleanupErr := api.cleanupPartial(ctx, issues)
+			if cleanupErr != nil {
+				err = fmt.Errorf("setup failed and automatic marker-scoped recovery also failed: %v; recovery: %w", err, cleanupErr)
+			} else if discoveryErr != nil {
+				err = fmt.Errorf("setup failed and recovery discovery was non-pass: %v; recovery: %w", err, discoveryErr)
+			}
+		}
 	case "project-setup":
-		if err = requireFixtureSet(issues); err == nil {
+		issues, err = api.verifyLease(ctx, mandate, lease)
+		if err == nil {
 			err = api.setProjectBaseline(ctx, issues)
 			if err == nil {
 				err = api.verifyProjectBaseline(ctx, issues)
 			}
 		}
 	case "cleanup":
-		if len(issues) != 0 {
+		issues, err = api.verifyLease(ctx, mandate, lease)
+		if err == nil {
 			err = api.cleanup(ctx, issues)
-			if err == nil {
-				issues, err = api.findFixtures(ctx)
-			}
 		}
 	default:
 		err = fmt.Errorf("unsupported fixture stage %q", stage)
@@ -88,7 +104,7 @@ func runFixtureStage(ctx context.Context, stage, role string) (fixtureEvidence, 
 	if err != nil {
 		return fixtureEvidence{}, err
 	}
-	evidence := fixtureEvidence{SchemaVersion: 1, Stage: stage, Marker: runMarker, Role: role, Actor: credential.Actor, Issues: issues, Relationships: []string{}}
+	evidence := fixtureEvidence{SchemaVersion: 1, Mandate: mandate, Stage: stage, Marker: runMarker, Role: role, Actor: credential.Actor, Issues: issues, Relationships: []string{}}
 	if stage == "setup" || stage == "project-setup" {
 		evidence.Relationships = []string{parentManagedID + "->" + selectedManagedID, parentManagedID + "->" + siblingManagedID, selectedManagedID + "->" + dependentManagedID, blockerManagedID + "->" + dependentManagedID}
 	}
@@ -107,10 +123,7 @@ func (api *fixtureAPI) setup(ctx context.Context, existing map[string]fixtureIss
 			return nil, err
 		}
 		issue, ok := existing[managedID]
-		state := "open"
-		if managedID == blockerManagedID {
-			state = "closed"
-		}
+		state := fixtureIssueStates()[managedID]
 		payload := map[string]any{"title": task.Title, "body": body, "labels": []string{"type:task"}}
 		if ok {
 			payload["state"] = state
@@ -144,30 +157,94 @@ func (api *fixtureAPI) setup(ctx context.Context, existing map[string]fixtureIss
 	if err := api.ensureDependency(ctx, existing[dependentManagedID], existing[blockerManagedID]); err != nil {
 		return nil, err
 	}
+	if err := api.verifySetupRelationships(ctx, existing); err != nil {
+		return nil, err
+	}
 	return existing, nil
+}
+
+func (api *fixtureAPI) verifySetupRelationships(ctx context.Context, issues map[string]fixtureIssue) error {
+	var children []fixtureIssue
+	if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[parentManagedID].Number)+"/sub_issues?per_page=100", nil, &children); err != nil {
+		return err
+	}
+	childIDs := map[int64]bool{}
+	for _, child := range children {
+		childIDs[child.ID] = true
+	}
+	var blockers []fixtureIssue
+	if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[dependentManagedID].Number)+"/dependencies/blocked_by?per_page=100", nil, &blockers); err != nil {
+		return err
+	}
+	blockerIDs := map[int64]bool{}
+	for _, blocker := range blockers {
+		blockerIDs[blocker.ID] = true
+	}
+	if !childIDs[issues[selectedManagedID].ID] || !childIDs[issues[siblingManagedID].ID] || !blockerIDs[issues[selectedManagedID].ID] || !blockerIDs[issues[blockerManagedID].ID] {
+		return errors.New("native fixture relationships did not converge")
+	}
+	return nil
 }
 
 func (api *fixtureAPI) cleanup(ctx context.Context, issues map[string]fixtureIssue) error {
 	if err := requireFixtureSet(issues); err != nil {
 		return err
 	}
+	return api.cleanupPartial(ctx, issues)
+}
+
+func (api *fixtureAPI) cleanupPartial(ctx context.Context, issues map[string]fixtureIssue) error {
 	for _, relationship := range []struct{ parent, child string }{{parentManagedID, selectedManagedID}, {parentManagedID, siblingManagedID}} {
+		if issues[relationship.parent].ID == 0 || issues[relationship.child].ID == 0 {
+			continue
+		}
 		if err := api.removeSubIssue(ctx, issues[relationship.parent], issues[relationship.child]); err != nil {
 			return err
 		}
 	}
 	for _, blocker := range []string{selectedManagedID, blockerManagedID} {
+		if issues[dependentManagedID].ID == 0 || issues[blocker].ID == 0 {
+			continue
+		}
 		if err := api.removeDependency(ctx, issues[dependentManagedID], issues[blocker]); err != nil {
 			return err
 		}
 	}
 	for _, managedID := range fixtureOrder() {
 		issue := issues[managedID]
+		if issue.ID == 0 {
+			continue
+		}
 		if err := api.rest(ctx, http.MethodPatch, issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{"state": "closed", "state_reason": "completed"}, &issue); err != nil {
 			return err
 		}
 	}
-	return api.verifyCleanup(ctx, issues)
+	if len(issues) == len(fixtureOrder()) {
+		return api.verifyCleanup(ctx, issues)
+	}
+	return nil
+}
+
+func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate, leases []fixtureEvidence) (map[string]fixtureIssue, error) {
+	if len(leases) != 1 || leases[0].SchemaVersion != 1 || leases[0].Stage != "setup" || leases[0].Mandate.Digest != mandate.Digest || leases[0].Marker != runMarker {
+		return nil, errors.New("exact setup fixture lease is absent or outside the approved mandate")
+	}
+	if err := requireFixtureSet(leases[0].Issues); err != nil {
+		return nil, err
+	}
+	observed := map[string]fixtureIssue{}
+	for managedID, expected := range leases[0].Issues {
+		var issue fixtureIssue
+		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(expected.Number), nil, &issue); err != nil {
+			return nil, err
+		}
+		identity, ok := managedIDFromBody(issue.Body)
+		if !ok || identity != managedID || issue.ID != expected.ID || issue.NodeID != expected.NodeID || !strings.Contains(issue.Body, "<!-- "+runMarker+" -->") {
+			return nil, fmt.Errorf("fixture lease identity changed for %s", managedID)
+		}
+		observed[managedID] = issue
+	}
+	return observed, nil
 }
 
 func (api *fixtureAPI) findFixtures(ctx context.Context) (map[string]fixtureIssue, error) {
@@ -495,8 +572,7 @@ func (api *fixtureAPI) graphql(ctx context.Context, query string, variables map[
 }
 
 func fixtureTasks() map[string]engine.DesiredManagedTask {
-	intent, _ := contractIntent(strings.Repeat("0", 40))
-	tasks := map[string]engine.DesiredManagedTask{selectedManagedID: intent.Task}
+	tasks := map[string]engine.DesiredManagedTask{selectedManagedID: contractTask()}
 	for managedID, title := range map[string]string{
 		parentManagedID: "Contract fixture: parent", siblingManagedID: "Contract fixture: sibling",
 		blockerManagedID: "Contract fixture: blocker", dependentManagedID: "Contract fixture: dependent",
@@ -504,6 +580,10 @@ func fixtureTasks() map[string]engine.DesiredManagedTask {
 		tasks[managedID] = engine.DesiredManagedTask{ManagedID: managedID, IssueType: "task", Title: title, Blockers: []engine.WorkDependency{}, Readiness: "ready", Status: "backlog", Review: []engine.WorkReviewRequirement{{Role: "independent-reviewer", DistinctContext: true}}}
 	}
 	return tasks
+}
+
+func fixtureIssueStates() map[string]string {
+	return map[string]string{parentManagedID: "open", selectedManagedID: "closed", siblingManagedID: "open", blockerManagedID: "closed", dependentManagedID: "open"}
 }
 
 func fixtureOrder() []string {
@@ -534,6 +614,9 @@ func baselineStates() map[string]string {
 
 func requireFixtureSet(issues map[string]fixtureIssue) error {
 	missing := []string{}
+	if len(issues) != len(fixtureOrder()) {
+		return errors.New("fixture lease does not contain the exact reviewed resource count")
+	}
 	for _, managedID := range fixtureOrder() {
 		if issues[managedID].ID == 0 {
 			missing = append(missing, managedID)
@@ -559,19 +642,6 @@ func managedIDFromBody(body string) (string, bool) {
 	}
 	value := strings.TrimSpace(body[start : start+end])
 	return value, value != "" && !strings.ContainsAny(value, "\r\n<>")
-}
-
-func containsPermissions(observed, required []string) bool {
-	set := map[string]bool{}
-	for _, permission := range observed {
-		set[permission] = true
-	}
-	for _, permission := range required {
-		if !set[permission] {
-			return false
-		}
-	}
-	return true
 }
 
 func issuePath() string {

@@ -127,6 +127,12 @@ Standards/Spec review before merge. A source-bound `issue15-contract` runner and
 dispatch workflow now define the isolated `GH-WORK-08` setup, immutable plan, approved
 apply, verification/status, retained evidence, and cleanup route. Seeder and reconciler
 GitHub Apps remain role-separated; all fixtures use one public-synthetic marker and the
-workflow retains evidence for 30 days. The live result remains `not-configured` until the
-workflow/resource digests receive a new bounded mandate and the resulting run passes; it
-is the final #15 acceptance gate before this issue or its draft PR can complete.
+workflow retains evidence for 30 days. Setup closes the selected issue before assigning
+its stale Project Status `Next`, reproducing a missed close-to-Done transition rather than
+combining ordinary issue closure with reconciliation. Every stage validates the executing
+commit, workflow digest, resource digest, exact App permission profile, approval record,
+and bounded lease. The setup receipt establishes the immutable issue IDs used by later
+Project setup and cleanup; marker text alone cannot authorize mutation. The live result
+remains `not-configured` until those exact values receive a new bounded mandate and the
+resulting run passes; it is the final #15 acceptance gate before this issue or its draft PR
+can complete.

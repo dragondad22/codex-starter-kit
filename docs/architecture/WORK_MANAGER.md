@@ -107,8 +107,8 @@ concurrent work applies cannot race effects or overwrite receipts.
 An unchanged refreshed observation produces an effect-free no-change plan while retaining
 prior receipts. Apply re-observes capability and task state immediately before effects.
 A changed source, operating profile, observation, actor, permission, target,
-configuration, field/option identity, or expiry makes the plan `stale` and requires a new
-inspection and plan.
+configuration, field/option identity, or the plan's own expiry makes the plan `stale` and
+requires a new inspection and plan.
 
 Capability preconditions bind the semantic authority contract rather than one token
 snapshot. A freshly minted credential may have a later observation/expiry timestamp and
