@@ -110,6 +110,13 @@ A changed source, operating profile, observation, actor, permission, target,
 configuration, field/option identity, or expiry makes the plan `stale` and requires a new
 inspection and plan.
 
+Capability preconditions bind the semantic authority contract rather than one token
+snapshot. A freshly minted credential may have a later observation/expiry timestamp and
+different REST or GraphQL counters without invalidating an otherwise unexpired plan.
+Actor, mode, account/installation, exact permissions, limitations, evidence mode, target,
+API version, and configuration revision remain digest-bound; changes to any of those facts
+still stop apply as stale.
+
 Explicit non-pass dispositions include `queued-offline`, `handshake-required`, `denied`,
 `ambiguous`, `retry-pending`, `retry-exhausted`, `stale`, and verification `fail`.
 Rate-limited receipts retain bounded attempt, retry, and reset times. Reconnect is not

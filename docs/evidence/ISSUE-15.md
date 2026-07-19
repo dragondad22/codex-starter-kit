@@ -107,6 +107,8 @@ Focused deterministic coverage now includes:
   dependency slices with selected and related immutable identities;
 - relationship-only closure changes produce a new observation revision and stale retained
   plans stop before effects;
+- fresh App-token timestamps and rate snapshots preserve an unexpired plan only when its
+  semantic actor, authority, target, and configuration contract is unchanged;
 - fail-closed behavior when GitHub's native dependency endpoint is unavailable;
 - parent issue closure and Status correction without rewriting human content; and
 - existing stale target/configuration, permission denial, partial response, rate,
@@ -121,7 +123,10 @@ git diff --check
 ```
 
 The exact completing revision must pass native Linux, macOS, and Windows CI and a distinct
-Standards/Spec review before merge. The approved #73 sandbox supplies only built-in
-close-to-Done evidence. #15's `GH-WORK-08` multi-item live result is `not-configured`
-pending a new source-bound bounded mandate; it remains the final #15 acceptance gate
-before this issue or its draft PR can complete.
+Standards/Spec review before merge. A source-bound `issue15-contract` runner and reviewed
+dispatch workflow now define the isolated `GH-WORK-08` setup, immutable plan, approved
+apply, verification/status, retained evidence, and cleanup route. Seeder and reconciler
+GitHub Apps remain role-separated; all fixtures use one public-synthetic marker and the
+workflow retains evidence for 30 days. The live result remains `not-configured` until the
+workflow/resource digests receive a new bounded mandate and the resulting run passes; it
+is the final #15 acceptance gate before this issue or its draft PR can complete.
