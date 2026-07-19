@@ -136,9 +136,12 @@ Project setup, planning, apply, and cleanup; marker text alone cannot authorize 
 The installed workflow replaces its reviewed source placeholder with one exact commit
 before installation, so dispatch cannot select code that receives App authority. Runtime
 also hashes the executing sandbox workflow and resolves the numeric public GitHub comment
-to an owner-authored approval containing the exact source, workflow, resource, and expiry
-facts. Cleanup tombstones synthetic issue bodies and removes active markers, preserving
-artifact evidence while allowing a later bounded run to use fresh immutable IDs. The live
-result remains `not-configured` until those exact values receive a new bounded mandate and
-the resulting run passes; it is the final #15 acceptance gate before this issue or its
-draft PR can complete.
+to an unedited owner-authored six-line approval containing only the exact source, workflow,
+resource, decision, and expiry facts. Explicit non-pass setup evidence cannot authorize
+planning or apply. Cleanup first uses the reconciler to remove and re-observe all leased
+Project items, then uses the seeder to remove native relationships and tombstone synthetic
+issue bodies. Active markers disappear while immutable artifact evidence remains, allowing
+a later bounded run to use fresh IDs without accumulating Project residue. The live result
+remains `not-configured` until those exact values receive a new bounded mandate and the
+resulting run passes; it is the final #15 acceptance gate before this issue or its draft PR
+can complete.

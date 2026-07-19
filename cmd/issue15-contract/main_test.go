@@ -117,6 +117,18 @@ func TestExactPermissionsRejectBroadenedFixtureAuthority(t *testing.T) {
 	}
 }
 
+func TestCompleteLeaseRejectsExplicitNonPassSetupEvidence(t *testing.T) {
+	issues := map[string]fixtureIssue{}
+	for index, managedID := range fixtureOrder() {
+		issues[managedID] = fixtureIssue{ID: int64(index + 1), NodeID: "I_" + managedID, Number: index + 1}
+	}
+	lease := fixtureEvidence{SchemaVersion: 1, Mandate: contractMandate{Digest: strings.Repeat("a", 64)}, Stage: "setup", Marker: runMarker, Role: "seeder", Actor: seederActor, Issues: issues, Disposition: "needs-recovery", Problems: []string{"setup failed"}}
+	api := fixtureAPI{}
+	if _, err := api.verifyLease(context.Background(), lease.Mandate, []fixtureEvidence{lease}, true); err == nil {
+		t.Fatal("explicit non-pass setup evidence must not authorize plan or apply")
+	}
+}
+
 func TestOwnerApprovalRequiresExactOwnerAuthoredMandateFacts(t *testing.T) {
 	t.Parallel()
 	mandate, err := bindContractMandate(strings.Repeat("a", 40), "123", "2026-07-19T12:00:00Z", "2026-07-20T12:00:00Z", strings.Repeat("b", 64))
@@ -135,7 +147,7 @@ func TestOwnerApprovalRequiresExactOwnerAuthoredMandateFacts(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(map[string]any{
-			"body": body, "created_at": "2026-07-19T12:00:00Z", "author_association": "OWNER",
+			"body": body, "created_at": "2026-07-19T12:00:00Z", "updated_at": "2026-07-19T12:00:00Z", "author_association": "OWNER",
 			"user": map[string]string{"login": "dragondad22", "type": "User"},
 		})
 	}))
@@ -225,5 +237,32 @@ func TestPartialRecoveryVerifiesRetiredImmutableFixture(t *testing.T) {
 	issues := map[string]fixtureIssue{selectedManagedID: {ID: 2, NodeID: "I_2", Number: 12}}
 	if err := api.verifyCleanup(context.Background(), issues); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProjectCleanupRemovesAndReobservesLeasedItem(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls++
+		writer.Header().Set("Content-Type", "application/json")
+		switch calls {
+		case 1:
+			_, _ = writer.Write([]byte(`{"data":{"node":{"items":{"nodes":[{"id":"PVTI_1","content":{"id":"I_1"}}],"pageInfo":{"hasNextPage":false}}}}}`))
+		case 2:
+			_, _ = writer.Write([]byte(`{"data":{"deleteProjectV2Item":{"deletedItemId":"PVTI_1"}}}`))
+		case 3:
+			_, _ = writer.Write([]byte(`{"data":{"node":{"items":{"nodes":[],"pageInfo":{"hasNextPage":false}}}}}`))
+		default:
+			http.Error(writer, "unexpected", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+	api := fixtureAPI{client: server.Client(), token: "test", restBase: server.URL, graphQLURL: server.URL}
+	if err := api.removeProjectFixtures(context.Background(), map[string]fixtureIssue{selectedManagedID: {NodeID: "I_1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("Project cleanup calls = %d", calls)
 	}
 }

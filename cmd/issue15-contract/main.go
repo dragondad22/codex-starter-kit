@@ -100,7 +100,7 @@ type contractMandate struct {
 
 func main() {
 	flags := flag.NewFlagSet("issue15-contract", flag.ExitOnError)
-	stage := flags.String("stage", "", "mandate, setup, project-setup, plan, apply, or cleanup")
+	stage := flags.String("stage", "", "mandate, setup, project-setup, plan, apply, project-cleanup, or cleanup")
 	repository := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact reviewed Starter Kit commit")
 	planPath := flags.String("plan", "", "planning evidence JSON for apply")
@@ -120,7 +120,7 @@ func main() {
 	var result any
 	var err error
 	switch *stage {
-	case "mandate", "setup", "project-setup", "plan", "apply", "cleanup":
+	case "mandate", "setup", "project-setup", "plan", "apply", "project-cleanup", "cleanup":
 	default:
 		fatal("unsupported stage %q", *stage)
 	}
@@ -146,7 +146,7 @@ func main() {
 		}
 	}
 	lease := []fixtureEvidence{}
-	if *stage == "project-setup" || *stage == "plan" || *stage == "apply" || *stage == "cleanup" {
+	if *stage == "project-setup" || *stage == "plan" || *stage == "apply" || *stage == "project-cleanup" || *stage == "cleanup" {
 		var fixture fixtureEvidence
 		if *fixturePath == "" || readStrictJSON(*fixturePath, &fixture) != nil {
 			fatal("--fixture must name the exact valid setup evidence for %s", *stage)
@@ -162,6 +162,8 @@ func main() {
 		result, err = runFixtureStage(ctx, "project-setup", "reconciler", mandate, lease...)
 	case "cleanup":
 		result, err = runFixtureStage(ctx, "cleanup", "seeder", mandate, lease...)
+	case "project-cleanup":
+		result, err = runFixtureStage(ctx, "project-cleanup", "reconciler", mandate, lease...)
 	case "plan":
 		result, err = runPlan(ctx, *repository, *source, mandate, lease[0])
 	case "apply":
@@ -299,7 +301,7 @@ func bindContractMandate(source, approvalID, approvedAtValue, expiresAtValue, wo
 		Actors: []string{reconcilerActor, seederActor}, Permissions: map[string][]string{
 			"reconciler": {"actions:read", "checks:read", "issues:write", "metadata:read", "organization-projects:write", "pull-requests:read", "statuses:read"},
 			"seeder":     {"contents:write", "issues:write", "metadata:read", "pull-requests:write", "workflows:write"},
-		}, Effects: []string{"create-five-absent-marked-issues", "add-two-native-sub-issue-links", "add-two-native-dependencies", "set-ten-project-field-values", "apply-one-work-manager-plan", "remove-native-links-and-close-leased-fixtures"},
+		}, Effects: []string{"create-five-absent-marked-issues", "add-two-native-sub-issue-links", "add-two-native-dependencies", "set-ten-project-field-values", "apply-one-work-manager-plan", "remove-five-leased-project-items", "remove-native-links-and-close-leased-fixtures"},
 		Marker: runMarker, DataClass: "public-synthetic", CostCeiling: "zero-dollar", Destructive: "marker-scoped-fixture-cleanup-only", Retention: "30-day-raw-evidence", CleanupWithin: "24h", RecoveryOwner: "dragondad22",
 	}
 	mandate.Digest = digestJSON(mandate)
@@ -476,6 +478,7 @@ func verifyOwnerApprovalAt(ctx context.Context, mandate contractMandate, baseURL
 	var comment struct {
 		Body              string    `json:"body"`
 		CreatedAt         time.Time `json:"created_at"`
+		UpdatedAt         time.Time `json:"updated_at"`
 		AuthorAssociation string    `json:"author_association"`
 		User              struct {
 			Login string `json:"login"`
@@ -485,16 +488,27 @@ func verifyOwnerApprovalAt(ctx context.Context, mandate contractMandate, baseURL
 	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&comment) != nil {
 		return errors.New("owner approval record is absent or invalid")
 	}
-	required := []string{
-		"starter-kit-mandate: issue-15", "decision: approved", "source_revision: " + mandate.SourceRevision,
-		"workflow_digest: " + mandate.WorkflowDigest, "resource_digest: " + mandate.ResourceDigest,
-		"expires_at: " + mandate.ExpiresAt.Format(time.RFC3339),
-	}
-	if comment.User.Login != "dragondad22" || comment.User.Type != "User" || comment.AuthorAssociation != "OWNER" || !comment.CreatedAt.Equal(mandate.ApprovedAt) {
+	if comment.User.Login != "dragondad22" || comment.User.Type != "User" || comment.AuthorAssociation != "OWNER" || !comment.CreatedAt.Equal(mandate.ApprovedAt) || !comment.UpdatedAt.Equal(comment.CreatedAt) {
 		return errors.New("approval record actor or timestamp differs from the mandate")
 	}
-	for _, fact := range required {
-		if !strings.Contains(comment.Body, fact) {
+	facts := map[string]string{}
+	for _, raw := range strings.Split(strings.TrimSpace(comment.Body), "\n") {
+		key, value, ok := strings.Cut(raw, ": ")
+		if !ok || key == "" || value == "" || facts[key] != "" {
+			return errors.New("approval record is not an exact unique key/value document")
+		}
+		facts[key] = value
+	}
+	expected := map[string]string{
+		"starter-kit-mandate": "issue-15", "decision": "approved", "source_revision": mandate.SourceRevision,
+		"workflow_digest": mandate.WorkflowDigest, "resource_digest": mandate.ResourceDigest,
+		"expires_at": mandate.ExpiresAt.Format(time.RFC3339),
+	}
+	if len(facts) != len(expected) {
+		return errors.New("approval record contains missing or additional fields")
+	}
+	for key, value := range expected {
+		if facts[key] != value {
 			return errors.New("approval record does not contain every exact mandate fact")
 		}
 	}

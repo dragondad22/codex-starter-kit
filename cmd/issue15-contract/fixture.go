@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,6 +115,9 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 				disposition = "needs-recovery"
 				problems = []string{setupErr.Error(), discoveryErr.Error()}
 			} else {
+				if refreshed, refreshErr := api.refreshLeasedIssues(ctx, issues); refreshErr == nil {
+					issues = refreshed
+				}
 				disposition = "recovered-non-pass"
 				problems = []string{setupErr.Error()}
 			}
@@ -131,6 +135,14 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 		issues, err = api.verifyLease(ctx, mandate, lease, false)
 		if err == nil {
 			err = api.cleanup(ctx, issues)
+			if err == nil {
+				issues, err = api.refreshLeasedIssues(ctx, issues)
+			}
+		}
+	case "project-cleanup":
+		issues, err = api.verifyLease(ctx, mandate, lease, false)
+		if err == nil {
+			err = api.removeProjectFixtures(ctx, issues)
 		}
 	default:
 		err = fmt.Errorf("unsupported fixture stage %q", stage)
@@ -144,8 +156,28 @@ func runFixtureStage(ctx context.Context, stage, role string, mandate contractMa
 	}
 	if stage == "project-setup" {
 		evidence.ProjectStates = baselineStates()
+	} else if stage == "project-cleanup" {
+		evidence.ProjectStates = map[string]string{}
+		for _, managedID := range fixtureOrder() {
+			evidence.ProjectStates[managedID] = "absent"
+		}
 	}
 	return evidence, nil
+}
+
+func (api *fixtureAPI) refreshLeasedIssues(ctx context.Context, issues map[string]fixtureIssue) (map[string]fixtureIssue, error) {
+	refreshed := map[string]fixtureIssue{}
+	for managedID, expected := range issues {
+		var issue fixtureIssue
+		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(expected.Number), nil, &issue); err != nil {
+			return nil, err
+		}
+		if issue.ID != expected.ID || issue.NodeID != expected.NodeID {
+			return nil, fmt.Errorf("fixture identity changed while refreshing %s", managedID)
+		}
+		refreshed[managedID] = issue
+	}
+	return refreshed, nil
 }
 
 func (api *fixtureAPI) setup(ctx context.Context, existing map[string]fixtureIssue) (map[string]fixtureIssue, error) {
@@ -264,6 +296,10 @@ func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate,
 		return nil, errors.New("setup fixture lease contains no immutable resources")
 	}
 	if requireComplete {
+		expectedRelationships := []string{parentManagedID + "->" + selectedManagedID, parentManagedID + "->" + siblingManagedID, selectedManagedID + "->" + dependentManagedID, blockerManagedID + "->" + dependentManagedID}
+		if leases[0].Disposition != "configured" || len(leases[0].Problems) != 0 || leases[0].Role != "seeder" || leases[0].Actor != seederActor || !slices.Equal(leases[0].Relationships, expectedRelationships) {
+			return nil, errors.New("setup fixture lease is explicit non-pass or lacks its configured relationship receipt")
+		}
 		if err := requireFixtureSet(leases[0].Issues); err != nil {
 			return nil, err
 		}
@@ -400,6 +436,77 @@ func (api *fixtureAPI) setProjectBaseline(ctx context.Context, issues map[string
 		}
 	}
 	return nil
+}
+
+func (api *fixtureAPI) removeProjectFixtures(ctx context.Context, issues map[string]fixtureIssue) error {
+	items, err := api.observedProjectItems(ctx)
+	if err != nil {
+		return err
+	}
+	for _, issue := range issues {
+		itemID := items[issue.NodeID]
+		if itemID == "" {
+			continue
+		}
+		var removed struct {
+			Data struct {
+				Delete struct {
+					DeletedItemID string `json:"deletedItemId"`
+				} `json:"deleteProjectV2Item"`
+			} `json:"data"`
+		}
+		mutation := `mutation($project:ID!,$item:ID!){deleteProjectV2Item(input:{projectId:$project,itemId:$item}){deletedItemId}}`
+		if err := api.graphql(ctx, mutation, map[string]any{"project": projectID, "item": itemID}, &removed); err != nil {
+			return err
+		}
+		if removed.Data.Delete.DeletedItemID != itemID {
+			return errors.New("fixture Project removal lacked its exact immutable postcondition identity")
+		}
+	}
+	remaining, err := api.observedProjectItems(ctx)
+	if err != nil {
+		return err
+	}
+	for managedID, issue := range issues {
+		if remaining[issue.NodeID] != "" {
+			return fmt.Errorf("fixture %s remains in the Project after cleanup", managedID)
+		}
+	}
+	return nil
+}
+
+func (api *fixtureAPI) observedProjectItems(ctx context.Context) (map[string]string, error) {
+	var observed struct {
+		Data struct {
+			Node struct {
+				Items struct {
+					Nodes []struct {
+						ID      string `json:"id"`
+						Content struct {
+							ID string `json:"id"`
+						} `json:"content"`
+					} `json:"nodes"`
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+				} `json:"items"`
+			} `json:"node"`
+		} `json:"data"`
+	}
+	query := `query($project:ID!){node(id:$project){... on ProjectV2{items(first:100){nodes{id content{... on Issue{id}}} pageInfo{hasNextPage}}}}}`
+	if err := api.graphql(ctx, query, map[string]any{"project": projectID}, &observed); err != nil {
+		return nil, err
+	}
+	if observed.Data.Node.Items.PageInfo.HasNextPage {
+		return nil, errors.New("fixture Project cleanup lookup exceeded its reviewed bound")
+	}
+	items := map[string]string{}
+	for _, item := range observed.Data.Node.Items.Nodes {
+		if item.Content.ID != "" {
+			items[item.Content.ID] = item.ID
+		}
+	}
+	return items, nil
 }
 
 func (api *fixtureAPI) verifyProjectBaseline(ctx context.Context, issues map[string]fixtureIssue) error {

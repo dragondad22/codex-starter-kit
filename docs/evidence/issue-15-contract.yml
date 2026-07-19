@@ -297,8 +297,67 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
-  cleanup:
+  cleanup-project:
     if: inputs.action == 'cleanup'
+    environment: contract-reconciler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: __APPROVED_SOURCE_REVISION__
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Require and download exact setup fixture lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SETUP_RUN_ID: ${{ inputs.setup_run_id }}
+        run: >-
+          test -n "$SETUP_RUN_ID" &&
+          gh run download "$SETUP_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-setup
+          --dir "${{ github.workspace }}"
+
+      - name: Remove leased Project items and verify absence
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage project-cleanup
+          --repository "${{ github.workspace }}"
+          --fixture ../issue-15-setup.json
+          --source-revision "__APPROVED_SOURCE_REVISION__"
+          --workflow ../.github/workflows/issue-15-contract.yml
+          --approval-id "${{ inputs.approval_id }}"
+          --approved-at "${{ inputs.approved_at }}"
+          --expires-at "${{ inputs.expires_at }}"
+          --workflow-digest "${{ inputs.workflow_digest }}"
+          --mandate-digest "${{ inputs.mandate_digest }}"
+          > issue-15-project-cleanup.json
+
+      - name: Retain Project cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-project-cleanup
+          path: issue-15-project-cleanup.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  cleanup-issues:
+    if: inputs.action == 'cleanup'
+    needs: cleanup-project
     environment: contract-seeder
     runs-on: ubuntu-latest
     steps:
