@@ -253,10 +253,7 @@ func (api *fixtureAPI) cleanupPartial(ctx context.Context, issues map[string]fix
 			return err
 		}
 	}
-	if len(issues) == len(fixtureOrder()) {
-		return api.verifyCleanup(ctx, issues)
-	}
-	return nil
+	return api.verifyCleanup(ctx, issues)
 }
 
 func (api *fixtureAPI) verifyLease(ctx context.Context, mandate contractMandate, leases []fixtureEvidence, requireComplete bool) (map[string]fixtureIssue, error) {
@@ -455,22 +452,26 @@ func (api *fixtureAPI) verifyProjectBaseline(ctx context.Context, issues map[str
 }
 
 func (api *fixtureAPI) verifyCleanup(ctx context.Context, issues map[string]fixtureIssue) error {
-	var children []fixtureIssue
-	if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[parentManagedID].Number)+"/sub_issues?per_page=100", nil, &children); err != nil {
-		return err
-	}
-	for _, child := range children {
-		if child.ID == issues[selectedManagedID].ID || child.ID == issues[siblingManagedID].ID {
-			return errors.New("marked sub-issue relationship remains after cleanup")
+	if issues[parentManagedID].ID != 0 {
+		var children []fixtureIssue
+		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[parentManagedID].Number)+"/sub_issues?per_page=100", nil, &children); err != nil {
+			return err
+		}
+		for _, child := range children {
+			if issues[selectedManagedID].ID != 0 && child.ID == issues[selectedManagedID].ID || issues[siblingManagedID].ID != 0 && child.ID == issues[siblingManagedID].ID {
+				return errors.New("marked sub-issue relationship remains after cleanup")
+			}
 		}
 	}
-	var blockers []fixtureIssue
-	if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[dependentManagedID].Number)+"/dependencies/blocked_by?per_page=100", nil, &blockers); err != nil {
-		return err
-	}
-	for _, blocker := range blockers {
-		if blocker.ID == issues[selectedManagedID].ID || blocker.ID == issues[blockerManagedID].ID {
-			return errors.New("marked dependency relationship remains after cleanup")
+	if issues[dependentManagedID].ID != 0 {
+		var blockers []fixtureIssue
+		if err := api.rest(ctx, http.MethodGet, issuePath()+"/"+strconv.Itoa(issues[dependentManagedID].Number)+"/dependencies/blocked_by?per_page=100", nil, &blockers); err != nil {
+			return err
+		}
+		for _, blocker := range blockers {
+			if issues[selectedManagedID].ID != 0 && blocker.ID == issues[selectedManagedID].ID || issues[blockerManagedID].ID != 0 && blocker.ID == issues[blockerManagedID].ID {
+				return errors.New("marked dependency relationship remains after cleanup")
+			}
 		}
 	}
 	for managedID, expected := range issues {
