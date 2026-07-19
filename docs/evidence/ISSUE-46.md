@@ -60,7 +60,8 @@ The engine's content-addressed external-resource lifecycle also plans the exact 
 field, nine options, `Phases` view, and nine feature assignments under a separate
 operational target and DEC-0022 mandate. It verifies the API user and classic `project`
 scope while retaining and exactly binding every other observed classic OAuth scope. Apply
-accepts only an independently retained mandate JSON artifact whose owner, approval record,
+accepts only an independently retained mandate JSON artifact whose approver and recovery
+owner match the pinned target owner, whose approval identity is a retained #46 owner record,
 target, actors, timestamps, authority profile, resource digests, ceilings, retention, and
 recovery owner validate through the lifecycle seam; caller flags cannot manufacture it.
 The adapter re-observes view and item postconditions through GraphQL and rejects stale
@@ -90,6 +91,8 @@ Its request schema does not expose grouping or sorting. The adapter consequently
 view. No live Project effect was attempted for this correction. A fresh independently
 retained mandate covering the exact final source, full observed scope set, and final resource
 digests is required before effect-free live planning/apply/replay can be final evidence.
+That deliberate owner-approval seam is the next bounded work package, not unfinished coding
+or permission for this correction package to fabricate or perform a live Project mutation.
 
 ## Deterministic verification
 

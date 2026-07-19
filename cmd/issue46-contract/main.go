@@ -20,6 +20,8 @@ import (
 
 const tokenEnvironment = "STARTER_KIT_ISSUE46_TOKEN"
 
+const issue46Owner = "dragondad22"
+
 type result struct {
 	SchemaVersion int                               `json:"schema_version"`
 	Planning      engine.SandboxPlanningResult      `json:"planning"`
@@ -154,10 +156,10 @@ func validateRetainedMandate(mandate engine.SandboxExecutionMandate, target engi
 	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != expected.ID || !slices.Equal(suppliedDigests, expected.ResourceDigests) {
 		return errors.New("retained execution mandate does not bind the exact Phase resource digests")
 	}
-	if mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || !mandate.ApprovedAt.Before(mandate.ExpiresAt) {
+	if mandate.ApprovedBy != issue46Owner || !strings.HasPrefix(mandate.ApprovalID, "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-") || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || !mandate.ApprovedAt.Before(mandate.ExpiresAt) {
 		return errors.New("retained execution mandate lacks owner identity or valid approval timestamps")
 	}
-	if mandate.Target != target || mandate.RecoveryOwner == "" || !slices.Equal(mandate.Actors, []string{githubadapter.SandboxRoleReconciler}) || !slices.Equal(mandate.UnmarkedKeys, resourceKeys(resources)) {
+	if mandate.Target != target || mandate.RecoveryOwner != issue46Owner || !slices.Equal(mandate.Actors, []string{githubadapter.SandboxRoleReconciler}) || !slices.Equal(mandate.UnmarkedKeys, resourceKeys(resources)) {
 		return errors.New("retained execution mandate does not bind the exact owner, target, actor, recovery owner, and resources")
 	}
 	if !slices.Contains(scopes, "project") {
