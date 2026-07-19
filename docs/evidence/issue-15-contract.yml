@@ -1,0 +1,253 @@
+name: Issue 15 native reconciliation contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Bounded contract stage
+        required: true
+        type: choice
+        options:
+          - setup
+          - plan
+          - apply
+          - cleanup
+      source_revision:
+        description: Exact reviewed Starter Kit commit
+        required: true
+        type: string
+      planning_run_id:
+        description: Plan workflow run for apply
+        required: false
+        type: string
+      approved_plan_id:
+        description: Exact approved Work Manager plan identity
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: issue-15-native-reconciliation-contract
+  cancel-in-progress: false
+
+jobs:
+  setup-issues:
+    if: inputs.action == 'setup'
+    environment: contract-seeder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Create marked native relationship fixtures
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage setup
+          --repository "${{ github.workspace }}"
+          > issue-15-setup.json
+
+      - name: Retain setup evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-setup
+          path: issue-15-setup.json
+          if-no-files-found: error
+          retention-days: 30
+
+  setup-project:
+    if: inputs.action == 'setup'
+    needs: setup-issues
+    environment: contract-reconciler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Establish reviewed Project baseline
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage project-setup
+          --repository "${{ github.workspace }}"
+          > issue-15-project-setup.json
+
+      - name: Retain Project setup evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-project-setup
+          path: issue-15-project-setup.json
+          if-no-files-found: error
+          retention-days: 30
+
+  plan:
+    if: inputs.action == 'plan'
+    environment: contract-reconciler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Inspect and emit immutable Work Manager plan
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage plan
+          --repository "${{ github.workspace }}"
+          --source-revision "${{ inputs.source_revision }}"
+          > issue-15-planning.json
+
+      - name: Retain plan and observation state
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-planning
+          path: |
+            issue-15-planning.json
+            .starter-kit/work-manager/state.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  apply:
+    if: inputs.action == 'apply'
+    environment: contract-reconciler
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require immutable approval inputs
+        env:
+          PLANNING_RUN_ID: ${{ inputs.planning_run_id }}
+          APPROVED_PLAN_ID: ${{ inputs.approved_plan_id }}
+        run: test -n "$PLANNING_RUN_ID" && test -n "$APPROVED_PLAN_ID"
+
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download exact retained planning state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh run download "${{ inputs.planning_run_id }}"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name issue-15-planning
+          --dir "${{ github.workspace }}"
+
+      - name: Apply, verify, and report durable status
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage apply
+          --repository "${{ github.workspace }}"
+          --source-revision "${{ inputs.source_revision }}"
+          --plan ../issue-15-planning.json
+          --plan-id "${{ inputs.approved_plan_id }}"
+          > issue-15-result.json
+
+      - name: Retain apply evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-result
+          path: |
+            issue-15-result.json
+            .starter-kit/work-manager/state.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
+
+  cleanup:
+    if: inputs.action == 'cleanup'
+    environment: contract-seeder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Check out reviewed Starter Kit candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Remove native relationships and close marked fixtures
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+        run: >-
+          go -C tool run ./cmd/issue15-contract
+          --stage cleanup
+          --repository "${{ github.workspace }}"
+          > issue-15-cleanup.json
+
+      - name: Retain cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: issue-15-cleanup
+          path: issue-15-cleanup.json
+          if-no-files-found: warn
+          retention-days: 30
