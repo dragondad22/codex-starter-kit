@@ -145,12 +145,13 @@ starts or completes, even when its remaining Ready children are still Backlog. C
 of every native child closes the parent as Done unless an unsatisfied parent criterion is
 represented by a concrete outstanding child.
 
-The implemented one-task Work Manager route projects this policy through an explicit
+The implemented Work Manager route projects this policy for one selected task and its
+bounded, natively observed parent/direct-dependent reconciliation slice through an explicit
 `inspect → plan → apply → verify → status` sequence. Apply rechecks the governed source,
 operating profile, normalized observation, actor, permission, target/configuration IDs,
 and expiry. Offline intent is retained without credentials; reconnect requires a fresh
 handshake. Partial, ambiguous, denied, rate-limited, exhausted, and stale results retain
-receipts and recovery rather than advancing the lifecycle. See
+before/after receipts and recovery rather than advancing the lifecycle. See
 [the managed-task lifecycle contract](WORK_MANAGER.md).
 
 The production GitHub adapter performs the same sequence through a fixed target manifest

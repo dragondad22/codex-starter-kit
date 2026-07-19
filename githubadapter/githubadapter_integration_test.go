@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -156,6 +157,10 @@ func TestObserveFollowsRESTAndGraphQLPaginationUsingImmutableIDs(t *testing.T) {
 				"number": 17, "node_id": "I_issue", "title": "Managed task", "body": "<!-- starter-kit-managed:task-17 -->", "state": "open",
 				"labels": []any{map[string]any{"name": "type:task"}},
 			}})
+		case request.URL.Path == "/repos/octocat/example/issues/17/parent":
+			http.NotFound(writer, request)
+		case request.URL.Path == "/repos/octocat/example/issues/17/dependencies/blocked_by" || request.URL.Path == "/repos/octocat/example/issues/17/dependencies/blocking":
+			writeJSON(t, writer, []any{})
 		case request.URL.Path == "/graphql":
 			graphqlPage++
 			if graphqlPage == 1 {
@@ -192,6 +197,184 @@ func TestObserveFollowsRESTAndGraphQLPaginationUsingImmutableIDs(t *testing.T) {
 	if observation.Task.IssueNodeID != "I_issue" || observation.Task.ProjectItemID != "PVTI_item" || observation.Task.ReadinessOption != "O_ready" || observation.Task.StatusOption != "O_next" {
 		t.Fatalf("observation did not preserve immutable IDs: %#v", observation.Task)
 	}
+}
+
+func TestObserveIncludesBoundedParentAndDirectDependentSlice(t *testing.T) {
+	t.Parallel()
+	issues := []any{
+		map[string]any{"number": 15, "node_id": "I_selected", "title": "Selected", "body": "<!-- starter-kit-managed:issue:15 -->", "state": "closed", "labels": []any{map[string]any{"name": "type:bug"}}},
+		map[string]any{"number": 4, "node_id": "I_parent", "title": "Parent", "body": "<!-- starter-kit-managed:issue:4 -->", "state": "open", "labels": []any{map[string]any{"name": "type:feature"}}},
+		map[string]any{"number": 46, "node_id": "I_sibling", "title": "Sibling", "body": "<!-- starter-kit-managed:issue:46 -->", "state": "open", "labels": []any{map[string]any{"name": "type:task"}}},
+		map[string]any{"number": 74, "node_id": "I_dependent", "title": "Dependent", "body": "<!-- starter-kit-managed:issue:74 -->", "state": "open", "labels": []any{map[string]any{"name": "type:task"}}},
+	}
+	items := []any{
+		projectItemFixture("PVTI_selected", "I_selected", "O_ready", "O_next"),
+		projectItemFixture("PVTI_parent", "I_parent", "O_ready", "O_backlog"),
+		projectItemFixture("PVTI_sibling", "I_sibling", "O_ready", "O_backlog"),
+		projectItemFixture("PVTI_dependent", "I_dependent", "O_blocked", "O_backlog"),
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/octocat/example/issues":
+			writeJSON(t, writer, issues)
+		case "/repos/octocat/example/issues/15/parent":
+			writeJSON(t, writer, issues[1])
+		case "/repos/octocat/example/issues/4/sub_issues":
+			writeJSON(t, writer, []any{issues[0], issues[2]})
+		case "/repos/octocat/example/issues/15/dependencies/blocked_by":
+			writeJSON(t, writer, []any{})
+		case "/repos/octocat/example/issues/15/dependencies/blocking":
+			writeJSON(t, writer, []any{issues[3]})
+		case "/repos/octocat/example/issues/74/dependencies/blocked_by":
+			writeJSON(t, writer, []any{issues[0], issues[2]})
+		case "/graphql":
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"items": map[string]any{"nodes": items, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	config := adapterConfig(server, "user-token", "octocat", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.OptionIDs = map[string]string{"readiness:ready": "O_ready", "readiness:blocked": "O_blocked", "status:backlog": "O_backlog", "status:next": "O_next"}
+	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := engine.WorkTarget{Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project", FieldIDs: config.FieldIDs, OptionIDs: config.OptionIDs}
+	observation, err := adapter.Observe(context.Background(), target, "issue:15", "issue:4", "issue:74")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Disposition != "observed" || observation.Task == nil || observation.Task.ManagedID != "issue:15" || len(observation.RelatedTasks) != 2 {
+		t.Fatalf("bounded related observation was not preserved: %#v", observation)
+	}
+	if observation.RelatedTasks[0].ManagedID != "issue:4" || observation.RelatedTasks[0].ProjectItemID != "PVTI_parent" || observation.RelatedTasks[1].ManagedID != "issue:74" || observation.RelatedTasks[1].ReadinessOption != "O_blocked" {
+		t.Fatalf("related immutable identities or lifecycle fields were lost: %#v", observation.RelatedTasks)
+	}
+	if !observation.Relationships.Observed || observation.Relationships.ParentManagedID != "issue:4" || len(observation.Relationships.OtherChildren) != 1 || observation.Relationships.OtherChildren[0].ManagedID != "issue:46" || len(observation.Relationships.Dependents) != 1 || len(observation.Relationships.Dependents[0].Blockers) != 2 {
+		t.Fatalf("native hierarchy or dependency facts were lost: %#v", observation.Relationships)
+	}
+	issues[2].(map[string]any)["state"] = "closed"
+	changed, err := adapter.Observe(context.Background(), target, "issue:15", "issue:4", "issue:74")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Revision == observation.Revision || !changed.Relationships.OtherChildren[0].Closed || !changed.Relationships.Dependents[0].Blockers[1].Closed {
+		t.Fatalf("relationship-only change must produce a fresh authoritative revision: before=%s after=%#v", observation.Revision, changed)
+	}
+}
+
+func TestObserveFailsClosedWhenNativeDependencyEndpointIsUnavailable(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/octocat/example/issues":
+			writeJSON(t, writer, []any{map[string]any{
+				"number": 15, "node_id": "I_selected", "title": "Selected",
+				"body": "<!-- starter-kit-managed:issue:15 -->", "state": "closed",
+				"labels": []any{map[string]any{"name": "type:bug"}},
+			}})
+		case "/repos/octocat/example/issues/15/parent":
+			http.NotFound(writer, request)
+		case "/repos/octocat/example/issues/15/dependencies/blocked_by":
+			http.NotFound(writer, request)
+		case "/graphql":
+			items := []any{projectItemFixture("PVTI_selected", "I_selected", "O_ready", "O_next")}
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"items": map[string]any{"nodes": items, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	observation, err := newUserAdapter(t, server, now).Observe(context.Background(), managedTarget(), "issue:15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Disposition != "not-found" || len(observation.Problems) == 0 || observation.Relationships.Observed {
+		t.Fatalf("unavailable native dependency observation must remain explicit non-pass: %#v", observation)
+	}
+}
+
+func TestReconcileRelatedParentClosesIssueWithoutRewritingHumanContent(t *testing.T) {
+	t.Parallel()
+	state := "open"
+	status := "O_in_progress"
+	title := "Human-owned parent title"
+	body := "Human-owned parent body\n\n<!-- starter-kit-managed:issue:4 -->"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/octocat/example/issues":
+			issue := map[string]any{
+				"number": 4, "node_id": "I_parent", "title": title, "body": body, "state": state,
+				"labels": []any{map[string]any{"name": "type:feature"}},
+			}
+			writeJSON(t, writer, []any{issue})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/octocat/example/issues/4":
+			var input map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Fatal(err)
+			}
+			if len(input) != 1 || input["state"] != "closed" {
+				t.Fatalf("closure correction rewrote unrelated issue content: %#v", input)
+			}
+			state = "closed"
+			writeJSON(t, writer, map[string]any{"number": 4, "node_id": "I_parent"})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			var input struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(input.Query, "updateProjectV2ItemFieldValue") {
+				if input.Variables["item"] != "PVTI_parent" || input.Variables["field"] != "F_status" || input.Variables["option"] != "O_done" {
+					t.Fatalf("unexpected parent status mutation: %#v", input.Variables)
+				}
+				status = "O_done"
+				writeJSON(t, writer, map[string]any{"data": map[string]any{"updateProjectV2ItemFieldValue": map[string]any{"projectV2Item": map[string]any{"id": "PVTI_parent"}}}})
+				return
+			}
+			items := map[string]any{
+				"nodes":    []any{projectItemFixture("PVTI_parent", "I_parent", "O_ready", status)},
+				"pageInfo": map[string]any{"hasNextPage": false},
+			}
+			writeJSON(t, writer, map[string]any{"data": map[string]any{"node": map[string]any{"items": items}}})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	config := adapterConfig(server, "user-token", "octocat", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.OptionIDs = map[string]string{"readiness:ready": "O_ready", "status:in-progress": "O_in_progress", "status:done": "O_done"}
+	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	effect := engine.WorkEffect{
+		Kind: "reconcile-task", Attempt: 1, ManagedID: "issue:4", Marker: "starter-kit-managed:issue:4",
+		Operations: []string{"status", "closure"}, Desired: engine.DesiredManagedTask{ManagedID: "issue:4", Status: "done", Closed: true},
+	}
+	result, err := adapter.Apply(context.Background(), effect)
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("related parent correction failed: %#v, %v", result, err)
+	}
+	if state != "closed" || status != "O_done" || title != "Human-owned parent title" || !strings.HasPrefix(body, "Human-owned parent body") {
+		t.Fatalf("related parent correction did not converge safely: state=%s status=%s title=%q body=%q", state, status, title, body)
+	}
+}
+
+func projectItemFixture(itemID, issueID, readiness, status string) map[string]any {
+	return map[string]any{"id": itemID, "content": map[string]any{"id": issueID}, "fieldValues": map[string]any{"nodes": []any{
+		map[string]any{"optionId": readiness, "field": map[string]any{"id": "F_readiness"}},
+		map[string]any{"optionId": status, "field": map[string]any{"id": "F_status"}},
+	}}}
 }
 
 func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t *testing.T) {
@@ -768,6 +951,10 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 		writeFixtureJSON(writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example":
 		writeFixtureJSON(writer, map[string]any{"node_id": repositoryID, "owner": map[string]any{"login": repositoryOwner}})
+	case request.Method == http.MethodGet && fixture.issue != nil && request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/parent":
+		http.NotFound(writer, request)
+	case request.Method == http.MethodGet && fixture.issue != nil && (request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/dependencies/blocked_by" || request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/dependencies/blocking"):
+		writeFixtureJSON(writer, []any{})
 	case request.Method == http.MethodGet && request.URL.Path == issuesPath:
 		issues := []any{}
 		if fixture.issue != nil {

@@ -53,10 +53,21 @@ type WorkRelatedTask struct {
 
 // WorkParentContext supplies the current parent and other-child facts for one managed task.
 type WorkParentContext struct {
-	ManagedID     string            `json:"managed_id"`
-	Status        string            `json:"status"`
-	Closed        bool              `json:"closed"`
-	OtherChildren []WorkRelatedTask `json:"other_children"`
+	ManagedID           string            `json:"managed_id"`
+	Status              string            `json:"status"`
+	Closed              bool              `json:"closed"`
+	CompletionSatisfied bool              `json:"completion_satisfied"`
+	OtherChildren       []WorkRelatedTask `json:"other_children"`
+}
+
+// WorkDependentContext supplies one direct dependent and its complete blocker slice.
+type WorkDependentContext struct {
+	ManagedID     string           `json:"managed_id"`
+	Readiness     string           `json:"readiness"`
+	Status        string           `json:"status"`
+	Closed        bool             `json:"closed"`
+	ReadyEligible bool             `json:"ready_eligible"`
+	Blockers      []WorkDependency `json:"blockers"`
 }
 
 // DesiredManagedTask is the Work Manager-owned desired state for one task.
@@ -75,6 +86,7 @@ type DesiredManagedTask struct {
 	Review              []WorkReviewRequirement `json:"review"`
 	Closed              bool                    `json:"closed"`
 	ParentContext       *WorkParentContext      `json:"parent_context,omitempty"`
+	Dependents          []WorkDependentContext  `json:"dependents,omitempty"`
 }
 
 // WorkDesiredIntent is credential-free, source-bound managed-task intent.
@@ -151,15 +163,33 @@ type WorkObservedTask struct {
 	Closed          bool                    `json:"closed"`
 }
 
+// WorkObservedDependent is one natively observed direct dependent and its complete blocker slice.
+type WorkObservedDependent struct {
+	ManagedID string           `json:"managed_id"`
+	Blockers  []WorkDependency `json:"blockers"`
+}
+
+// WorkRelationshipObservation contains bounded native hierarchy and dependency facts.
+// Completion satisfaction and Ready eligibility remain governed intent rather than adapter facts.
+type WorkRelationshipObservation struct {
+	Observed        bool                    `json:"observed"`
+	ParentManagedID string                  `json:"parent_managed_id,omitempty"`
+	OtherChildren   []WorkRelatedTask       `json:"other_children"`
+	Blockers        []WorkDependency        `json:"blockers"`
+	Dependents      []WorkObservedDependent `json:"dependents"`
+}
+
 // WorkObservation is a normalized, immutable-ID snapshot from a WorkAdapter.
 type WorkObservation struct {
-	SchemaVersion         int               `json:"schema_version"`
-	Revision              string            `json:"revision"`
-	ConfigurationRevision string            `json:"configuration_revision"`
-	Target                WorkTarget        `json:"target"`
-	Task                  *WorkObservedTask `json:"task,omitempty"`
-	Disposition           string            `json:"disposition,omitempty"`
-	Problems              []string          `json:"problems,omitempty"`
+	SchemaVersion         int                         `json:"schema_version"`
+	Revision              string                      `json:"revision"`
+	ConfigurationRevision string                      `json:"configuration_revision"`
+	Target                WorkTarget                  `json:"target"`
+	Task                  *WorkObservedTask           `json:"task,omitempty"`
+	RelatedTasks          []WorkObservedTask          `json:"related_tasks,omitempty"`
+	Relationships         WorkRelationshipObservation `json:"relationships"`
+	Disposition           string                      `json:"disposition,omitempty"`
+	Problems              []string                    `json:"problems,omitempty"`
 }
 
 // WorkInspection binds desired policy, capability, and normalized observation.
@@ -179,10 +209,19 @@ type WorkEffect struct {
 	ID         string             `json:"effect_id"`
 	Kind       string             `json:"kind"`
 	Operations []string           `json:"operations,omitempty"`
+	Before     WorkLifecycleState `json:"before"`
+	After      WorkLifecycleState `json:"after"`
 	Attempt    int                `json:"attempt"`
 	ManagedID  string             `json:"managed_id"`
 	Marker     string             `json:"marker"`
 	Desired    DesiredManagedTask `json:"desired"`
+}
+
+// WorkLifecycleState is the semantic before/after lifecycle evidence for one correction.
+type WorkLifecycleState struct {
+	Readiness string `json:"readiness,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Closed    bool   `json:"closed"`
 }
 
 // WorkPlan is immutable and bound to every source, target, actor, and observation precondition.
@@ -240,26 +279,29 @@ type WorkRetryState struct {
 
 // WorkEffectReceipt preserves attributable effect and recovery evidence.
 type WorkEffectReceipt struct {
-	SchemaVersion       int             `json:"schema_version"`
-	PlanID              string          `json:"plan_id"`
-	OperationID         string          `json:"operation_id"`
-	EffectID            string          `json:"effect_id"`
-	EffectKind          string          `json:"effect_kind"`
-	ManagedID           string          `json:"managed_id"`
-	Actor               string          `json:"actor"`
-	CredentialMode      string          `json:"credential_mode"`
-	EvidenceMode        string          `json:"evidence_mode,omitempty"`
-	Authority           []string        `json:"authority"`
-	SourceRevision      string          `json:"source_revision"`
-	ObservationRevision string          `json:"observation_revision"`
-	RepositoryID        string          `json:"repository_id"`
-	ProjectID           string          `json:"project_id"`
-	Outcome             string          `json:"outcome"`
-	Attempt             int             `json:"attempt"`
-	Recoverable         bool            `json:"recoverable"`
-	Retry               *WorkRetryState `json:"retry,omitempty"`
-	Detail              string          `json:"detail"`
-	RecordedAt          time.Time       `json:"recorded_at"`
+	SchemaVersion       int                `json:"schema_version"`
+	PlanID              string             `json:"plan_id"`
+	OperationID         string             `json:"operation_id"`
+	EffectID            string             `json:"effect_id"`
+	EffectKind          string             `json:"effect_kind"`
+	Operations          []string           `json:"operations,omitempty"`
+	Before              WorkLifecycleState `json:"before"`
+	After               WorkLifecycleState `json:"after"`
+	ManagedID           string             `json:"managed_id"`
+	Actor               string             `json:"actor"`
+	CredentialMode      string             `json:"credential_mode"`
+	EvidenceMode        string             `json:"evidence_mode,omitempty"`
+	Authority           []string           `json:"authority"`
+	SourceRevision      string             `json:"source_revision"`
+	ObservationRevision string             `json:"observation_revision"`
+	RepositoryID        string             `json:"repository_id"`
+	ProjectID           string             `json:"project_id"`
+	Outcome             string             `json:"outcome"`
+	Attempt             int                `json:"attempt"`
+	Recoverable         bool               `json:"recoverable"`
+	Retry               *WorkRetryState    `json:"retry,omitempty"`
+	Detail              string             `json:"detail"`
+	RecordedAt          time.Time          `json:"recorded_at"`
 }
 
 // WorkApplyStatus is the aggregate result without erasing per-effect outcomes.
@@ -318,7 +360,7 @@ type ManagedTaskLifecycleResult struct {
 // WorkAdapter is the transport seam. Policy and credential choice stay in the engine.
 type WorkAdapter interface {
 	Capability(context.Context) (WorkCapability, error)
-	Observe(context.Context, WorkTarget, string) (WorkObservation, error)
+	Observe(context.Context, WorkTarget, string, ...string) (WorkObservation, error)
 	Apply(context.Context, WorkEffect) (WorkEffectResult, error)
 }
 
@@ -397,7 +439,7 @@ func (e *Engine) InspectManagedTask(ctx context.Context, request ManagedTaskRequ
 			Problems    []string
 		}{request.Intent.Task.ManagedID, observation.Disposition, observation.Problems})
 	} else {
-		observation, err = e.workAdapter.Observe(ctx, request.Intent.Target, request.Intent.Task.ManagedID)
+		observation, err = e.workAdapter.Observe(ctx, request.Intent.Target, request.Intent.Task.ManagedID, relatedManagedIDs(request.Intent.Task)...)
 		if err != nil {
 			return WorkInspection{}, fmt.Errorf("inspect managed task observation: %w", err)
 		}
@@ -461,20 +503,30 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 	if inspection.Disposition != "inspected" || len(inspection.Problems) != 0 {
 		return WorkPlan{}, errors.New("managed-task inspection contains non-pass results")
 	}
-	desired := deriveManagedTask(inspection.Intent.Task)
+	desired, err := effectiveManagedTask(inspection.Intent.Task, inspection.Observation, inspection.Intent.Target)
+	if err != nil {
+		return WorkPlan{}, err
+	}
 	state, err := readManagedTaskState(inspection.Repository)
 	if err != nil {
 		return WorkPlan{}, err
 	}
 	effects := []WorkEffect{}
-	newEffect := func(kind string, operations []string) WorkEffect {
-		id := digestJSON(struct{ Kind, ManagedID, Source string }{kind, desired.ManagedID, inspection.Intent.SourceRevision})
-		return WorkEffect{ID: id, Kind: kind, Operations: slices.Clone(operations), Attempt: nextWorkEffectAttempt(state.Receipts, id, e.clock.Now()), ManagedID: desired.ManagedID, Marker: "starter-kit-managed:" + desired.ManagedID, Desired: desired}
+	newEffect := func(kind string, operations []string, effectDesired DesiredManagedTask, observed *WorkObservedTask) WorkEffect {
+		id := digestJSON(struct{ Kind, ManagedID, Source string }{kind, effectDesired.ManagedID, inspection.Intent.SourceRevision})
+		before := observedLifecycleState(observed, inspection.Intent.Target)
+		return WorkEffect{ID: id, Kind: kind, Operations: slices.Clone(operations), Before: before, After: mergedLifecycleState(before, effectDesired, operations), Attempt: nextWorkEffectAttempt(state.Receipts, id, e.clock.Now()), ManagedID: effectDesired.ManagedID, Marker: "starter-kit-managed:" + effectDesired.ManagedID, Desired: effectDesired}
 	}
 	if inspection.Observation.Task == nil {
-		effects = append(effects, newEffect("create-task", nil), newEffect("reconcile-task", []string{"issue", "project", "readiness", "status"}))
+		effects = append(effects, newEffect("create-task", nil, desired, nil), newEffect("reconcile-task", []string{"issue", "project", "readiness", "status"}, desired, nil))
 	} else if operations := remainingWorkOperations(desired, inspection.Observation.Task, inspection.Intent.Target); len(operations) != 0 {
-		effects = append(effects, newEffect("reconcile-task", operations))
+		effects = append(effects, newEffect("reconcile-task", operations, desired, inspection.Observation.Task))
+	}
+	for _, related := range deriveRelatedManagedTasks(desired) {
+		observed := findObservedRelatedTask(inspection.Observation.RelatedTasks, related.ManagedID)
+		if operations := remainingRelatedWorkOperations(related, observed, inspection.Intent.Target); len(operations) != 0 {
+			effects = append(effects, newEffect("reconcile-task", operations, related, observed))
+		}
 	}
 	plan := WorkPlan{
 		SchemaVersion: 1, Repository: inspection.Repository, OperationID: inspection.Intent.OperationID,
@@ -484,7 +536,7 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		ConfigurationRevision: inspection.Capability.ConfigurationRevision, Target: cloneWorkTarget(inspection.Intent.Target), ExpectedCredential: inspection.Intent.Credential,
 		CapabilityDigest: digestJSON(inspection.Capability),
 		Preconditions:    []string{"unchanged desired source", "fresh expected actor", "minimum declared permissions", "matching immutable target and configuration identities", "unexpired capability and plan"},
-		Impact:           []string{"reconcile one managed task in the selected issue and Project target"},
+		Impact:           []string{"reconcile the selected managed task and its bounded parent/direct-dependent Project slice"},
 		Recovery:         []string{"retain completed receipts", "refresh capability and observation", "create a new immutable plan for remaining semantic differences"},
 		ExpiresAt:        inspection.Capability.ExpiresAt, Effects: effects, NoChange: len(effects) == 0,
 		DerivedFacts: deriveManagedTaskFacts(desired),
@@ -531,7 +583,8 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 	}
 	state.Recovery = append(state.Recovery, leaseRecovery...)
 	state.Recovery = append(state.Recovery, leaseEvidence...)
-	if state.Plan == nil || state.Plan.ID != plan.ID || state.Inspection.Intent.SourceRevision != plan.SourceRevision || state.Inspection.Intent.OperatingProfileRevision != plan.OperatingProfileRevision || state.Inspection.Observation.Revision != plan.ObservationRevision || digestJSON(plan.DerivedFacts) != digestJSON(deriveManagedTaskFacts(deriveManagedTask(state.Request.Intent.Task))) {
+	effective, effectiveErr := effectiveManagedTask(state.Request.Intent.Task, state.Inspection.Observation, state.Request.Intent.Target)
+	if state.Plan == nil || state.Plan.ID != plan.ID || state.Inspection.Intent.SourceRevision != plan.SourceRevision || state.Inspection.Intent.OperatingProfileRevision != plan.OperatingProfileRevision || state.Inspection.Observation.Revision != plan.ObservationRevision || effectiveErr != nil || digestJSON(plan.DerivedFacts) != digestJSON(deriveManagedTaskFacts(effective)) {
 		state.Disposition = "stale"
 		state.Problems = []string{"managed-task desired source, observation, or retained plan changed"}
 		state.Recovery = slices.Clone(plan.Recovery)
@@ -542,7 +595,7 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 	if err != nil {
 		return WorkApplyResult{}, fmt.Errorf("refresh work capability: %w", err)
 	}
-	observation, err := e.workAdapter.Observe(ctx, plan.Target, state.Request.Intent.Task.ManagedID)
+	observation, err := e.workAdapter.Observe(ctx, plan.Target, state.Request.Intent.Task.ManagedID, relatedManagedIDs(state.Request.Intent.Task)...)
 	if err != nil {
 		return WorkApplyResult{}, fmt.Errorf("refresh managed-task observation: %w", err)
 	}
@@ -586,8 +639,13 @@ func (e *Engine) ApplyManagedTask(ctx context.Context, expectedPlanID string, pl
 		if detail != "" {
 			detail = redactDiagnostics([]string{detail})[0]
 		}
+		receiptAfter := effect.Before
+		if outcome == "applied" {
+			receiptAfter = effect.After
+		}
 		receipt := WorkEffectReceipt{
 			SchemaVersion: 1, PlanID: plan.ID, OperationID: plan.OperationID, EffectID: effect.ID, EffectKind: effect.Kind, ManagedID: effect.ManagedID,
+			Operations: slices.Clone(effect.Operations), Before: effect.Before, After: receiptAfter,
 			Actor: capability.Actor, CredentialMode: capability.Mode, EvidenceMode: capability.EvidenceMode, Authority: slices.Clone(capability.Permissions), SourceRevision: plan.SourceRevision,
 			ObservationRevision: plan.ObservationRevision, RepositoryID: plan.Target.RepositoryID, ProjectID: plan.Target.ProjectID,
 			Outcome: outcome, Attempt: result.Attempt, Recoverable: result.Recoverable, Retry: cloneWorkRetry(result.Retry), Detail: detail, RecordedAt: e.clock.Now(),
@@ -637,14 +695,22 @@ func (e *Engine) VerifyManagedTask(ctx context.Context, repository string) (Work
 	if err != nil {
 		return WorkVerificationResult{}, fmt.Errorf("verify work capability: %w", err)
 	}
-	observation, err := e.workAdapter.Observe(ctx, state.Request.Intent.Target, state.Request.Intent.Task.ManagedID)
+	observation, err := e.workAdapter.Observe(ctx, state.Request.Intent.Target, state.Request.Intent.Task.ManagedID, relatedManagedIDs(state.Request.Intent.Task)...)
 	if err != nil {
 		return WorkVerificationResult{}, fmt.Errorf("verify managed task observation: %w", err)
 	}
-	desired := deriveManagedTask(state.Request.Intent.Task)
+	desired, desiredErr := effectiveManagedTask(state.Request.Intent.Task, observation, state.Request.Intent.Target)
 	control := ControlResult{ID: "WORK-MANAGER-001", State: ControlFail, Summary: "managed task differs from desired state", Rationale: "normalized adapter observation does not match Work Manager policy", Evidence: []EvidenceReference{}, Diagnostics: []string{}}
 	capabilityProblems := validateWorkHandshake(state.Request.Intent, capability, observation, e.clock.Now())
-	if observedTaskMatches(desired, observation.Task, state.Request.Intent.Target) && len(capabilityProblems) == 0 {
+	relatedMatch := true
+	if desiredErr == nil {
+		for _, related := range deriveRelatedManagedTasks(desired) {
+			relatedMatch = relatedMatch && len(remainingRelatedWorkOperations(related, findObservedRelatedTask(observation.RelatedTasks, related.ManagedID), state.Request.Intent.Target)) == 0
+		}
+	} else {
+		relatedMatch = false
+	}
+	if observedTaskMatches(desired, observation.Task, state.Request.Intent.Target) && relatedMatch && len(capabilityProblems) == 0 {
 		control = ControlResult{ID: "WORK-MANAGER-001", State: ControlPass, Summary: "managed task matches desired state", Evidence: []EvidenceReference{{Kind: "machine-state", Target: workStatePath}}, Diagnostics: []string{}}
 	} else if len(capabilityProblems) != 0 {
 		control.Summary = "managed task capability evidence is non-pass"
@@ -724,15 +790,44 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 		if intent.Task.ParentContext.ManagedID == "" || intent.Task.ParentContext.ManagedID != intent.Task.ParentManagedID || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, intent.Task.ParentContext.Status) {
 			return errors.New("managed-task intent contains invalid parent context")
 		}
+		seenChildren := map[string]bool{intent.Task.ManagedID: true}
 		for _, sibling := range intent.Task.ParentContext.OtherChildren {
-			if sibling.ManagedID == "" || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, sibling.Status) {
+			if sibling.ManagedID == "" || seenChildren[sibling.ManagedID] || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, sibling.Status) {
 				return errors.New("managed-task intent contains invalid sibling context")
 			}
+			seenChildren[sibling.ManagedID] = true
+		}
+	}
+	seenRelated := map[string]bool{intent.Task.ManagedID: true}
+	if intent.Task.ParentManagedID != "" {
+		seenRelated[intent.Task.ParentManagedID] = true
+	}
+	for _, dependent := range intent.Task.Dependents {
+		if dependent.ManagedID == "" || seenRelated[dependent.ManagedID] || !slices.Contains([]string{"intake", "needs-refinement", "ready", "blocked"}, dependent.Readiness) || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, dependent.Status) {
+			return errors.New("managed-task intent contains invalid direct dependent context")
+		}
+		seenRelated[dependent.ManagedID] = true
+		selectedIsBlocker := false
+		seenBlockers := map[string]bool{}
+		for _, blocker := range dependent.Blockers {
+			if blocker.ManagedID == "" || blocker.ManagedID == dependent.ManagedID || seenBlockers[blocker.ManagedID] {
+				return errors.New("managed-task intent contains invalid dependent blocker context")
+			}
+			seenBlockers[blocker.ManagedID] = true
+			selectedIsBlocker = selectedIsBlocker || blocker.ManagedID == intent.Task.ManagedID
+		}
+		if !selectedIsBlocker {
+			return errors.New("direct dependent context does not name the selected task as a blocker")
 		}
 	}
 	derived := deriveManagedTask(intent.Task)
 	if intent.Target.FieldIDs["readiness"] == "" || intent.Target.FieldIDs["status"] == "" || intent.Target.OptionIDs["readiness:"+derived.Readiness] == "" || intent.Target.OptionIDs["status:"+derived.Status] == "" {
 		return errors.New("managed-task intent lacks required lifecycle field or option identities")
+	}
+	for _, related := range deriveRelatedManagedTasks(derived) {
+		if related.Readiness != "" && intent.Target.OptionIDs["readiness:"+related.Readiness] == "" || related.Status != "" && intent.Target.OptionIDs["status:"+related.Status] == "" {
+			return errors.New("managed-task intent lacks a related lifecycle option identity")
+		}
 	}
 	values := []string{intent.OperationID, intent.SourceRevision, intent.OperatingProfileRevision, intent.Credential.Actor, intent.Task.ManagedID, intent.Task.Title, intent.Task.ParentManagedID, intent.Task.Phase, intent.Task.ParentPhase, intent.Task.PromotionRecord, intent.Target.Host, intent.Target.RepositoryID, intent.Target.ProjectID}
 	for key, value := range intent.InputDigests {
@@ -757,6 +852,12 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 		values = append(values, intent.Task.ParentContext.ManagedID, intent.Task.ParentContext.Status)
 		for _, sibling := range intent.Task.ParentContext.OtherChildren {
 			values = append(values, sibling.ManagedID, sibling.Status)
+		}
+	}
+	for _, dependent := range intent.Task.Dependents {
+		values = append(values, dependent.ManagedID, dependent.Readiness, dependent.Status)
+		for _, blocker := range dependent.Blockers {
+			values = append(values, blocker.ManagedID)
 		}
 	}
 	if containsSensitiveText(strings.Join(values, "\n")) {
@@ -813,6 +914,25 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	if observation.Task != nil && (observation.Task.ManagedID == "" || observation.Task.ManagedID != intent.Task.ManagedID || observation.Task.IssueNodeID == "" || observation.Task.Title == "" || observation.Task.IssueType == "") {
 		problems = append(problems, "adapter observation contains an invalid task identity")
 	}
+	expectedRelated := relatedManagedIDs(intent.Task)
+	seenRelated := map[string]bool{}
+	for _, related := range observation.RelatedTasks {
+		if related.ManagedID == "" || related.IssueNodeID == "" || related.ProjectItemID == "" || seenRelated[related.ManagedID] || !slices.Contains(expectedRelated, related.ManagedID) {
+			problems = append(problems, "adapter observation contains an invalid or unexpected related task identity")
+			continue
+		}
+		seenRelated[related.ManagedID] = true
+	}
+	for _, managedID := range expectedRelated {
+		if !seenRelated[managedID] {
+			problems = append(problems, "adapter observation is missing required related task: "+managedID)
+		}
+	}
+	if observation.Task != nil {
+		if _, err := effectiveManagedTask(intent.Task, observation, intent.Target); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
 	if capability.ConfigurationRevision != observation.ConfigurationRevision || !equalWorkTarget(intent.Target, observation.Target) {
 		problems = append(problems, "adapter target or configuration identities changed")
 	}
@@ -834,6 +954,9 @@ func validateManagedTaskPlan(plan WorkPlan) error {
 		expectedID := digestJSON(struct{ Kind, ManagedID, Source string }{effect.Kind, effect.ManagedID, plan.SourceRevision})
 		if effect.ID != expectedID || effect.Attempt <= 0 || effect.ManagedID == "" || effect.Marker != "starter-kit-managed:"+effect.ManagedID || effect.Desired.ManagedID != effect.ManagedID {
 			return errors.New("managed-task plan contains invalid effect identity or marker provenance")
+		}
+		if effect.After != mergedLifecycleState(effect.Before, effect.Desired, effect.Operations) {
+			return errors.New("managed-task plan contains invalid lifecycle after-state evidence")
 		}
 		if effect.Kind == "create-task" && len(effect.Operations) != 0 || effect.Kind == "reconcile-task" && !validWorkOperations(effect.Operations) {
 			return errors.New("managed-task plan contains invalid semantic operations")
@@ -860,6 +983,15 @@ func deriveManagedTask(task DesiredManagedTask) DesiredManagedTask {
 	derived := task
 	derived.Blockers = slices.Clone(task.Blockers)
 	derived.Review = slices.Clone(task.Review)
+	derived.Dependents = slices.Clone(task.Dependents)
+	for index := range derived.Dependents {
+		derived.Dependents[index].Blockers = slices.Clone(task.Dependents[index].Blockers)
+	}
+	if task.ParentContext != nil {
+		parent := *task.ParentContext
+		parent.OtherChildren = slices.Clone(task.ParentContext.OtherChildren)
+		derived.ParentContext = &parent
+	}
 	if derived.Phase == "" {
 		derived.Phase = derived.ParentPhase
 	}
@@ -878,6 +1010,158 @@ func deriveManagedTask(task DesiredManagedTask) DesiredManagedTask {
 		derived.Status = "done"
 	}
 	return derived
+}
+
+func effectiveManagedTask(task DesiredManagedTask, observation WorkObservation, target WorkTarget) (DesiredManagedTask, error) {
+	if observation.Task == nil {
+		return deriveManagedTask(task), nil
+	}
+	if !observation.Relationships.Observed {
+		return DesiredManagedTask{}, errors.New("adapter observation lacks bounded native relationship facts")
+	}
+	effective := task
+	effective.Closed = task.Closed || observation.Task.Closed
+	effective.Blockers = slices.Clone(observation.Relationships.Blockers)
+
+	expectedParent := ""
+	if task.ParentContext != nil {
+		expectedParent = task.ParentContext.ManagedID
+	}
+	if observation.Relationships.ParentManagedID != expectedParent {
+		return DesiredManagedTask{}, errors.New("native parent relationship differs from governed intent")
+	}
+	if task.ParentManagedID != expectedParent {
+		return DesiredManagedTask{}, errors.New("governed parent metadata differs from parent reconciliation policy")
+	}
+	if !sameManagedIDsFromDependencies(task.Blockers, observation.Relationships.Blockers) {
+		return DesiredManagedTask{}, errors.New("native blocker relationships differ from governed intent")
+	}
+
+	if task.ParentContext != nil {
+		parentObserved := findObservedRelatedTask(observation.RelatedTasks, expectedParent)
+		if parentObserved == nil {
+			return DesiredManagedTask{}, errors.New("native parent is missing its managed Project observation")
+		}
+		parent := *task.ParentContext
+		parent.Status = observedStatus(*parentObserved, target)
+		parent.Closed = parentObserved.Closed
+		parent.OtherChildren = slices.Clone(observation.Relationships.OtherChildren)
+		if parent.Status == "" || !sameManagedIDsFromRelated(task.ParentContext.OtherChildren, parent.OtherChildren) {
+			return DesiredManagedTask{}, errors.New("native parent child slice differs from governed intent")
+		}
+		effective.ParentContext = &parent
+	}
+
+	if !sameManagedIDsFromDependents(task.Dependents, observation.Relationships.Dependents) {
+		return DesiredManagedTask{}, errors.New("native direct-dependent relationships differ from governed intent")
+	}
+	effective.Dependents = make([]WorkDependentContext, 0, len(task.Dependents))
+	for _, policy := range task.Dependents {
+		observedTask := findObservedRelatedTask(observation.RelatedTasks, policy.ManagedID)
+		observedDependent := findObservedDependent(observation.Relationships.Dependents, policy.ManagedID)
+		if observedTask == nil || observedDependent == nil {
+			return DesiredManagedTask{}, errors.New("native dependent is missing its managed Project or blocker observation")
+		}
+		if !sameManagedIDsFromDependencies(policy.Blockers, observedDependent.Blockers) {
+			return DesiredManagedTask{}, errors.New("native dependent blocker relationships differ from governed intent")
+		}
+		dependent := policy
+		dependent.Closed = policy.Closed || observedTask.Closed
+		dependent.Blockers = slices.Clone(observedDependent.Blockers)
+		if observedReadiness(*observedTask, target) == "" || observedStatus(*observedTask, target) == "" {
+			return DesiredManagedTask{}, errors.New("native dependent lacks semantic lifecycle observations")
+		}
+		effective.Dependents = append(effective.Dependents, dependent)
+	}
+
+	effective = deriveManagedTask(effective)
+	if effective.ParentContext != nil {
+		allClosed := effective.Closed
+		for _, sibling := range effective.ParentContext.OtherChildren {
+			allClosed = allClosed && sibling.Closed
+		}
+		if allClosed && !effective.ParentContext.CompletionSatisfied {
+			return DesiredManagedTask{}, errors.New("all native parent children are closed without a satisfied parent completion contract")
+		}
+	}
+	if target.OptionIDs["readiness:"+effective.Readiness] == "" || target.OptionIDs["status:"+effective.Status] == "" {
+		return DesiredManagedTask{}, errors.New("native task state requires an unavailable lifecycle option identity")
+	}
+	for _, related := range deriveRelatedManagedTasks(effective) {
+		if related.Readiness != "" && target.OptionIDs["readiness:"+related.Readiness] == "" || related.Status != "" && target.OptionIDs["status:"+related.Status] == "" {
+			return DesiredManagedTask{}, errors.New("native related state requires an unavailable lifecycle option identity")
+		}
+	}
+	return effective, nil
+}
+
+func observedReadiness(task WorkObservedTask, target WorkTarget) string {
+	return observedOptionValue("readiness", task.ReadinessOption, target)
+}
+
+func observedStatus(task WorkObservedTask, target WorkTarget) string {
+	return observedOptionValue("status", task.StatusOption, target)
+}
+
+func observedOptionValue(field, optionID string, target WorkTarget) string {
+	for key, candidate := range target.OptionIDs {
+		name, value, ok := strings.Cut(key, ":")
+		if ok && name == field && candidate == optionID {
+			return value
+		}
+	}
+	return ""
+}
+
+func sameManagedIDsFromDependencies(expected, observed []WorkDependency) bool {
+	left := make([]string, 0, len(expected))
+	right := make([]string, 0, len(observed))
+	for _, item := range expected {
+		left = append(left, item.ManagedID)
+	}
+	for _, item := range observed {
+		right = append(right, item.ManagedID)
+	}
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
+}
+
+func sameManagedIDsFromRelated(expected, observed []WorkRelatedTask) bool {
+	left := make([]string, 0, len(expected))
+	right := make([]string, 0, len(observed))
+	for _, item := range expected {
+		left = append(left, item.ManagedID)
+	}
+	for _, item := range observed {
+		right = append(right, item.ManagedID)
+	}
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
+}
+
+func sameManagedIDsFromDependents(expected []WorkDependentContext, observed []WorkObservedDependent) bool {
+	left := make([]string, 0, len(expected))
+	right := make([]string, 0, len(observed))
+	for _, item := range expected {
+		left = append(left, item.ManagedID)
+	}
+	for _, item := range observed {
+		right = append(right, item.ManagedID)
+	}
+	sort.Strings(left)
+	sort.Strings(right)
+	return slices.Equal(left, right)
+}
+
+func findObservedDependent(dependents []WorkObservedDependent, managedID string) *WorkObservedDependent {
+	for index := range dependents {
+		if dependents[index].ManagedID == managedID {
+			return &dependents[index]
+		}
+	}
+	return nil
 }
 
 func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
@@ -902,8 +1186,135 @@ func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
 	} else if anyStarted {
 		facts.ParentStatus = "in-progress"
 		facts.ParentClosed = false
+	} else {
+		facts.ParentClosed = false
+		if facts.ParentStatus == "in-progress" || facts.ParentStatus == "done" {
+			facts.ParentStatus = "backlog"
+		}
 	}
 	return facts
+}
+
+func relatedManagedIDs(task DesiredManagedTask) []string {
+	ids := make([]string, 0, 1+len(task.Dependents))
+	if task.ParentContext != nil {
+		ids = append(ids, task.ParentContext.ManagedID)
+	}
+	dependentIDs := make([]string, 0, len(task.Dependents))
+	for _, dependent := range task.Dependents {
+		dependentIDs = append(dependentIDs, dependent.ManagedID)
+	}
+	sort.Strings(dependentIDs)
+	return append(ids, dependentIDs...)
+}
+
+func deriveRelatedManagedTasks(task DesiredManagedTask) []DesiredManagedTask {
+	related := []DesiredManagedTask{}
+	if task.ParentContext != nil {
+		parent := DesiredManagedTask{
+			ManagedID: task.ParentContext.ManagedID,
+			Status:    task.ParentContext.Status,
+			Closed:    task.ParentContext.Closed,
+		}
+		allClosed := task.Closed
+		anyStarted := task.Closed || task.Status == "in-progress" || task.Status == "done"
+		for _, sibling := range task.ParentContext.OtherChildren {
+			allClosed = allClosed && sibling.Closed
+			anyStarted = anyStarted || sibling.Closed || sibling.Status == "in-progress" || sibling.Status == "done"
+		}
+		if allClosed && task.ParentContext.CompletionSatisfied {
+			parent.Status = "done"
+			parent.Closed = true
+		} else if anyStarted {
+			parent.Status = "in-progress"
+			parent.Closed = false
+		} else {
+			parent.Closed = false
+			if parent.Status == "in-progress" || parent.Status == "done" {
+				parent.Status = "backlog"
+			}
+		}
+		related = append(related, parent)
+	}
+	dependents := slices.Clone(task.Dependents)
+	sort.Slice(dependents, func(left, right int) bool { return dependents[left].ManagedID < dependents[right].ManagedID })
+	for _, dependent := range dependents {
+		desired := DesiredManagedTask{ManagedID: dependent.ManagedID, Readiness: dependent.Readiness, Status: dependent.Status, Closed: dependent.Closed}
+		allClosed := len(dependent.Blockers) != 0
+		for _, blocker := range dependent.Blockers {
+			allClosed = allClosed && blocker.Closed
+		}
+		if !allClosed {
+			desired.Readiness = "blocked"
+		} else if dependent.ReadyEligible && desired.Readiness == "blocked" {
+			desired.Readiness = "ready"
+		}
+		if desired.Closed {
+			desired.Status = "done"
+		}
+		related = append(related, desired)
+	}
+	return related
+}
+
+func findObservedRelatedTask(tasks []WorkObservedTask, managedID string) *WorkObservedTask {
+	for index := range tasks {
+		if tasks[index].ManagedID == managedID {
+			return &tasks[index]
+		}
+	}
+	return nil
+}
+
+func remainingRelatedWorkOperations(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) []string {
+	if observed == nil {
+		return []string{"project"}
+	}
+	operations := []string{}
+	if desired.Readiness != "" && observed.ReadinessOption != target.OptionIDs["readiness:"+desired.Readiness] {
+		operations = append(operations, "readiness")
+	}
+	if desired.Status != "" && observed.StatusOption != target.OptionIDs["status:"+desired.Status] {
+		operations = append(operations, "status")
+	}
+	if desired.Readiness == "" && observed.Closed != desired.Closed {
+		operations = append(operations, "closure")
+	}
+	return operations
+}
+
+func observedLifecycleState(observed *WorkObservedTask, target WorkTarget) WorkLifecycleState {
+	if observed == nil {
+		return WorkLifecycleState{}
+	}
+	state := WorkLifecycleState{Closed: observed.Closed}
+	for key, optionID := range target.OptionIDs {
+		field, value, ok := strings.Cut(key, ":")
+		if !ok {
+			continue
+		}
+		if field == "readiness" && optionID == observed.ReadinessOption {
+			state.Readiness = value
+		}
+		if field == "status" && optionID == observed.StatusOption {
+			state.Status = value
+		}
+	}
+	return state
+}
+
+func mergedLifecycleState(before WorkLifecycleState, desired DesiredManagedTask, operations []string) WorkLifecycleState {
+	after := before
+	if desired.Readiness != "" {
+		after.Readiness = desired.Readiness
+	}
+	if desired.Status != "" {
+		after.Status = desired.Status
+	}
+	if slices.Contains(operations, "issue") || slices.Contains(operations, "closure") {
+		after.Closed = desired.Closed
+	}
+	return after
 }
 
 func observedTaskMatches(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) bool {
@@ -940,7 +1351,7 @@ func validWorkOperations(operations []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, operation := range operations {
-		if !slices.Contains([]string{"issue", "project", "readiness", "status"}, operation) || seen[operation] {
+		if !slices.Contains([]string{"issue", "project", "readiness", "status", "closure"}, operation) || seen[operation] {
 			return false
 		}
 		seen[operation] = true
@@ -1092,7 +1503,7 @@ func (adapter *InMemoryWorkAdapter) Capability(context.Context) (WorkCapability,
 	return value, nil
 }
 
-func (adapter *InMemoryWorkAdapter) Observe(_ context.Context, _ WorkTarget, _ string) (WorkObservation, error) {
+func (adapter *InMemoryWorkAdapter) Observe(_ context.Context, _ WorkTarget, _ string, _ ...string) (WorkObservation, error) {
 	adapter.mu.Lock()
 	defer adapter.mu.Unlock()
 	return cloneWorkObservation(adapter.observation), nil
@@ -1118,6 +1529,26 @@ func (adapter *InMemoryWorkAdapter) applyObservedEffect(effect WorkEffect) {
 	if effect.Kind == "create-task" {
 		adapter.observation.Task = &WorkObservedTask{ManagedID: desired.ManagedID, IssueNodeID: "memory:issue:" + desired.ManagedID, Title: desired.Title, IssueType: desired.IssueType}
 		adapter.observation.Revision = digestJSON(adapter.observation.Task)
+		return
+	}
+	if adapter.observation.Task == nil || effect.ManagedID != adapter.observation.Task.ManagedID {
+		for index := range adapter.observation.RelatedTasks {
+			if adapter.observation.RelatedTasks[index].ManagedID != effect.ManagedID {
+				continue
+			}
+			related := &adapter.observation.RelatedTasks[index]
+			if slices.Contains(effect.Operations, "readiness") {
+				related.ReadinessOption = adapter.observation.Target.OptionIDs["readiness:"+desired.Readiness]
+			}
+			if slices.Contains(effect.Operations, "status") {
+				related.StatusOption = adapter.observation.Target.OptionIDs["status:"+desired.Status]
+			}
+			if slices.Contains(effect.Operations, "closure") {
+				related.Closed = desired.Closed
+			}
+			adapter.observation.Revision = digestJSON(adapter.observation)
+			return
+		}
 		return
 	}
 	blockedBy := make([]string, 0, len(desired.Blockers))
@@ -1167,6 +1598,17 @@ func cloneWorkObservation(value WorkObservation) WorkObservation {
 		task.BlockedBy = slices.Clone(task.BlockedBy)
 		task.Review = slices.Clone(task.Review)
 		value.Task = &task
+	}
+	value.RelatedTasks = slices.Clone(value.RelatedTasks)
+	value.Relationships.OtherChildren = slices.Clone(value.Relationships.OtherChildren)
+	value.Relationships.Blockers = slices.Clone(value.Relationships.Blockers)
+	value.Relationships.Dependents = slices.Clone(value.Relationships.Dependents)
+	for index := range value.Relationships.Dependents {
+		value.Relationships.Dependents[index].Blockers = slices.Clone(value.Relationships.Dependents[index].Blockers)
+	}
+	for index := range value.RelatedTasks {
+		value.RelatedTasks[index].BlockedBy = slices.Clone(value.RelatedTasks[index].BlockedBy)
+		value.RelatedTasks[index].Review = slices.Clone(value.RelatedTasks[index].Review)
 	}
 	return value
 }

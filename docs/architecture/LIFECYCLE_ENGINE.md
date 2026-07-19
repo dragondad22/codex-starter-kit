@@ -113,7 +113,7 @@ managed-file manifest.
 | `.starter-kit/layout.json` | managed | Logical role-to-path mapping |
 | `.starter-kit/managed-files.json` | managed | Ownership, provenance digest, and path manifest |
 | `.starter-kit/state.json` | managed | Lifecycle, schema, and engine state; written last |
-| `.starter-kit/work-manager/state.json` | managed | Self-digested credential-free managed-task intent, plan, receipts, retry, verification, and status |
+| `.starter-kit/work-manager/state.json` | managed | Self-digested credential-free selected-task and bounded related-item intent, immutable plan, before/after receipts, retry, verification, and status |
 | `.starter-kit/routes.json` | generated | Stable artifact-ID resolution |
 | `.starter-kit/events/*.json` | machine-evidence | Self-describing operation results with plan, source, ownership, status, and diagnostics |
 | Git-local `starter-kit-attempts/*.json` | machine-evidence | Lock-rejected attempts plus content-addressed stale-lease, abandoned-stage, and replay observations |
