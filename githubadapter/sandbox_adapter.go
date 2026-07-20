@@ -785,7 +785,7 @@ func (adapter *SandboxAdapter) rest(ctx context.Context, credential Credential, 
 		}
 		defer response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			if eligible {
+			if method == http.MethodGet && (isSandboxRetryableStatus(response.StatusCode) || eligible) {
 				return response, &sandboxProviderTransientError{}
 			}
 			return response, &responseError{StatusCode: response.StatusCode, Header: response.Header.Clone()}
@@ -837,8 +837,12 @@ func (adapter *SandboxAdapter) sandboxReadRetryDelay(response *http.Response, at
 		return 0, false
 	}
 	retryAfter := strings.TrimSpace(response.Header.Get("Retry-After"))
-	if seconds, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && seconds >= 0 {
-		if seconds > int64(sandboxRESTRetryBudget/time.Second) {
+	if isASCIIDigits(retryAfter) {
+		seconds, err := strconv.ParseUint(retryAfter, 10, 64)
+		if err != nil {
+			return sandboxRESTRetryBudget + time.Nanosecond, true
+		}
+		if seconds > uint64(sandboxRESTRetryBudget/time.Second) {
 			return sandboxRESTRetryBudget + time.Nanosecond, true
 		}
 		return time.Duration(seconds) * time.Second, true
@@ -852,6 +856,18 @@ func (adapter *SandboxAdapter) sandboxReadRetryDelay(response *http.Response, at
 		delay = 0
 	}
 	return delay, true
+}
+
+func isASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func waitForSandboxRetry(ctx context.Context, delay time.Duration) error {

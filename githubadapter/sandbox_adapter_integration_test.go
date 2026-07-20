@@ -761,6 +761,44 @@ func TestSandboxAdapterHonorsBoundedRetryAfterForProjectReads(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterReportsTransientAfterRateWaitConsumesRetryBudget(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
+	waits := []time.Duration{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case "/users/dragondad22/projectsV2/8":
+			projectReads++
+			if projectReads == 1 {
+				response.Header().Set("Retry-After", "2")
+				response.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			response.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+		waits = append(waits, delay)
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	problems := strings.Join(capability.Problems, ";")
+	if err != nil || capability.Available || projectReads != 2 || !slices.Equal(waits, []time.Duration{2 * time.Second}) || !strings.Contains(problems, "provider is transiently unavailable") || strings.Contains(problems, "identity") {
+		t.Fatalf("mixed transient capability = %#v, reads=%d, waits=%v, err=%v", capability, projectReads, waits, err)
+	}
+}
+
 func TestSandboxAdapterDoesNotRetryNonTransientProjectResponses(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -773,6 +811,9 @@ func TestSandboxAdapterDoesNotRetryNonTransientProjectResponses(t *testing.T) {
 					json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
 				case "/users/dragondad22/projectsV2/8":
 					projectReads++
+					if status == http.StatusTooManyRequests {
+						response.Header().Set("Retry-After", "+1")
+					}
 					response.WriteHeader(status)
 				default:
 					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
