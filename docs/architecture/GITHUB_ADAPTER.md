@@ -49,7 +49,7 @@ not runtime dependencies.
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
 | `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; the Work Adapter's multi-item reconciliation route remains unqualified live |
-| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's operational Phase catalog was applied through a separately approved owner CLI route; that result is `needs-review`, not a live Work Adapter user-token qualification |
+| `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's separately approved external-resource lifecycle passed exact-head zero-effect observation, verification, and replay for the operational Phase catalog; the routine Work Adapter user-token route remains unqualified live |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
 App installation mode rejects a user-owned Project rather than selecting a user token.
@@ -141,11 +141,12 @@ combinations.
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,
 Project, issue, or paid feature was created or mutated for #72. #73 subsequently
-qualified the isolated sandbox baseline, and #46 applied and re-read the approved
-operational Phase catalog through an owner CLI route. Neither result is a live pass for
-the routine Work Adapter Phase effect. #46 observed the matching human-created `Phases`
-view; automated creation remains `not-configured` when the required grouping and sorting
-cannot be expressed. #76 owns aggregate qualification and support claims.
+qualified the isolated sandbox baseline. #46 later observed, verified, and replayed the
+approved operational Phase catalog through a separately approved owner route with zero
+effects. That result qualifies the exact external-resource lifecycle candidate, not the
+routine Work Adapter Phase effect. #46 observed the matching human-created `Phases` view;
+automated creation remains `not-configured` when the required grouping and sorting cannot
+be expressed. #76 owns aggregate qualification and support claims.
 
 The Project-configuration route plans the complete Phase field/option catalog, the saved
 `Phases` view, and feature #1–#9 assignments as immutable resources. Existing name/type,

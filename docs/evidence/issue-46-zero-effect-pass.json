@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "evidence_id": "sha256:9d4344267fd75dea9a352e250dd1c11e25cfa933ae4e21a92ae710f4151f84c6",
+  "candidate": "bf9827c124a7d24ae14802c65600a4083d9cb14b",
+  "executed_at": "2026-07-20T22:54:47Z",
+  "stage": "plan_apply_verify_replay",
+  "outcome": "pass",
+  "mandate_id": "sha256:01665223c0df125ff080a12bf65a410c161504aed11ea99dabefe2ceb98be9b3",
+  "approval_id": "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5028032912",
+  "mandate_max_effects": 0,
+  "inspection_id": "sha256:e99a6c14ac3d5ad0740c36a9e33c002236133da998332b85b15f9f7b735c1ee8",
+  "observation_revision": "577974525554b8291ac3aa0121f6d12a59218d8c0b9b678ac88a667ec6e242b0",
+  "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+  "plan_effect_count": 0,
+  "apply_status": "no_change",
+  "verification_state": "pass",
+  "verification_control": "GITHUB-SANDBOX-001",
+  "replay_plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+  "replay_effect_count": 0,
+  "replay_apply_status": "no_change",
+  "project_effect_count": 0,
+  "target": {
+    "owner_id": "19365745",
+    "repository_id": "R_kgDOTVs5Hg",
+    "project_id": "PVT_kwHOASd_cc4BdI9q"
+  },
+  "resource_count": 20,
+  "evidence_boundary": "The exact reviewed source observed all governed Phase resources, produced an immutable zero-effect plan, verified the live postcondition, and replayed the identical no-change plan. No provider response body, credential, or temporary repository path is retained."
+}

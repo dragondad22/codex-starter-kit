@@ -95,11 +95,10 @@ therefore uses the classic user-token route only after native actor/scope verifi
 Its request schema does not expose grouping or sorting. The adapter consequently returns
 `not-configured` without creating a partial view when the required grouped/ascending-sorted
 `Phases` view is absent; it can still verify and replay the existing matching human-created
-view. No live Project effect was attempted for this correction. A fresh independently
-retained mandate covering the exact final source, full observed scope set, and final resource
-digests is required before effect-free live planning/apply/replay can be final evidence.
-That deliberate owner-approval seam was exercised by the bounded attempt below; its
-non-pass result remains the current completion boundary.
+view. No live Project effect was attempted by the correction itself. The deliberate
+owner-approval seam was first exercised by the historical bounded non-pass below and then
+completed by the exact-head zero-effect qualification after transient-read recovery was
+implemented.
 
 ## Zero-effect completion attempt
 
@@ -111,7 +110,8 @@ was verified as an unchanged `OWNER` record authored by `dragondad22` at
 reconciler actor, recovery owner, classic OAuth scopes `gist`, `project`, `read:org`,
 `repo`, and `workflow`, semantic `projects:write`, the exact 20 Phase resources, and a
 24-hour validity interval. The execution package deliberately narrowed the owner's
-20-effect ceiling to zero.
+20-effect ceiling to zero. This historical approval and result remain evidence for the
+older candidate; they do not authorize or describe the later passing run.
 
 The retained [zero-effect mandate](issue-46-zero-effect-mandate.json) is content addressed
 as `sha256:b09038fbd3ed1a2f0a38b92ff8f9c033b404c25b3a12090b27c96ad4639822c1`.
@@ -162,10 +162,33 @@ and fields, bounded persistent-transient user and Project identity non-pass with
 effects, `502`/`504` recovery, bounded and cumulative `429` delay handling, canceled
 waiting, mixed rate/transient exhaustion, strict `Retry-After` parsing, and the required
 no-retry paths. This
-does not rewrite the historical zero-effect non-pass above. It also does not authorize a
-live retry: the previous approval names an older candidate, so the exact corrected head
-requires a fresh zero-effect owner approval before any live plan, apply, verification, or
-replay.
+does not rewrite the historical zero-effect non-pass above. The later exact-head run used
+a separate owner record and content-addressed mandate.
+
+## Exact-head zero-effect qualification
+
+Owner comment
+[`5028032912`](https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5028032912)
+was verified as an unchanged `OWNER` record authored by `dragondad22` at
+`2026-07-20T22:52:22Z`. It approves candidate
+`bf9827c124a7d24ae14802c65600a4083d9cb14b`, the same immutable target, reconciler actor,
+complete observed classic OAuth scope set, semantic `projects:write`, exact 20 Phase
+resources, and a zero-effect ceiling through `2026-07-21T22:52:22Z`.
+
+The renewed [zero-effect mandate](issue-46-zero-effect-mandate-bf9827c.json) is content addressed
+as `sha256:01665223c0df125ff080a12bf65a410c161504aed11ea99dabefe2ceb98be9b3`.
+At the pinned observation time `2026-07-20T22:53:31Z`, the lifecycle observed every
+resource and produced immutable plan
+`sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65`
+with zero effects. Effect-free apply returned `no_change`; verification returned `pass`
+for `GITHUB-SANDBOX-001`; reinspection produced the identical plan; and replay apply
+returned `no_change`. Project effect count is zero.
+
+The redacted, content-addressed [passing evidence](issue-46-zero-effect-pass.json) retains
+the exact source, approval, mandate, inspection, observation, plan, verification, replay,
+target, and resource count without credentials, provider response bodies, or temporary
+paths. Its canonical content excluding `evidence_id` is
+`sha256:9d4344267fd75dea9a352e250dd1c11e25cfa933ae4e21a92ae710f4151f84c6`.
 
 ## Deterministic verification
 
@@ -193,5 +216,7 @@ go run ./cmd/starter-kit changes check --repository .
 git diff --check
 ```
 
-The exact completing revision still requires a fresh passing zero-effect lifecycle,
-native CI, and distinct Standards/Spec review.
+The executable candidate passed its exact-head zero-effect lifecycle. The evidence-only
+completion revision still requires native CI and distinct Standards/Spec review; any
+subsequent executable change invalidates the live qualification and requires a new
+exact-source mandate and run.
