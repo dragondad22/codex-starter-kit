@@ -48,11 +48,12 @@ that no other item has a direct Phase. Their immutable issue-content and Project
 are now retained by the reviewed #46 configuration manifest rather than rediscovered by
 title or issue number.
 
-The owner authorized proceeding through #46, but the CLI effects were not preceded by a
-retained immutable effect-plan/review identity and no safe create replay was attempted.
-The live application result is therefore `needs-review`, not a qualification pass, even
-though its current postcondition is correct. The field and mappings are retained; recovery
-must inspect them by immutable identity rather than rerun field creation.
+The owner authorized proceeding through #46, but the original CLI effects were not
+preceded by a retained immutable effect-plan/review identity and no safe create replay was
+attempted. The original live application result is therefore `needs-review`, not a
+qualification pass, even though its current postcondition is correct. The field and
+mappings are retained; recovery must inspect them by immutable identity rather than rerun
+field creation.
 
 The production adapter now validates the complete existing catalog—including the exact
 option count, names, and immutable IDs—before item effects.
@@ -97,8 +98,46 @@ Its request schema does not expose grouping or sorting. The adapter consequently
 view. No live Project effect was attempted for this correction. A fresh independently
 retained mandate covering the exact final source, full observed scope set, and final resource
 digests is required before effect-free live planning/apply/replay can be final evidence.
-That deliberate owner-approval seam is the next bounded work package, not unfinished coding
-or permission for this correction package to fabricate or perform a live Project mutation.
+That deliberate owner-approval seam was exercised by the bounded attempt below; its
+non-pass result remains the current completion boundary.
+
+## Zero-effect completion attempt
+
+Owner comment
+[`5017894175`](https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5017894175)
+was verified as an unchanged `OWNER` record authored by `dragondad22` at
+`2026-07-20T00:17:09Z`. It approves candidate
+`368f043accbc297fcbea1ddf41d564b60aff8eb0`, the pinned owner/repository/Project,
+reconciler actor, recovery owner, classic OAuth scopes `gist`, `project`, `read:org`,
+`repo`, and `workflow`, semantic `projects:write`, the exact 20 Phase resources, and a
+24-hour validity interval. The execution package deliberately narrowed the owner's
+20-effect ceiling to zero.
+
+The retained [zero-effect mandate](issue-46-zero-effect-mandate.json) is content addressed
+as `sha256:b09038fbd3ed1a2f0a38b92ff8f9c033b404c25b3a12090b27c96ad4639822c1`.
+It binds all 20 resource digests, `max_effects: 0`, public Project metadata, zero-dollar
+cost, no deletion or human-view overwrite, 30-day retention, and recovery owner
+`dragondad22` from approval time through `2026-07-21T00:17:09Z`.
+
+At `2026-07-20T00:22:35Z`, a fresh isolated evidence-state repository ran the reviewed
+candidate through lifecycle planning. Capability inspection returned non-pass before an
+immutable plan was emitted:
+
+```text
+reconciler: Project immutable identity or owner is unavailable or mismatched
+sandbox capability is unavailable or stale
+```
+
+Execution stopped immediately. Apply, verification, and replay were not attempted, and
+the Project effect count is zero. A subsequent read-only request to the exact configured
+user/Project route returned the expected Project node, number, owner login, numeric owner
+ID, and owner kind. That later match narrows the failure to an unavailable or inconsistent
+capability observation rather than proving durable identity drift; it does not rewrite the
+non-pass, authorize a retry, or qualify the live lifecycle. The redacted, content-addressed
+[non-pass evidence](issue-46-zero-effect-plan-non-pass.json) omits credentials, provider
+response bodies, and temporary paths. Its canonical content excluding the `evidence_id`
+field is addressed as
+`sha256:567464257526a4b61514ae53d4e40f6ebe15acf34dd76e77e4c47183e5846f58`.
 
 ## Deterministic verification
 
@@ -126,4 +165,5 @@ go run ./cmd/starter-kit changes check --repository .
 git diff --check
 ```
 
-The exact completing revision still requires native CI and distinct Standards/Spec review.
+The exact completing revision still requires a fresh passing zero-effect lifecycle,
+native CI, and distinct Standards/Spec review.
