@@ -27,6 +27,9 @@ const (
 	SandboxRoleRules        = "rules"
 	SandboxRoleReviewer     = "reviewer"
 	sandboxGraphQLPageLimit = 10
+	sandboxRESTReadAttempts = 3
+	sandboxRESTRetryBase    = 100 * time.Millisecond
+	sandboxRESTRetryBudget  = 2 * time.Second
 )
 
 var sandboxRoles = []string{SandboxRoleReconciler, SandboxRoleSeeder, SandboxRoleRules}
@@ -70,12 +73,22 @@ func WithSandboxClock(clock func() time.Time) SandboxOption {
 	}
 }
 
+// WithSandboxRetryWait replaces bounded read-retry waiting for deterministic tests.
+func WithSandboxRetryWait(wait func(context.Context, time.Duration) error) SandboxOption {
+	return func(adapter *SandboxAdapter) {
+		if wait != nil {
+			adapter.retryWait = wait
+		}
+	}
+}
+
 // SandboxAdapter implements the engine sandbox seam with role-separated native HTTP clients.
 type SandboxAdapter struct {
 	config    SandboxConfig
 	providers map[string]CredentialProvider
 	client    *http.Client
 	now       func() time.Time
+	retryWait func(context.Context, time.Duration) error
 	roles     []string
 	proofMu   sync.Mutex
 	proofs    map[string]engine.SandboxObservedResource
@@ -151,7 +164,7 @@ func newSandbox(config SandboxConfig, providers map[string]CredentialProvider, r
 		}
 	}
 	config.Resources = cloneSandboxSpecs(config.Resources)
-	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now, roles: requiredRoles, proofs: map[string]engine.SandboxObservedResource{}}
+	adapter := &SandboxAdapter{config: config, providers: providerCopy, client: client, now: time.Now, retryWait: waitForSandboxRetry, roles: requiredRoles, proofs: map[string]engine.SandboxObservedResource{}}
 	for _, option := range options {
 		option(adapter)
 	}
@@ -193,6 +206,9 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 				Type  string `json:"type"`
 			}
 			response, identityErr := adapter.rest(ctx, credential, http.MethodGet, "/user", nil, &actor)
+			if isContextError(identityErr) {
+				return capability, identityErr
+			}
 			expectation := adapter.config.Roles[role]
 			observedScopes := responseHeaderTokens(response, "X-OAuth-Scopes")
 			for _, scope := range observedScopes {
@@ -207,9 +223,16 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 		}
 		if role == SandboxRoleReconciler {
 			if err := adapter.verifyProjectIdentity(ctx, credential); err != nil {
+				if isContextError(err) {
+					return capability, err
+				}
 				capability.Available = false
 				capability.Fresh = false
-				capability.Problems = append(capability.Problems, role+": Project immutable identity or owner is unavailable or mismatched")
+				if isSandboxProviderTransient(err) {
+					capability.Problems = append(capability.Problems, role+": GitHub provider is transiently unavailable after bounded read retries")
+				} else {
+					capability.Problems = append(capability.Problems, role+": Project immutable identity or owner is unavailable or mismatched")
+				}
 			}
 		}
 	}
@@ -273,6 +296,9 @@ func (adapter *SandboxAdapter) Observe(ctx context.Context, target engine.Sandbo
 			}
 		}
 		projectResources, projectProblems := adapter.observeProject(ctx, credential)
+		if ctx.Err() != nil {
+			return observation, ctx.Err()
+		}
 		observation.Resources = append(observation.Resources, projectResources...)
 		observation.Problems = append(observation.Problems, projectProblems...)
 	}
@@ -431,6 +457,9 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 	var fields []projectField
 	path := adapter.projectRESTPath() + "/fields"
 	if _, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &fields); err != nil {
+		if isSandboxProviderTransient(err) {
+			return nil, []string{"GitHub provider is transiently unavailable after bounded read retries"}
+		}
 		return nil, []string{"Project field inventory is unavailable"}
 	}
 	var inventory projectGraphQLInventory
@@ -706,39 +735,121 @@ func sameStringSet(left, right []string) bool {
 }
 
 func (adapter *SandboxAdapter) rest(ctx context.Context, credential Credential, method, path string, body, output any) (*http.Response, error) {
-	var reader io.Reader
+	var encoded []byte
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		var err error
+		encoded, err = json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
-		reader = bytes.NewReader(encoded)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(adapter.config.RESTBaseURL, "/")+path, reader)
-	if err != nil {
-		return nil, err
+	attempts := 1
+	if method == http.MethodGet {
+		attempts = sandboxRESTReadAttempts
 	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("Authorization", "Bearer "+credential.Token)
-	request.Header.Set("X-GitHub-Api-Version", adapter.config.APIVersion)
-	request.Header.Set("User-Agent", "codex-starter-kit")
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := adapter.client.Do(request)
-	if err != nil {
-		return nil, errors.New("GitHub sandbox REST transport is offline")
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response, &responseError{StatusCode: response.StatusCode, Header: response.Header.Clone()}
-	}
-	if output != nil {
-		if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(output); err != nil {
-			return response, errors.New("decode GitHub sandbox REST response")
+	retryBudget := sandboxRESTRetryBudget
+	for attempt := 0; attempt < attempts; attempt++ {
+		var reader io.Reader
+		if encoded != nil {
+			reader = bytes.NewReader(encoded)
 		}
+		request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(adapter.config.RESTBaseURL, "/")+path, reader)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Accept", "application/vnd.github+json")
+		request.Header.Set("Authorization", "Bearer "+credential.Token)
+		request.Header.Set("X-GitHub-Api-Version", adapter.config.APIVersion)
+		request.Header.Set("User-Agent", "codex-starter-kit")
+		if body != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		response, err := adapter.client.Do(request)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, errors.New("GitHub sandbox REST transport is offline")
+		}
+		delay, retryable := adapter.sandboxReadRetryDelay(response, attempt)
+		if retryable && attempt+1 < attempts && delay <= retryBudget {
+			response.Body.Close()
+			if err := adapter.retryWait(ctx, delay); err != nil {
+				return nil, err
+			}
+			retryBudget -= delay
+			continue
+		}
+		defer response.Body.Close()
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			if retryable || isSandboxRetryableStatus(response.StatusCode) {
+				return response, &sandboxProviderTransientError{}
+			}
+			return response, &responseError{StatusCode: response.StatusCode, Header: response.Header.Clone()}
+		}
+		if output != nil {
+			if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(output); err != nil {
+				return response, errors.New("decode GitHub sandbox REST response")
+			}
+		}
+		return response, nil
 	}
-	return response, nil
+	return nil, errors.New("GitHub sandbox REST read retry state is invalid")
+}
+
+type sandboxProviderTransientError struct{}
+
+func (*sandboxProviderTransientError) Error() string {
+	return "GitHub provider is transiently unavailable after bounded read retries"
+}
+
+func isSandboxProviderTransient(err error) bool {
+	var transient *sandboxProviderTransientError
+	return errors.As(err, &transient)
+}
+
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func isSandboxRetryableStatus(status int) bool {
+	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+}
+
+func (adapter *SandboxAdapter) sandboxReadRetryDelay(response *http.Response, attempt int) (time.Duration, bool) {
+	if isSandboxRetryableStatus(response.StatusCode) {
+		return sandboxRESTRetryBase * (1 << attempt), true
+	}
+	if response.StatusCode != http.StatusTooManyRequests {
+		return 0, false
+	}
+	retryAfter := strings.TrimSpace(response.Header.Get("Retry-After"))
+	if seconds, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && seconds >= 0 {
+		if seconds > int64(sandboxRESTRetryBudget/time.Second) {
+			return sandboxRESTRetryBudget + time.Nanosecond, true
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	when, err := http.ParseTime(retryAfter)
+	if err != nil {
+		return 0, false
+	}
+	delay := when.Sub(adapter.now().UTC())
+	if delay < 0 {
+		delay = 0
+	}
+	return delay, true
+}
+
+func waitForSandboxRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (adapter *SandboxAdapter) graphql(ctx context.Context, credential Credential, query string, variables map[string]any, output any) error {

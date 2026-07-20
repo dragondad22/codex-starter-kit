@@ -139,6 +139,32 @@ response bodies, and temporary paths. Its canonical content excluding the `evide
 field is addressed as
 `sha256:567464257526a4b61514ae53d4e40f6ebe15acf34dd76e77e4c47183e5846f58`.
 
+## Transient read correction
+
+The subsequent bounded diagnosis recorded in issue comments `5017922768` and
+`5017941354` established that the red capability attempts received intermittent GitHub
+ProjectsV2 REST `503` responses. The adapter had made one read and then reported a
+semantic Project identity or field-inventory problem. Later independent `200` responses
+did not invalidate that captured non-pass and were not treated as replay evidence.
+
+The correction keeps the lifecycle and adapter interfaces small and moves the recovery
+policy behind the native HTTP implementation. Idempotent REST `GET` reads now receive at
+most three attempts for `502`, `503`, and `504`. A `429` is eligible only when its valid
+`Retry-After` delay fits the two-second aggregate wait ceiling. Context cancellation and
+deadlines interrupt waiting. REST POST and other effect requests, authentication,
+permission, not-found, semantic identity mismatch, malformed successful responses, and
+all other non-transient results remain single-attempt. Exhaustion is retained as a
+distinct provider-transient capability or observation problem without provider bodies or
+credentials.
+
+Deterministic public-seam cases cover exact two-read `503` recovery for Project identity
+and fields, bounded persistent-transient non-pass with no effects, `502`/`504` recovery,
+bounded `429` delay handling, canceled waiting, and the required no-retry paths. This
+does not rewrite the historical zero-effect non-pass above. It also does not authorize a
+live retry: the previous approval names an older candidate, so the exact corrected head
+requires a fresh zero-effect owner approval before any live plan, apply, verification, or
+replay.
+
 ## Deterministic verification
 
 Coverage includes direct immutable-option projection and replay, native-parent-bound

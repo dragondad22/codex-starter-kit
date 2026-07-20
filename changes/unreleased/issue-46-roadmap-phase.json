@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "issue-46-roadmap-phase",
-  "summary": "Governed Project Phase configuration with parent-derived child context, exact authority/catalog evidence, and truthful view support.",
+  "summary": "Governed Project Phase configuration with parent-derived child context, bounded transient read recovery, and truthful authority/catalog/view evidence.",
   "category": "added",
   "audiences": ["users", "developers", "stakeholders"],
   "components": ["engine", "github-workflow"],

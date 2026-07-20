@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -388,6 +389,97 @@ func TestSandboxAdapterObservesUserOwnedPhaseViewAndAssignment(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterReportsPersistentTransientProviderFailureWithoutEffects(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
+	effectRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			effectRequests++
+		}
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8":
+			projectReads++
+			response.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(response).Encode(map[string]any{"message": "provider detail must stay private"})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	problems := strings.Join(capability.Problems, ";")
+	if err != nil || capability.Available || capability.Fresh || projectReads != 3 || effectRequests != 0 || !strings.Contains(problems, "provider is transiently unavailable after bounded read retries") || strings.Contains(problems, "provider detail") || strings.Contains(problems, "identity") {
+		t.Fatalf("persistent transient capability = %#v, reads=%d, effects=%d, err=%v", capability, projectReads, effectRequests, err)
+	}
+}
+
+func TestSandboxAdapterRecoversProjectFieldInventoryAfterTransientProviderFailure(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	fieldReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
+			fieldReads++
+			if fieldReads == 1 {
+				response.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			json.NewEncoder(response).Encode([]map[string]any{{"node_id": "F_phase", "name": "Phase", "data_type": "single_select", "options": []any{}}})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}}}}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	field := engine.SandboxResourceSpec{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select", "node_id": "F_phase"}}
+	config, providers := userProjectSandboxConfig(server, target, now, field)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Problems) != 0 || len(observation.Resources) != 1 || observation.Resources[0].ID != "F_phase" || fieldReads != 2 {
+		t.Fatalf("transient field recovery = %#v, reads=%d, err=%v", observation, fieldReads, err)
+	}
+}
+
+func TestSandboxAdapterReportsPersistentTransientProjectInventory(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	fieldReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/users/dragondad22/projectsV2/8/fields" {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		fieldReads++
+		response.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	field := engine.SandboxResourceSpec{Key: "project-field:phase", Kind: engine.SandboxResourceProjectField, Name: "Phase", Attributes: map[string]string{"data_type": "single_select", "node_id": "F_phase"}}
+	config, providers := userProjectSandboxConfig(server, target, now, field)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	problems := strings.Join(observation.Problems, ";")
+	if err != nil || len(observation.Resources) != 0 || fieldReads != 3 || !strings.Contains(problems, "provider is transiently unavailable after bounded read retries") || strings.Contains(problems, "field inventory") {
+		t.Fatalf("persistent transient inventory = %#v, reads=%d, err=%v", observation, fieldReads, err)
+	}
+}
+
 func TestSandboxAdapterInventoriesTheCompletePhaseOptionCatalog(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	options := []map[string]any{}
@@ -525,12 +617,14 @@ func TestSandboxAdapterVerifiesUserProjectActorAndClassicScope(t *testing.T) {
 
 func TestSandboxAdapterRejectsProjectIdentityThatDoesNotMatchGraphQLTarget(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/user":
 			response.Header().Set("X-OAuth-Scopes", "project")
 			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
 		case "/users/dragondad22/projectsV2/8":
+			projectReads++
 			json.NewEncoder(response).Encode(map[string]any{"node_id": "P_other", "number": 8, "owner": map[string]any{"login": "someone-else", "id": 42, "type": "User"}})
 		default:
 			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
@@ -545,8 +639,261 @@ func TestSandboxAdapterRejectsProjectIdentityThatDoesNotMatchGraphQLTarget(t *te
 	}
 
 	capability, err := adapter.Capability(context.Background())
-	if err != nil || capability.Available || !strings.Contains(strings.Join(capability.Problems, ";"), "Project immutable identity or owner") {
+	if err != nil || capability.Available || projectReads != 1 || !strings.Contains(strings.Join(capability.Problems, ";"), "Project immutable identity or owner") {
 		t.Fatalf("mismatched Project capability = %#v, %v", capability, err)
+	}
+}
+
+func TestSandboxAdapterRecoversProjectIdentityAfterGatewayTransient(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+			projectReads := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/user":
+					response.Header().Set("X-OAuth-Scopes", "project")
+					json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+				case "/users/dragondad22/projectsV2/8":
+					projectReads++
+					if projectReads == 1 {
+						response.WriteHeader(status)
+						return
+					}
+					json.NewEncoder(response).Encode(map[string]any{"node_id": "P_project", "number": 8, "owner": map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"}})
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+			config, providers := userProjectSandboxConfig(server, target, now)
+			adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			capability, err := adapter.Capability(context.Background())
+			if err != nil || !capability.Available || projectReads != 2 {
+				t.Fatalf("gateway transient recovery = %#v, reads=%d, err=%v", capability, projectReads, err)
+			}
+		})
+	}
+}
+
+func TestSandboxAdapterHonorsBoundedRetryAfterForProjectReads(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		retryAfter    string
+		wantAvailable bool
+		wantReads     int
+		wantWaits     []time.Duration
+	}{
+		{name: "within budget", retryAfter: "1", wantAvailable: true, wantReads: 2, wantWaits: []time.Duration{time.Second}},
+		{name: "beyond budget", retryAfter: "3", wantAvailable: false, wantReads: 1, wantWaits: []time.Duration{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+			projectReads := 0
+			waits := []time.Duration{}
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/user":
+					response.Header().Set("X-OAuth-Scopes", "project")
+					json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+				case "/users/dragondad22/projectsV2/8":
+					projectReads++
+					if projectReads == 1 {
+						response.Header().Set("Retry-After", test.retryAfter)
+						response.WriteHeader(http.StatusTooManyRequests)
+						return
+					}
+					json.NewEncoder(response).Encode(map[string]any{"node_id": "P_project", "number": 8, "owner": map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"}})
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+			config, providers := userProjectSandboxConfig(server, target, now)
+			adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+				waits = append(waits, delay)
+				return nil
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			capability, err := adapter.Capability(context.Background())
+			if err != nil || capability.Available != test.wantAvailable || projectReads != test.wantReads || !slices.Equal(waits, test.wantWaits) {
+				t.Fatalf("Retry-After capability = %#v, reads=%d, waits=%v, err=%v", capability, projectReads, waits, err)
+			}
+			if !test.wantAvailable && !strings.Contains(strings.Join(capability.Problems, ";"), "provider is transiently unavailable") {
+				t.Fatalf("bounded Retry-After diagnostic = %#v", capability.Problems)
+			}
+		})
+	}
+}
+
+func TestSandboxAdapterDoesNotRetryNonTransientProjectResponses(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+			projectReads := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/user":
+					response.Header().Set("X-OAuth-Scopes", "project")
+					json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+				case "/users/dragondad22/projectsV2/8":
+					projectReads++
+					response.WriteHeader(status)
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+			config, providers := userProjectSandboxConfig(server, target, now)
+			adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+				t.Fatal("non-transient response must not wait for a retry")
+				return nil
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			capability, err := adapter.Capability(context.Background())
+			if err != nil || capability.Available || projectReads != 1 || strings.Contains(strings.Join(capability.Problems, ";"), "transiently unavailable") {
+				t.Fatalf("non-transient capability = %#v, reads=%d, err=%v", capability, projectReads, err)
+			}
+		})
+	}
+}
+
+func TestSandboxAdapterDoesNotRetryMalformedSuccessfulProjectResponse(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case "/users/dragondad22/projectsV2/8":
+			projectReads++
+			response.Write([]byte("{"))
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+		t.Fatal("decode failure must not wait for a retry")
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Available || projectReads != 1 || strings.Contains(strings.Join(capability.Problems, ";"), "transiently unavailable") {
+		t.Fatalf("malformed response capability = %#v, reads=%d, err=%v", capability, projectReads, err)
+	}
+}
+
+func TestSandboxAdapterDoesNotRetryRESTEffect(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	viewCreates := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8/fields":
+			json.NewEncoder(response).Encode([]any{})
+		case request.Method == http.MethodPost && request.URL.Path == "/graphql":
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}}}}})
+		case request.Method == http.MethodPost && request.URL.Path == "/users/dragondad22/projectsV2/8/views":
+			viewCreates++
+			response.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	view := engine.SandboxResourceSpec{Key: "project-view:phases", Kind: engine.SandboxResourceProjectView, Name: "Phases", Attributes: map[string]string{"layout": "table", "filter": "", "visible_fields": "", "group_by": "", "sort_by": ""}}
+	config, providers := userProjectSandboxConfig(server, target, now, view)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+		t.Fatal("effect request must not wait for a retry")
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: view})
+	if err == nil || result.Outcome == "applied" || viewCreates != 1 {
+		t.Fatalf("transient REST effect = %#v, creates=%d, err=%v", result, viewCreates, err)
+	}
+}
+
+func TestSandboxAdapterStopsTransientRetryWhenContextIsCanceled(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case "/users/dragondad22/projectsV2/8":
+			projectReads++
+			response.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	ctx, cancel := context.WithCancel(context.Background())
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+		cancel()
+		return ctx.Err()
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = adapter.Capability(ctx)
+	if !errors.Is(err, context.Canceled) || projectReads != 1 {
+		t.Fatalf("canceled retry reads=%d, err=%v", projectReads, err)
+	}
+}
+
+func TestSandboxAdapterRecoversProjectIdentityAfterTransientProviderFailure(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	projectReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/user":
+			response.Header().Set("X-OAuth-Scopes", "project")
+			json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
+		case request.Method == http.MethodGet && request.URL.Path == "/users/dragondad22/projectsV2/8":
+			projectReads++
+			if projectReads == 1 {
+				response.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(response).Encode(map[string]any{"message": "provider detail must stay private"})
+				return
+			}
+			json.NewEncoder(response).Encode(map[string]any{"node_id": "P_project", "number": 8, "owner": map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"}})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || !capability.Available || !capability.Fresh || len(capability.Problems) != 0 || projectReads != 2 {
+		t.Fatalf("transient identity recovery = %#v, reads=%d, err=%v", capability, projectReads, err)
 	}
 }
 

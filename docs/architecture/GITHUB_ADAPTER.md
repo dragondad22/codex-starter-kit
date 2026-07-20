@@ -115,6 +115,17 @@ maximum attempts, exponential retry time, and reset time without response bodies
 credentials. Mutation calls are adapter-serialized; live mode enforces at least one
 second between them.
 
+The external-resource adapter retries only idempotent REST `GET` reads. A read receives at
+most three attempts: `502`, `503`, and `504` use short bounded backoff, while `429` is
+eligible only with a valid `Retry-After` value that fits the two-second aggregate wait
+budget. Cancellation or deadline expiry interrupts the wait and returns through the
+lifecycle seam. REST effects and every non-`GET` request remain single-attempt; semantic
+identity mismatch, authentication, permission, absence, other status responses, and
+successful-but-malformed payloads are not retried. Exhausted eligible reads report the
+provider as transiently unavailable rather than converting transport availability into
+Project identity or inventory drift. Diagnostics retain neither response bodies nor
+credentials.
+
 ## Evidence boundary
 
 Deterministic tests use native `httptest` REST/GraphQL fixtures through the real adapter
@@ -123,7 +134,8 @@ create/project/update/verify/no-change replay, secret-free state, REST/GraphQL p
 one-less permission, identity/owner mismatch, expiry/reconnect, ambiguous markers,
 lost-response recovery, hidden resources, validation, partial GraphQL data, rate
 scheduling, native hierarchy/dependency observation, unavailable relationship endpoints,
-Actions limitations, and unsupported combinations.
+Actions limitations, bounded transient Project identity and field-inventory recovery,
+single-attempt semantic and effect failures, cancellation, and unsupported combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,
