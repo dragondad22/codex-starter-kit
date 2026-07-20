@@ -1,29 +1,385 @@
 {
   "schema_version": 1,
-  "evidence_id": "sha256:9d4344267fd75dea9a352e250dd1c11e25cfa933ae4e21a92ae710f4151f84c6",
+  "evidence_id": "sha256:97add3f7a473c26505496b511e9c5b0e96d9273398ae5983746010cdac36c1cc",
+  "evidence_class": "durable-redacted-lifecycle-receipt",
   "candidate": "bf9827c124a7d24ae14802c65600a4083d9cb14b",
-  "executed_at": "2026-07-20T22:54:47Z",
-  "stage": "plan_apply_verify_replay",
+  "executed_at": "2026-07-20T23:02:53.673656793Z",
   "outcome": "pass",
   "mandate_id": "sha256:01665223c0df125ff080a12bf65a410c161504aed11ea99dabefe2ceb98be9b3",
   "approval_id": "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5028032912",
   "mandate_max_effects": 0,
-  "inspection_id": "sha256:e99a6c14ac3d5ad0740c36a9e33c002236133da998332b85b15f9f7b735c1ee8",
-  "observation_revision": "577974525554b8291ac3aa0121f6d12a59218d8c0b9b678ac88a667ec6e242b0",
-  "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
-  "plan_effect_count": 0,
-  "apply_status": "no_change",
-  "verification_state": "pass",
-  "verification_control": "GITHUB-SANDBOX-001",
-  "replay_plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
-  "replay_effect_count": 0,
-  "replay_apply_status": "no_change",
-  "project_effect_count": 0,
   "target": {
+    "host": "github.com",
     "owner_id": "19365745",
     "repository_id": "R_kgDOTVs5Hg",
-    "project_id": "PVT_kwHOASd_cc4BdI9q"
+    "project_id": "PVT_kwHOASd_cc4BdI9q",
+    "repository_name": "dragondad22/codex-starter-kit"
+  },
+  "capability": {
+    "available": true,
+    "fresh": true,
+    "actor": "reconciler",
+    "evidence_mode": "live",
+    "permissions": [
+      "reconciler:classic-scope:gist",
+      "reconciler:classic-scope:project",
+      "reconciler:classic-scope:read:org",
+      "reconciler:classic-scope:repo",
+      "reconciler:classic-scope:workflow",
+      "reconciler:projects:write"
+    ],
+    "credential_identities": [
+      "reconciler|user-token|dragondad22|dragondad22|19365745|"
+    ],
+    "compatibility": "github.com:api.github.com:2026-03-10:native-rest-graphql",
+    "configuration_revision": "issue-46-phase-configuration-v1",
+    "observed_at": "2026-07-20T22:53:31Z",
+    "expires_at": "2026-07-21T22:52:22Z"
+  },
+  "inspection_id": "sha256:e99a6c14ac3d5ad0740c36a9e33c002236133da998332b85b15f9f7b735c1ee8",
+  "observation_revision": "577974525554b8291ac3aa0121f6d12a59218d8c0b9b678ac88a667ec6e242b0",
+  "observed_resources": [
+    {
+      "key": "project-field:phase",
+      "kind": "project-field",
+      "name": "Phase",
+      "id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+      "attributes": {
+        "data_type": "single_select",
+        "node_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k"
+      }
+    },
+    {
+      "key": "project-item-field:feature-1-phase",
+      "kind": "project-item-field",
+      "name": "Feature #1 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGAM",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFdIg",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGAM",
+        "option_id": "221d176d"
+      }
+    },
+    {
+      "key": "project-item-field:feature-2-phase",
+      "kind": "project-item-field",
+      "name": "Feature #2 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGAs",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFd4w",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGAs",
+        "option_id": "f817c01d"
+      }
+    },
+    {
+      "key": "project-item-field:feature-3-phase",
+      "kind": "project-item-field",
+      "name": "Feature #3 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGBM",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFejQ",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGBM",
+        "option_id": "8188d955"
+      }
+    },
+    {
+      "key": "project-item-field:feature-4-phase",
+      "kind": "project-item-field",
+      "name": "Feature #4 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGCU",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFfSg",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGCU",
+        "option_id": "6b779f39"
+      }
+    },
+    {
+      "key": "project-item-field:feature-5-phase",
+      "kind": "project-item-field",
+      "name": "Feature #5 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGDs",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFf8g",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGDs",
+        "option_id": "a7bbab56"
+      }
+    },
+    {
+      "key": "project-item-field:feature-6-phase",
+      "kind": "project-item-field",
+      "name": "Feature #6 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGEQ",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFgrA",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGEQ",
+        "option_id": "2880879a"
+      }
+    },
+    {
+      "key": "project-item-field:feature-7-phase",
+      "kind": "project-item-field",
+      "name": "Feature #7 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGE0",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFhTg",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGE0",
+        "option_id": "d4e86930"
+      }
+    },
+    {
+      "key": "project-item-field:feature-8-phase",
+      "kind": "project-item-field",
+      "name": "Feature #8 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGF0",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFiKA",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGF0",
+        "option_id": "85d21677"
+      }
+    },
+    {
+      "key": "project-item-field:feature-9-phase",
+      "kind": "project-item-field",
+      "name": "Feature #9 Phase",
+      "id": "PVTI_lAHOASd_cc4BdI9qzgyhGGQ",
+      "attributes": {
+        "content_id": "I_kwDOTVs5Hs8AAAABIfFi4w",
+        "field": "Phase",
+        "field_id": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "item_id": "PVTI_lAHOASd_cc4BdI9qzgyhGGQ",
+        "option_id": "6d252c8e"
+      }
+    },
+    {
+      "key": "project-option:phase-0",
+      "kind": "project-option",
+      "name": "Phase 0",
+      "id": "221d176d",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "221d176d"
+      }
+    },
+    {
+      "key": "project-option:phase-1",
+      "kind": "project-option",
+      "name": "Phase 1",
+      "id": "f817c01d",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "f817c01d"
+      }
+    },
+    {
+      "key": "project-option:phase-2",
+      "kind": "project-option",
+      "name": "Phase 2",
+      "id": "8188d955",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "8188d955"
+      }
+    },
+    {
+      "key": "project-option:phase-3",
+      "kind": "project-option",
+      "name": "Phase 3",
+      "id": "6b779f39",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "6b779f39"
+      }
+    },
+    {
+      "key": "project-option:phase-4",
+      "kind": "project-option",
+      "name": "Phase 4",
+      "id": "a7bbab56",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "a7bbab56"
+      }
+    },
+    {
+      "key": "project-option:phase-5",
+      "kind": "project-option",
+      "name": "Phase 5",
+      "id": "2880879a",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "2880879a"
+      }
+    },
+    {
+      "key": "project-option:phase-6",
+      "kind": "project-option",
+      "name": "Phase 6",
+      "id": "d4e86930",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "d4e86930"
+      }
+    },
+    {
+      "key": "project-option:phase-7",
+      "kind": "project-option",
+      "name": "Phase 7",
+      "id": "85d21677",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "85d21677"
+      }
+    },
+    {
+      "key": "project-option:phase-8",
+      "kind": "project-option",
+      "name": "Phase 8",
+      "id": "6d252c8e",
+      "attributes": {
+        "color": "GRAY",
+        "description": "",
+        "field": "Phase",
+        "option_id": "6d252c8e"
+      }
+    },
+    {
+      "key": "project-view:phases",
+      "kind": "project-view",
+      "name": "Phases",
+      "id": "PVTV_lAHOASd_cc4BdI9qzgLBdLU",
+      "attributes": {
+        "filter": "",
+        "group_by": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k",
+        "layout": "table",
+        "node_id": "PVTV_lAHOASd_cc4BdI9qzgLBdLU",
+        "number": "6",
+        "sort_by": "PVTSSF_lAHOASd_cc4BdI9qzhYRk9k:asc",
+        "visible_fields": "PVTF_lAHOASd_cc4BdI9qzhXspNk,PVTF_lAHOASd_cc4BdI9qzhXspOI,PVTSSF_lAHOASd_cc4BdI9qzhXspNs,PVTSSF_lAHOASd_cc4BdI9qzhXspPQ"
+      }
+    }
+  ],
+  "plan": {
+    "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+    "source_revision": "bf9827c124a7d24ae14802c65600a4083d9cb14b",
+    "configuration_revision": "issue-46-phase-configuration-v1",
+    "inspection_id": "sha256:e99a6c14ac3d5ad0740c36a9e33c002236133da998332b85b15f9f7b735c1ee8",
+    "observation_revision": "577974525554b8291ac3aa0121f6d12a59218d8c0b9b678ac88a667ec6e242b0",
+    "authority": {
+      "credential_identities": [
+        "reconciler|user-token|dragondad22|dragondad22|19365745|"
+      ],
+      "permissions": [
+        "reconciler:classic-scope:gist",
+        "reconciler:classic-scope:project",
+        "reconciler:classic-scope:read:org",
+        "reconciler:classic-scope:repo",
+        "reconciler:classic-scope:workflow",
+        "reconciler:projects:write"
+      ],
+      "evidence_mode": "live",
+      "compatibility": "github.com:api.github.com:2026-03-10:native-rest-graphql",
+      "data_classification": "public-project-metadata",
+      "cost_ceiling": "zero-dollar",
+      "destructive_ceiling": "no-delete-no-overwrite-human-view",
+      "retention": "30-days"
+    },
+    "effects": [],
+    "no_change": true
+  },
+  "apply": {
+    "schema_version": 1,
+    "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+    "status": "no_change",
+    "receipts": [],
+    "problems": []
+  },
+  "verification": {
+    "schema_version": 1,
+    "overall_state": "pass",
+    "controls": [
+      {
+        "id": "GITHUB-SANDBOX-001",
+        "state": "pass",
+        "summary": "approved sandbox resources match the manifest",
+        "evidence": [
+          {
+            "kind": "external-state",
+            "target": "dragondad22/codex-starter-kit"
+          }
+        ],
+        "diagnostics": []
+      }
+    ],
+    "verified_at": "2026-07-20T23:02:53.673656793Z"
+  },
+  "replay_plan": {
+    "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+    "source_revision": "bf9827c124a7d24ae14802c65600a4083d9cb14b",
+    "configuration_revision": "issue-46-phase-configuration-v1",
+    "inspection_id": "sha256:e99a6c14ac3d5ad0740c36a9e33c002236133da998332b85b15f9f7b735c1ee8",
+    "observation_revision": "577974525554b8291ac3aa0121f6d12a59218d8c0b9b678ac88a667ec6e242b0",
+    "authority": {
+      "credential_identities": [
+        "reconciler|user-token|dragondad22|dragondad22|19365745|"
+      ],
+      "permissions": [
+        "reconciler:classic-scope:gist",
+        "reconciler:classic-scope:project",
+        "reconciler:classic-scope:read:org",
+        "reconciler:classic-scope:repo",
+        "reconciler:classic-scope:workflow",
+        "reconciler:projects:write"
+      ],
+      "evidence_mode": "live",
+      "compatibility": "github.com:api.github.com:2026-03-10:native-rest-graphql",
+      "data_classification": "public-project-metadata",
+      "cost_ceiling": "zero-dollar",
+      "destructive_ceiling": "no-delete-no-overwrite-human-view",
+      "retention": "30-days"
+    },
+    "effects": [],
+    "no_change": true
+  },
+  "replay_apply": {
+    "schema_version": 1,
+    "plan_id": "sha256:b004f976c073a3322b0dba357b7e5c886af7f3f3f97e2919a8ced3ca53964a65",
+    "status": "no_change",
+    "receipts": [],
+    "problems": []
   },
   "resource_count": 20,
-  "evidence_boundary": "The exact reviewed source observed all governed Phase resources, produced an immutable zero-effect plan, verified the live postcondition, and replayed the identical no-change plan. No provider response body, credential, or temporary repository path is retained."
+  "project_effect_count": 0,
+  "evidence_boundary": "Durable normalized receipt derived from the live lifecycle result. It retains semantic capability, authority, per-resource postconditions, plan, apply, verification, and replay evidence. Raw command output, credentials, provider bodies, and runner-local paths are not committed."
 }

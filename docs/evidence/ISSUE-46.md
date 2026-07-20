@@ -184,11 +184,15 @@ with zero effects. Effect-free apply returned `no_change`; verification returned
 for `GITHUB-SANDBOX-001`; reinspection produced the identical plan; and replay apply
 returned `no_change`. Project effect count is zero.
 
-The redacted, content-addressed [passing evidence](issue-46-zero-effect-pass.json) retains
-the exact source, approval, mandate, inspection, observation, plan, verification, replay,
-target, and resource count without credentials, provider response bodies, or temporary
-paths. Its canonical content excluding `evidence_id` is
-`sha256:9d4344267fd75dea9a352e250dd1c11e25cfa933ae4e21a92ae710f4151f84c6`.
+The independently reviewable, content-addressed
+[passing receipt](issue-46-zero-effect-pass.json) retains the exact source, approval,
+mandate, semantic capability and authority, all 20 per-resource postconditions, immutable
+plan, zero-effect apply result, verification controls/evidence, and identical replay. Its
+canonical content excluding `evidence_id` is
+`sha256:97add3f7a473c26505496b511e9c5b0e96d9273398ae5983746010cdac36c1cc`.
+No effect receipts exist because both apply passes contained zero effects. Raw command
+output remains subject to the mandate's 30-day ceiling and is not committed; the durable
+normalized receipt excludes credentials, provider response bodies, and runner-local paths.
 
 ## Deterministic verification
 
