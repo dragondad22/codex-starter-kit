@@ -423,6 +423,31 @@ func TestSandboxAdapterReportsPersistentTransientProviderFailureWithoutEffects(t
 	}
 }
 
+func TestSandboxAdapterReportsPersistentTransientUserIdentityRead(t *testing.T) {
+	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
+	identityReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/user" {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+		identityReads++
+		response.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(response).Encode(map[string]any{"message": "provider detail must stay private"})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "19365745", RepositoryID: "R_repo", ProjectID: "P_project", RepositoryName: "dragondad22/codex-starter-kit"}
+	config, providers := userProjectSandboxConfig(server, target, now)
+	adapter, err := githubadapter.NewSandbox(config, providers, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	problems := strings.Join(capability.Problems, ";")
+	if err != nil || capability.Available || capability.Fresh || identityReads != 3 || !strings.Contains(problems, "provider is transiently unavailable after bounded read retries") || strings.Contains(problems, "actor") || strings.Contains(problems, "scope") || strings.Contains(problems, "provider detail") {
+		t.Fatalf("persistent transient user identity = %#v, reads=%d, err=%v", capability, identityReads, err)
+	}
+}
+
 func TestSandboxAdapterRecoversProjectFieldInventoryAfterTransientProviderFailure(t *testing.T) {
 	now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
 	fieldReads := 0
@@ -683,13 +708,15 @@ func TestSandboxAdapterRecoversProjectIdentityAfterGatewayTransient(t *testing.T
 func TestSandboxAdapterHonorsBoundedRetryAfterForProjectReads(t *testing.T) {
 	for _, test := range []struct {
 		name          string
-		retryAfter    string
+		retryAfter    []string
 		wantAvailable bool
 		wantReads     int
 		wantWaits     []time.Duration
+		wantProblem   string
 	}{
-		{name: "within budget", retryAfter: "1", wantAvailable: true, wantReads: 2, wantWaits: []time.Duration{time.Second}},
-		{name: "beyond budget", retryAfter: "3", wantAvailable: false, wantReads: 1, wantWaits: []time.Duration{}},
+		{name: "within budget", retryAfter: []string{"1"}, wantAvailable: true, wantReads: 2, wantWaits: []time.Duration{time.Second}},
+		{name: "beyond budget", retryAfter: []string{"3"}, wantAvailable: false, wantReads: 1, wantWaits: []time.Duration{}, wantProblem: "rate limit exceeds the bounded read retry budget"},
+		{name: "beyond cumulative budget", retryAfter: []string{"1", "2"}, wantAvailable: false, wantReads: 2, wantWaits: []time.Duration{time.Second}, wantProblem: "rate limit exceeds the bounded read retry budget"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC)
@@ -702,8 +729,8 @@ func TestSandboxAdapterHonorsBoundedRetryAfterForProjectReads(t *testing.T) {
 					json.NewEncoder(response).Encode(map[string]any{"login": "dragondad22", "id": 19365745, "type": "User"})
 				case "/users/dragondad22/projectsV2/8":
 					projectReads++
-					if projectReads == 1 {
-						response.Header().Set("Retry-After", test.retryAfter)
+					if projectReads <= len(test.retryAfter) {
+						response.Header().Set("Retry-After", test.retryAfter[projectReads-1])
 						response.WriteHeader(http.StatusTooManyRequests)
 						return
 					}
@@ -726,7 +753,8 @@ func TestSandboxAdapterHonorsBoundedRetryAfterForProjectReads(t *testing.T) {
 			if err != nil || capability.Available != test.wantAvailable || projectReads != test.wantReads || !slices.Equal(waits, test.wantWaits) {
 				t.Fatalf("Retry-After capability = %#v, reads=%d, waits=%v, err=%v", capability, projectReads, waits, err)
 			}
-			if !test.wantAvailable && !strings.Contains(strings.Join(capability.Problems, ";"), "provider is transiently unavailable") {
+			problems := strings.Join(capability.Problems, ";")
+			if test.wantProblem != "" && (!strings.Contains(problems, test.wantProblem) || strings.Contains(problems, "transiently unavailable")) {
 				t.Fatalf("bounded Retry-After diagnostic = %#v", capability.Problems)
 			}
 		})

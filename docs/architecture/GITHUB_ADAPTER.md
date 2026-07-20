@@ -134,8 +134,9 @@ create/project/update/verify/no-change replay, secret-free state, REST/GraphQL p
 one-less permission, identity/owner mismatch, expiry/reconnect, ambiguous markers,
 lost-response recovery, hidden resources, validation, partial GraphQL data, rate
 scheduling, native hierarchy/dependency observation, unavailable relationship endpoints,
-Actions limitations, bounded transient Project identity and field-inventory recovery,
-single-attempt semantic and effect failures, cancellation, and unsupported combinations.
+Actions limitations, bounded transient user/Project identity and field-inventory
+recovery, single-attempt semantic and effect failures, cancellation, and unsupported
+combinations.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,

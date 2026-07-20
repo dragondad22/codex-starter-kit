@@ -158,8 +158,9 @@ distinct provider-transient capability or observation problem without provider b
 credentials.
 
 Deterministic public-seam cases cover exact two-read `503` recovery for Project identity
-and fields, bounded persistent-transient non-pass with no effects, `502`/`504` recovery,
-bounded `429` delay handling, canceled waiting, and the required no-retry paths. This
+and fields, bounded persistent-transient user and Project identity non-pass with no
+effects, `502`/`504` recovery, bounded and cumulative `429` delay handling, canceled
+waiting, and the required no-retry paths. This
 does not rewrite the historical zero-effect non-pass above. It also does not authorize a
 live retry: the previous approval names an older candidate, so the exact corrected head
 requires a fresh zero-effect owner approval before any live plan, apply, verification, or

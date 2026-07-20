@@ -214,7 +214,13 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 			for _, scope := range observedScopes {
 				capability.Permissions = append(capability.Permissions, role+":classic-scope:"+scope)
 			}
-			if identityErr != nil || actor.Login != expectation.Actor || strconv.FormatInt(actor.ID, 10) != expectation.AccountID || actor.Type != "User" || !slices.Contains(observedScopes, "project") || len(expectation.ClassicOAuthScopes) != 0 && !sameStringSet(observedScopes, expectation.ClassicOAuthScopes) {
+			if identityErr != nil {
+				capability.Available = false
+				capability.Fresh = false
+				capability.Problems = append(capability.Problems, role+": "+sandboxReadProblem(identityErr, "user-token actor or exact classic OAuth scope set is unavailable"))
+				continue
+			}
+			if actor.Login != expectation.Actor || strconv.FormatInt(actor.ID, 10) != expectation.AccountID || actor.Type != "User" || !slices.Contains(observedScopes, "project") || len(expectation.ClassicOAuthScopes) != 0 && !sameStringSet(observedScopes, expectation.ClassicOAuthScopes) {
 				capability.Available = false
 				capability.Fresh = false
 				capability.Problems = append(capability.Problems, role+": user-token actor or exact classic OAuth scope set is unavailable")
@@ -228,11 +234,7 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 				}
 				capability.Available = false
 				capability.Fresh = false
-				if isSandboxProviderTransient(err) {
-					capability.Problems = append(capability.Problems, role+": GitHub provider is transiently unavailable after bounded read retries")
-				} else {
-					capability.Problems = append(capability.Problems, role+": Project immutable identity or owner is unavailable or mismatched")
-				}
+				capability.Problems = append(capability.Problems, role+": "+sandboxReadProblem(err, "Project immutable identity or owner is unavailable or mismatched"))
 			}
 		}
 	}
@@ -457,10 +459,7 @@ func (adapter *SandboxAdapter) observeProject(ctx context.Context, credential Cr
 	var fields []projectField
 	path := adapter.projectRESTPath() + "/fields"
 	if _, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &fields); err != nil {
-		if isSandboxProviderTransient(err) {
-			return nil, []string{"GitHub provider is transiently unavailable after bounded read retries"}
-		}
-		return nil, []string{"Project field inventory is unavailable"}
+		return nil, []string{sandboxReadProblem(err, "Project field inventory is unavailable")}
 	}
 	var inventory projectGraphQLInventory
 	query := `query($id:ID!){node(id:$id){... on ProjectV2{views(first:50){nodes{id name number layout filter fields(first:50){nodes{... on ProjectV2FieldCommon{id}}} groupByFields(first:10){nodes{... on ProjectV2FieldCommon{id}}} sortByFields(first:10){nodes{direction field{... on ProjectV2FieldCommon{id}}}}}} workflows(first:50){nodes{id name number enabled}} items(first:100){nodes{id content{... on Issue{id number title body state}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}} fieldValues(first:50){nodes{... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}}}} pageInfo{hasNextPage endCursor}}}}}`
@@ -771,8 +770,12 @@ func (adapter *SandboxAdapter) rest(ctx context.Context, credential Credential, 
 			}
 			return nil, errors.New("GitHub sandbox REST transport is offline")
 		}
-		delay, retryable := adapter.sandboxReadRetryDelay(response, attempt)
-		if retryable && attempt+1 < attempts && delay <= retryBudget {
+		delay, retryable := time.Duration(0), false
+		if method == http.MethodGet {
+			delay, retryable = adapter.sandboxReadRetryDelay(response, attempt)
+		}
+		eligible := retryable && delay <= retryBudget
+		if eligible && attempt+1 < attempts {
 			response.Body.Close()
 			if err := adapter.retryWait(ctx, delay); err != nil {
 				return nil, err
@@ -782,7 +785,7 @@ func (adapter *SandboxAdapter) rest(ctx context.Context, credential Credential, 
 		}
 		defer response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			if retryable || isSandboxRetryableStatus(response.StatusCode) {
+			if eligible {
 				return response, &sandboxProviderTransientError{}
 			}
 			return response, &responseError{StatusCode: response.StatusCode, Header: response.Header.Clone()}
@@ -806,6 +809,16 @@ func (*sandboxProviderTransientError) Error() string {
 func isSandboxProviderTransient(err error) bool {
 	var transient *sandboxProviderTransientError
 	return errors.As(err, &transient)
+}
+
+func sandboxReadProblem(err error, fallback string) string {
+	if isSandboxProviderTransient(err) {
+		return "GitHub provider is transiently unavailable after bounded read retries"
+	}
+	if isResponseStatus(err, http.StatusTooManyRequests) {
+		return "GitHub provider rate limit exceeds the bounded read retry budget"
+	}
+	return fallback
 }
 
 func isContextError(err error) bool {
