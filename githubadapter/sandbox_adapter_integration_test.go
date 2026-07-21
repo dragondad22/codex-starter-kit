@@ -185,7 +185,7 @@ func TestSandboxRulesetObservationDriftForcesSetupUpdate(t *testing.T) {
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets":
 			json.NewEncoder(response).Encode([]any{map[string]any{"id": 44, "name": resource.Name, "enforcement": "active", "target": "branch"}})
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
-			json.NewEncoder(response).Encode(rulesetHTTPDefinition(44, resource.Name, false, 15368))
+			json.NewEncoder(response).Encode(rulesetHTTPDefinition(44, resource.Name, false, 15368, false))
 		case request.Method == http.MethodPut && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
 			puts++
 			json.NewEncoder(response).Encode(map[string]any{"id": 44, "name": resource.Name})
@@ -219,11 +219,13 @@ func TestSandboxRulesetCleanupRefusesDefinitionDrift(t *testing.T) {
 		integrationID int64
 		detailName    string
 		detailID      int64
+		bypassActor   bool
 		wantOutcome   string
 		wantDeletes   int
 	}{
 		{name: "strictness drift", strict: false, integrationID: 15368, detailID: 44, wantOutcome: "needs-review"},
 		{name: "integration drift", strict: true, integrationID: 999, detailID: 44, wantOutcome: "needs-review"},
+		{name: "bypass actor drift", strict: true, integrationID: 15368, detailID: 44, bypassActor: true, wantOutcome: "needs-review"},
 		{name: "identity drift", strict: true, integrationID: 15368, detailName: "different-ruleset", detailID: 45, wantOutcome: "needs-review"},
 		{name: "exact definition", strict: true, integrationID: 15368, detailID: 44, wantOutcome: "applied", wantDeletes: 1},
 	} {
@@ -240,7 +242,7 @@ func TestSandboxRulesetCleanupRefusesDefinitionDrift(t *testing.T) {
 				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets":
 					json.NewEncoder(response).Encode([]any{map[string]any{"id": 44, "name": resource.Name, "enforcement": "active", "target": "branch"}})
 				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
-					json.NewEncoder(response).Encode(rulesetHTTPDefinition(test.detailID, detailName, test.strict, test.integrationID))
+					json.NewEncoder(response).Encode(rulesetHTTPDefinition(test.detailID, detailName, test.strict, test.integrationID, test.bypassActor))
 				case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
 					deletes++
 					response.WriteHeader(http.StatusNoContent)
@@ -265,7 +267,7 @@ func TestSandboxRulesetCleanupRefusesDefinitionDrift(t *testing.T) {
 }
 
 func deliveryRulesetResource(absent bool) engine.SandboxResourceSpec {
-	definition := `{"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":15368}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`
+	definition := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":15368}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`
 	resource := engine.SandboxResourceSpec{Key: "ruleset:delivery", Kind: engine.SandboxResourceRuleset, Name: "starter-kit-contract:issue-75:rules", Marker: "starter-kit-contract:issue-75", Attributes: map[string]string{"enforcement": "active", "target": "branch", "definition": definition, "definition_sha256": testSandboxSHA256(definition), "input:definition": definition}}
 	if absent {
 		resource.DesiredState = engine.SandboxResourceAbsent
@@ -273,8 +275,12 @@ func deliveryRulesetResource(absent bool) engine.SandboxResourceSpec {
 	return resource
 }
 
-func rulesetHTTPDefinition(id int64, name string, strict bool, integrationID int64) map[string]any {
-	return map[string]any{"id": id, "name": name, "enforcement": "active", "target": "branch", "conditions": map[string]any{"ref_name": map[string]any{"exclude": []any{}, "include": []string{"refs/heads/main"}}}, "rules": []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "contract-delivery", "integration_id": integrationID}}, "strict_required_status_checks_policy": strict}}}}
+func rulesetHTTPDefinition(id int64, name string, strict bool, integrationID int64, bypassActor bool) map[string]any {
+	bypassActors := []any{}
+	if bypassActor {
+		bypassActors = append(bypassActors, map[string]any{"actor_id": 4, "actor_type": "Integration", "bypass_mode": "always"})
+	}
+	return map[string]any{"id": id, "name": name, "enforcement": "active", "target": "branch", "bypass_actors": bypassActors, "conditions": map[string]any{"ref_name": map[string]any{"exclude": []any{}, "include": []string{"refs/heads/main"}}}, "rules": []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "contract-delivery", "integration_id": integrationID}}, "strict_required_status_checks_policy": strict}}}}
 }
 
 func TestSandboxAdapterClaimsFixtureWorkflowOnlyWhenContentExactlyMatches(t *testing.T) {

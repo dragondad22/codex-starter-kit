@@ -330,9 +330,13 @@ func absentResource(key, kind, name, marker string, attributes map[string]string
 
 func resource(key, kind, name, marker string, attributes map[string]string) engine.SandboxResourceSpec {
 	if kind == engine.SandboxResourceRuleset {
-		var definition any
+		var definition map[string]any
 		if json.Unmarshal([]byte(attributes["input:definition"]), &definition) == nil {
+			if _, present := definition["bypass_actors"]; !present {
+				definition["bypass_actors"] = []any{}
+			}
 			if canonical, err := json.Marshal(definition); err == nil {
+				attributes["input:definition"] = string(canonical)
 				attributes["definition"] = string(canonical)
 				digest := sha256.Sum256(canonical)
 				attributes["definition_sha256"] = "sha256:" + hex.EncodeToString(digest[:])

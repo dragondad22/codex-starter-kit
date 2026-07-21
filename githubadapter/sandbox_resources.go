@@ -476,12 +476,13 @@ func (adapter *SandboxAdapter) projectFields(ctx context.Context, credential Cre
 }
 
 type sandboxRuleset struct {
-	ID          int64           `json:"id"`
-	Name        string          `json:"name"`
-	Enforcement string          `json:"enforcement"`
-	Target      string          `json:"target"`
-	Conditions  json.RawMessage `json:"conditions"`
-	Rules       json.RawMessage `json:"rules"`
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	Enforcement  string          `json:"enforcement"`
+	Target       string          `json:"target"`
+	Conditions   json.RawMessage `json:"conditions"`
+	Rules        json.RawMessage `json:"rules"`
+	BypassActors json.RawMessage `json:"bypass_actors"`
 }
 
 func (adapter *SandboxAdapter) observeRulesets(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
@@ -567,10 +568,11 @@ func (adapter *SandboxAdapter) applyRuleset(ctx context.Context, credential Cred
 func canonicalRulesetDefinition(ruleset sandboxRuleset) (string, error) {
 	var conditions any
 	var rules any
-	if len(ruleset.Conditions) == 0 || len(ruleset.Rules) == 0 || json.Unmarshal(ruleset.Conditions, &conditions) != nil || json.Unmarshal(ruleset.Rules, &rules) != nil {
+	var bypassActors any
+	if len(ruleset.Conditions) == 0 || len(ruleset.Rules) == 0 || len(ruleset.BypassActors) == 0 || json.Unmarshal(ruleset.Conditions, &conditions) != nil || json.Unmarshal(ruleset.Rules, &rules) != nil || json.Unmarshal(ruleset.BypassActors, &bypassActors) != nil {
 		return "", errors.New("ruleset definition is incomplete")
 	}
-	encoded, err := json.Marshal(map[string]any{"enforcement": ruleset.Enforcement, "target": ruleset.Target, "conditions": conditions, "rules": rules})
+	encoded, err := json.Marshal(map[string]any{"enforcement": ruleset.Enforcement, "target": ruleset.Target, "conditions": conditions, "rules": rules, "bypass_actors": bypassActors})
 	if err != nil {
 		return "", errors.New("ruleset definition cannot be normalized")
 	}
