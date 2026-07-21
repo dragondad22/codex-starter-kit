@@ -1,0 +1,121 @@
+name: Issue 75 marker-scoped cleanup candidate
+
+# Reviewed candidate for installation as
+# .github/workflows/issue-75-contract-cleanup.yml in the isolated sandbox repository.
+# This workflow deliberately performs no effect. Issue #73 cleanup plans identify #73
+# fixture resources and cannot be reused for #75. Until a reviewed #75 resource manifest
+# and cleanup executor exist, the only truthful result is not-configured.
+
+on:
+  workflow_call:
+    inputs:
+      source_revision:
+        required: true
+        type: string
+      planning_run_id:
+        required: true
+        type: string
+      plan_artifact:
+        required: true
+        type: string
+      plan_sha256:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact 40-character reviewed codex-starter-kit commit
+        required: true
+        type: string
+      planning_run_id:
+        description: Run containing the exact reviewed issue 75 cleanup plan
+        required: true
+        type: string
+      plan_artifact:
+        description: Artifact containing only issue-75-cleanup-plan.json
+        required: true
+        type: string
+      plan_sha256:
+        description: Exact lowercase SHA-256 of issue-75-cleanup-plan.json
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  not-configured:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Download exact issue 75 cleanup plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLANNING_RUN_ID: ${{ inputs.planning_run_id }}
+          PLAN_ARTIFACT: ${{ inputs.plan_artifact }}
+        run: >-
+          gh run download "$PLANNING_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name "$PLAN_ARTIFACT" --dir cleanup-plan
+
+      - name: Validate immutable source and content-addressed plan
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "source revision or cleanup digest is not immutable" >&2
+            exit 1
+          fi
+          test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
+          test -f cleanup-plan/issue-75-cleanup-plan.json
+          test "$(find cleanup-plan -type f | wc -l)" -eq 1
+          test "$(sha256sum cleanup-plan/issue-75-cleanup-plan.json | cut -d ' ' -f 1)" = "$PLAN_SHA256"
+          jq -e \
+            --arg source "$SOURCE_REVISION" \
+            '.schema_version == 1 and .issue_number == 75 and
+             .source_revision == $source and .marker_scope != "" and
+             (.resources | type == "array") and (.resources | length > 0)' \
+            cleanup-plan/issue-75-cleanup-plan.json
+
+      - name: Emit credential-free not-configured receipt
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+        run: |
+          jq -n \
+            --arg source_revision "$SOURCE_REVISION" \
+            --arg plan_sha256 "$PLAN_SHA256" \
+            '{schema_version: 1, evidence_mode: "credential-free-plan",
+              outcome: "not-configured", issue_number: 75,
+              source_revision: $source_revision, cleanup_plan_sha256: $plan_sha256,
+              effects: [],
+              limitation: "No reviewed issue 75 marker/resource cleanup executor exists; issue 73 manifests target different resources."}' \
+            > issue-75-cleanup-not-configured.json
+
+      - name: Retain credential-free cleanup boundary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-cleanup-not-configured
+          path: issue-75-cleanup-not-configured.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop without an effect
+        run: |
+          echo "Issue 75 cleanup is not configured; no external effect was attempted." >&2
+          exit 1

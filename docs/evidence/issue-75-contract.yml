@@ -1,0 +1,343 @@
+name: Issue 75 governed delivery candidate
+
+# Reviewed candidate for installation as
+# .github/workflows/issue-75-contract.yml in the isolated sandbox repository.
+# The composed --execute-step route requires observer and effect credentials in one job.
+# Before first use, an owner must explicitly create and protect the contract-delivery
+# environment and populate exactly its reconciler and seeder App private-key secrets. This
+# exposes the union of those two keys to the composed runner. Reviewer and rules credentials
+# remain in their existing isolated environments and are never supplied here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact 40-character reviewed codex-starter-kit commit
+        required: true
+        type: string
+      request_run_id:
+        description: Run containing the exact credential-free delivery request
+        required: true
+        type: string
+      request_artifact:
+        description: Artifact containing only delivery-request.json
+        required: true
+        type: string
+      mandate_run_id:
+        description: Run containing the exact bound active execution mandate
+        required: true
+        type: string
+      mandate_artifact:
+        description: Artifact containing only bound-work-mandate.json
+        required: true
+        type: string
+      prior_state_run_id:
+        description: Optional prior transition run containing exact lifecycle state
+        required: false
+        default: ""
+        type: string
+      prior_state_artifact:
+        description: Optional prior transition state artifact paired with its run ID
+        required: false
+        default: ""
+        type: string
+      combined_delivery_environment_authorized:
+        description: Owner confirms protected contract-delivery exists with exactly two approved App keys
+        required: true
+        default: false
+        type: boolean
+      cleanup_plan_run_id:
+        description: Run containing the exact reviewed issue 75 cleanup plan
+        required: true
+        type: string
+      cleanup_plan_artifact:
+        description: Artifact containing only issue-75-cleanup-plan.json
+        required: true
+        type: string
+      cleanup_plan_sha256:
+        description: Exact lowercase SHA-256 of issue-75-cleanup-plan.json
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  envelope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Require an immutable exact source revision
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be an exact commit" >&2
+            exit 1
+          fi
+          test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download exact request and mandate artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_RUN_ID: ${{ inputs.request_run_id }}
+          REQUEST_ARTIFACT: ${{ inputs.request_artifact }}
+          MANDATE_RUN_ID: ${{ inputs.mandate_run_id }}
+          MANDATE_ARTIFACT: ${{ inputs.mandate_artifact }}
+        shell: bash
+        run: |
+          gh run download "$REQUEST_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$REQUEST_ARTIFACT" --dir request
+          gh run download "$MANDATE_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$MANDATE_ARTIFACT" --dir mandate
+          test -f request/delivery-request.json
+          test -f mandate/bound-work-mandate.json
+          test "$(find request -type f | wc -l)" -eq 1
+          test "$(find mandate -type f | wc -l)" -eq 1
+
+      - name: Download and validate exact issue 75 cleanup plan artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEANUP_PLAN_RUN_ID: ${{ inputs.cleanup_plan_run_id }}
+          CLEANUP_PLAN_ARTIFACT: ${{ inputs.cleanup_plan_artifact }}
+          CLEANUP_PLAN_SHA256: ${{ inputs.cleanup_plan_sha256 }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          if [[ ! "$CLEANUP_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "cleanup_plan_sha256 must be an exact lowercase SHA-256" >&2
+            exit 1
+          fi
+          gh run download "$CLEANUP_PLAN_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$CLEANUP_PLAN_ARTIFACT" --dir cleanup-plan
+          test -f cleanup-plan/issue-75-cleanup-plan.json
+          test "$(find cleanup-plan -type f | wc -l)" -eq 1
+          test "$(sha256sum cleanup-plan/issue-75-cleanup-plan.json | cut -d ' ' -f 1)" = "$CLEANUP_PLAN_SHA256"
+          jq -e \
+            --arg source "$SOURCE_REVISION" \
+            '.schema_version == 1 and .issue_number == 75 and
+             .source_revision == $source and .marker_scope != "" and
+             (.resources | type == "array") and (.resources | length > 0)' \
+            cleanup-plan/issue-75-cleanup-plan.json
+
+      - name: Build the exact reviewed contract envelope
+        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
+
+      - name: Validate exact request and mandate without credentials or effects
+        run: >-
+          ./issue75-contract
+          --request-file request/delivery-request.json
+          --mandate-file mandate/bound-work-mandate.json
+          > issue-75-envelope.json
+
+      - name: Retain credential-free envelope evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-envelope
+          path: |
+            issue-75-envelope.json
+            request/delivery-request.json
+            mandate/bound-work-mandate.json
+            cleanup-plan/issue-75-cleanup-plan.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  authority-gate:
+    needs: envelope
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require explicit combined-environment authority
+        env:
+          COMBINED_ENVIRONMENT_AUTHORIZED: ${{ inputs.combined_delivery_environment_authorized }}
+        shell: bash
+        run: |
+          if [[ "$COMBINED_ENVIRONMENT_AUTHORIZED" != "true" ]]; then
+            echo "Live issue 75 execution is not configured." >&2
+            echo "An owner must create and protect contract-delivery, then populate" >&2
+            echo "exactly CSK_RECONCILER_APP_PRIVATE_KEY and" >&2
+            echo "CSK_SEEDER_APP_PRIVATE_KEY before affirming this input." >&2
+            echo "The composed runner receives the union of those two keys." >&2
+            exit 1
+          fi
+          echo "Live issue 75 execution remains not configured." >&2
+          echo "The exact cleanup plan is validated, but no reviewed issue 75" >&2
+          echo "marker/resource cleanup executor exists yet. Issue 73 cleanup" >&2
+          echo "manifests target different resources and cannot be reused." >&2
+          exit 1
+
+  execute-one-transition:
+    needs: [envelope, authority-gate]
+    environment: contract-delivery
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download validated credential-free envelope inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: issue-75-delivery-envelope
+          path: envelope
+
+      - name: Require paired prior-state inputs
+        env:
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+          PRIOR_STATE_ARTIFACT: ${{ inputs.prior_state_artifact }}
+        shell: bash
+        run: |
+          if { [[ -n "$PRIOR_STATE_RUN_ID" ]] && [[ -z "$PRIOR_STATE_ARTIFACT" ]]; } || \
+             { [[ -z "$PRIOR_STATE_RUN_ID" ]] && [[ -n "$PRIOR_STATE_ARTIFACT" ]]; }; then
+            echo "prior_state_run_id and prior_state_artifact must be supplied together" >&2
+            exit 1
+          fi
+
+      - name: Download prior lifecycle state
+        if: ${{ inputs.prior_state_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+          PRIOR_STATE_ARTIFACT: ${{ inputs.prior_state_artifact }}
+        run: >-
+          gh run download "$PRIOR_STATE_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name "$PRIOR_STATE_ARTIFACT" --dir prior-state
+
+      - name: Restore only allowlisted integrity-protected state
+        if: ${{ inputs.prior_state_run_id != '' }}
+        shell: bash
+        run: |
+          if find prior-state -type l -print -quit | grep -q .; then
+            echo "prior state contains a symlink" >&2
+            exit 1
+          fi
+          while IFS= read -r path; do
+            relative="${path#prior-state/}"
+            case "$relative" in
+              .starter-kit/delivery/state.json|.starter-kit/work-manager/state.json|.starter-kit/work-mandates.json) ;;
+              issue-75-transition.json) ;;
+              *) echo "unexpected prior-state file: $relative" >&2; exit 1 ;;
+            esac
+          done < <(find prior-state -type f -print)
+          if find prior-state ! -type d ! -type f -print -quit | grep -q .; then
+            echo "prior state contains an unsupported filesystem object" >&2
+            exit 1
+          fi
+          test -f prior-state/.starter-kit/delivery/state.json
+          test -f prior-state/issue-75-transition.json
+          mkdir -p .starter-kit/delivery .starter-kit/work-manager
+          install -m 600 prior-state/.starter-kit/delivery/state.json .starter-kit/delivery/state.json
+          if [[ -f prior-state/.starter-kit/work-manager/state.json ]]; then
+            install -m 600 prior-state/.starter-kit/work-manager/state.json .starter-kit/work-manager/state.json
+          fi
+          if [[ -f prior-state/.starter-kit/work-mandates.json ]]; then
+            install -m 600 prior-state/.starter-kit/work-mandates.json .starter-kit/work-mandates.json
+          fi
+
+      - name: Require the exact validated source and inputs
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
+          test -f envelope/request/delivery-request.json
+          test -f envelope/mandate/bound-work-mandate.json
+
+      - name: Build the exact reviewed transition runner
+        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
+
+      - name: Execute one mandate-contained semantic transition
+        env:
+          CSK_RECONCILER_APP_PRIVATE_KEY: ${{ secrets.CSK_RECONCILER_APP_PRIVATE_KEY }}
+          CSK_SEEDER_APP_PRIVATE_KEY: ${{ secrets.CSK_SEEDER_APP_PRIVATE_KEY }}
+        run: >-
+          ./issue75-contract --execute-step
+          --request-file envelope/request/delivery-request.json
+          --mandate-file envelope/mandate/bound-work-mandate.json
+          > issue-75-transition.json
+
+      - name: Retain credential-free transition evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-transition
+          path: issue-75-transition.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Require a well-formed live transition result
+        env:
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+        shell: bash
+        run: |
+          jq -e \
+            '.schema_version == 1 and .evidence_mode == "live" and
+            (.outcome == "pass" or .outcome == "needs-review") and
+            (.status.disposition | type == "string")' \
+            issue-75-transition.json
+          if [[ -z "$PRIOR_STATE_RUN_ID" ]]; then
+            jq -e \
+              '.plan.effects | length == 1 and .[0].kind == "create-branch"' \
+              issue-75-transition.json
+          fi
+
+      - name: Retain exact next lifecycle state
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-state-${{ github.run_id }}
+          path: |
+            issue-75-transition.json
+            .starter-kit/delivery/state.json
+            .starter-kit/work-manager/state.json
+            .starter-kit/work-mandates.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
+
+  cleanup:
+    needs: [envelope, authority-gate, execute-one-transition]
+    if: ${{ always() }}
+    uses: ./.github/workflows/issue-75-contract-cleanup.yml
+    with:
+      source_revision: ${{ inputs.source_revision }}
+      planning_run_id: ${{ inputs.cleanup_plan_run_id }}
+      plan_artifact: ${{ inputs.cleanup_plan_artifact }}
+      plan_sha256: ${{ inputs.cleanup_plan_sha256 }}

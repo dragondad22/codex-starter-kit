@@ -90,3 +90,33 @@ checks, distinct review, stale-head invalidation, qualifying squash merge, selec
 parent/dependent reconciliation, cleanup, and replay. The completing product PR requires
 its own distinct review; sandbox fixture review is not evidence for the product change.
 Issue #76 owns aggregate live qualification and final support claims.
+
+The reviewed workflow candidates
+[`issue-75-contract.yml`](issue-75-contract.yml) and
+[`issue-75-contract-cleanup.yml`](issue-75-contract-cleanup.yml) do not prove that journey
+ran. The main workflow requires exact request, bound active mandate, and 40-character
+Starter Kit revision artifacts before it emits a credential-free envelope. Each dispatch
+may then execute only one semantic transition; a changed observation requires another
+dispatch through the same envelope gate. Evidence artifacts retain for 30 days and contain
+no credential material. Cleanup is always invoked but currently emits an effect-free
+`not-configured` receipt: #73 cleanup plans bind different fixture markers/resources and
+cannot truthfully clean #75. Delivery remains gated until an exact content-addressed #75
+cleanup plan and reviewed marker/resource executor exist.
+
+Each later dispatch must supply the prior run and exact state artifact. The workflow
+rejects symlinks and every payload path except the prior transition receipt and
+`.starter-kit/delivery/state.json`, `.starter-kit/work-manager/state.json`, and
+`.starter-kit/work-mandates.json`. It restores only those state files with owner-only
+permissions and uploads the next integrity-protected state with the transition receipt.
+The exact request uses repository `.` so state remains at the sandbox
+workspace root. Without prior state, only the initial `create-branch` transition is
+admissible. Completing the journey therefore requires repeated dispatches plus external
+check and distinct-review perturbations; one workflow run is one transition, not live
+qualification.
+
+One human authority action remains before the live workflow is configured: create and
+protect a `contract-delivery` environment and populate exactly
+`CSK_RECONCILER_APP_PRIVATE_KEY` and `CSK_SEEDER_APP_PRIVATE_KEY`. The current composed
+runner exposes the union of those two keys within that job. Dispatch therefore requires an
+explicit owner assertion that the environment exists and is approved. Reviewer and rules
+secrets remain absent from that environment and retain their separate protected routes.
