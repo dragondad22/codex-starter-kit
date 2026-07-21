@@ -421,8 +421,10 @@ Do not use Status to express roadmap intent or readiness. Its states are:
 
 ### Task
 
-One independently executable implementation or operational slice with explicit scope,
-acceptance criteria, verification, dependencies, and completion evidence.
+One singular, actionable, independently completable implementation or operational
+delivery step with explicit scope, acceptance criteria, ownership, dependencies, review
+and evidence boundaries, and one coherent completion transition. Multiple files or
+coordinated steps may belong to one task; independently closable outcomes do not.
 
 ### Workflow capability mode
 

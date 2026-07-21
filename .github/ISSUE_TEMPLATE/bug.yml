@@ -5,6 +5,12 @@
   "labels": ["type:bug", "needs-triage"],
   "body": [
     {
+      "type": "markdown",
+      "attributes": {
+        "value": "This is an Intake defect record. Keep one coherent bug together when it can be promoted in place into one executable delivery; create native child tasks for independently completable remediation outcomes instead of hiding a remediation project in one bug."
+      }
+    },
+    {
       "type": "textarea",
       "id": "summary",
       "attributes": {

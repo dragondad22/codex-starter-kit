@@ -98,6 +98,32 @@ CONVERSATIONAL_CAPTURE_MARKERS = {
         "authoritative record",
     ),
 }
+TASK_FITNESS_MARKERS = {
+    "AGENTS.md": (
+        "independently completable delivery step",
+        "ordered checklist with exactly one active step",
+        "one writer per mutable boundary",
+    ),
+    "docs/agents/issue-tracker.md": (
+        "Task fitness and implementation planning",
+        "bounded decomposition outline or deep plan",
+        "outcomes become native child tasks",
+    ),
+    "docs/architecture/LIFECYCLES.md": (
+        "An independently completable plan section is a decomposition signal",
+        "One writer owns each mutable boundary",
+    ),
+    ".github/ISSUE_TEMPLATE/task.yml": (
+        "Task fitness: describe one singular, actionable, independently completable delivery step",
+        "Do not hide independently completable deliverables here",
+    ),
+    ".github/ISSUE_TEMPLATE/bug.yml": (
+        "create native child tasks for independently completable remediation outcomes",
+    ),
+    ".github/ISSUE_TEMPLATE/initiative.yml": (
+        "bounded decomposition outline required before executable tasks may become Ready",
+    ),
+}
 
 
 def _load_json_document(path: Path, root: Path) -> tuple[Any | None, list[str]]:
@@ -140,6 +166,24 @@ def validate_label_manifest(root: Path) -> list[str]:
             failures.append(f"{location}: invalid color: {color}")
         if not isinstance(description, str) or not description:
             failures.append(f"{location}: missing non-empty description")
+    return failures
+
+
+def validate_task_fitness_contract(root: Path) -> list[str]:
+    """Require the agent-neutral pre-Ready decomposition and planning contract."""
+
+    failures: list[str] = []
+    for relative, markers in TASK_FITNESS_MARKERS.items():
+        path = root / relative
+        if not path.is_file():
+            failures.append(f"{relative}: missing task-fitness contract file")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                failures.append(
+                    f"{relative}: missing task-fitness marker: {marker}"
+                )
     return failures
 
 
@@ -517,6 +561,7 @@ def main() -> int:
     failures.extend(validate_workflow(ROOT))
     failures.extend(validate_sensitive_data_boundary(ROOT))
     failures.extend(validate_conversational_capture_contract(ROOT))
+    failures.extend(validate_task_fitness_contract(ROOT))
     failures.extend(validate_glossary_order(ROOT))
 
     if failures:

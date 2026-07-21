@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-95-singular-task-fitness",
+  "summary": "Require singular actionable task boundaries and explicit implementation plans before delivery begins.",
+  "category": "changed",
+  "audiences": ["users", "operators", "developers", "stakeholders"],
+  "components": ["github-workflow"],
+  "issues": [95],
+  "breaking": false,
+  "internal_only": false
+}

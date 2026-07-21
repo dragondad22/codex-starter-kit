@@ -12,6 +12,7 @@ from scripts.validate_docs import (
     validate_glossary_order,
     validate_label_manifest,
     validate_sensitive_data_boundary,
+    validate_task_fitness_contract,
     validate_workflow,
 )
 
@@ -397,6 +398,58 @@ class ConversationalCaptureValidationTests(unittest.TestCase):
         self.assertTrue(
             any("missing conversational-capture marker" in failure for failure in failures)
         )
+
+
+class TaskFitnessValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        files = {
+            "AGENTS.md": (
+                "independently completable delivery step; "
+                "ordered checklist with exactly one active step; "
+                "one writer per mutable boundary"
+            ),
+            "docs/agents/issue-tracker.md": (
+                "Task fitness and implementation planning; bounded decomposition outline "
+                "or deep plan; outcomes become native child tasks"
+            ),
+            "docs/architecture/LIFECYCLES.md": (
+                "An independently completable plan section is a decomposition signal. "
+                "One writer owns each mutable boundary."
+            ),
+            ".github/ISSUE_TEMPLATE/task.yml": (
+                "Task fitness: describe one singular, actionable, independently "
+                "completable delivery step. Do not hide independently completable "
+                "deliverables here."
+            ),
+            ".github/ISSUE_TEMPLATE/bug.yml": (
+                "create native child tasks for independently completable remediation outcomes"
+            ),
+            ".github/ISSUE_TEMPLATE/initiative.yml": (
+                "bounded decomposition outline required before executable tasks may become Ready"
+            ),
+        }
+        for relative, content in files.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_accepts_complete_task_fitness_contract(self) -> None:
+        self.assertEqual(validate_task_fitness_contract(self.root), [])
+
+    def test_rejects_missing_decomposition_or_plan_boundary(self) -> None:
+        (self.root / "AGENTS.md").write_text(
+            "independently completable delivery step",
+            encoding="utf-8",
+        )
+
+        failures = validate_task_fitness_contract(self.root)
+
+        self.assertTrue(any("missing task-fitness marker" in failure for failure in failures))
 
 
 class SensitiveDataBoundaryValidationTests(unittest.TestCase):
