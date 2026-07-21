@@ -2,7 +2,9 @@ package githubadapter
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -26,12 +28,32 @@ func (adapter *SandboxAdapter) observeRepositoryResources(ctx context.Context) (
 			result = append(result, resources...)
 		}
 	}
+	if adapter.hasResourceKind(engine.SandboxResourceIssueRelationship) {
+		credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
+		if err != nil {
+			problems = append(problems, "issue relationship reconciler credential is unavailable")
+		} else if resources, err := adapter.observeIssueRelationships(ctx, credential); err != nil {
+			problems = append(problems, "issue relationship inventory is unavailable")
+		} else {
+			result = append(result, resources...)
+		}
+	}
 	if adapter.hasAnyResourceKind(engine.SandboxResourceFixtureIssue, engine.SandboxResourceFixtureBranch, engine.SandboxResourceFixturePR, engine.SandboxResourceFixtureWorkflow) {
 		credential, err := adapter.roleCredential(ctx, SandboxRoleSeeder)
 		if err != nil {
 			problems = append(problems, "seeder credential is unavailable")
 		} else if resources, err := adapter.observeFixtures(ctx, credential); err != nil {
 			problems = append(problems, "fixture inventory is unavailable")
+		} else {
+			result = append(result, resources...)
+		}
+	}
+	if adapter.hasResourceKind(engine.SandboxResourceRepositoryFile) {
+		credential, err := adapter.roleCredential(ctx, SandboxRoleSeeder)
+		if err != nil {
+			problems = append(problems, "repository file seeder credential is unavailable")
+		} else if resources, err := adapter.observeRepositoryFiles(ctx, credential); err != nil {
+			problems = append(problems, "repository file inventory is unavailable")
 		} else {
 			result = append(result, resources...)
 		}
@@ -72,6 +94,18 @@ func (adapter *SandboxAdapter) applyRepositoryResource(ctx context.Context, effe
 			return engine.SandboxEffectResult{}, errors.New("sandbox seeder credential is unavailable")
 		}
 		return adapter.applyFixture(ctx, credential, effect)
+	case engine.SandboxResourceIssueRelationship:
+		credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
+		if err != nil {
+			return engine.SandboxEffectResult{}, errors.New("sandbox reconciler credential is unavailable")
+		}
+		return adapter.applyIssueRelationship(ctx, credential, effect)
+	case engine.SandboxResourceRepositoryFile:
+		credential, err := adapter.roleCredential(ctx, SandboxRoleSeeder)
+		if err != nil {
+			return engine.SandboxEffectResult{}, errors.New("sandbox seeder credential is unavailable")
+		}
+		return adapter.applyRepositoryFile(ctx, credential, effect)
 	case engine.SandboxResourceFixtureReview:
 		credential, err := adapter.roleCredential(ctx, SandboxRoleReviewer)
 		if err != nil {
@@ -595,6 +629,188 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 		}
 	}
 	return result, nil
+}
+
+func (adapter *SandboxAdapter) observeIssueRelationships(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
+	result := []engine.SandboxObservedResource{}
+	for _, desired := range adapter.config.Resources {
+		if desired.Kind != engine.SandboxResourceIssueRelationship {
+			continue
+		}
+		source, err := adapter.readSandboxIssue(ctx, credential, desired.Attributes["source_number"])
+		if err != nil {
+			return nil, err
+		}
+		if !sandboxIssueMatchesIdentity(source, desired.Attributes, "source") || !strings.Contains(source.Body, desired.Marker) {
+			continue
+		}
+		targetPrefix := "target"
+		path := adapter.repoPath() + "/issues/" + desired.Attributes["source_number"] + "/sub_issues?per_page=100"
+		if desired.Attributes["relationship"] == "blocker-dependent" {
+			target, err := adapter.readSandboxIssue(ctx, credential, desired.Attributes["target_number"])
+			if err != nil {
+				return nil, err
+			}
+			if !sandboxIssueMatchesIdentity(target, desired.Attributes, "target") || !strings.Contains(target.Body, desired.Marker) {
+				continue
+			}
+			path = adapter.repoPath() + "/issues/" + desired.Attributes["target_number"] + "/dependencies/blocked_by?per_page=100"
+			targetPrefix = "source"
+		}
+		var related []sandboxIssue
+		if _, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &related); err != nil {
+			return nil, err
+		}
+		for _, relatedIssue := range related {
+			if sandboxIssueMatchesIdentity(relatedIssue, desired.Attributes, targetPrefix) && strings.Contains(relatedIssue.Body, desired.Marker) {
+				result = append(result, engine.SandboxObservedResource{
+					Key: desired.Key, Kind: desired.Kind, Name: desired.Name,
+					ID: desired.Attributes["source_id"] + ":" + desired.Attributes["target_id"], Marker: desired.Marker,
+					Attributes: desiredAttributes(desired, desired.Attributes),
+				})
+			}
+		}
+	}
+	return result, nil
+}
+
+func (adapter *SandboxAdapter) readSandboxIssue(ctx context.Context, credential Credential, number string) (sandboxIssue, error) {
+	var issue sandboxIssue
+	_, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/issues/"+number, nil, &issue)
+	return issue, err
+}
+
+func sandboxIssueMatchesIdentity(issue sandboxIssue, attributes map[string]string, prefix string) bool {
+	return strconv.FormatInt(issue.ID, 10) == attributes[prefix+"_id"] && strconv.Itoa(issue.Number) == attributes[prefix+"_number"] && issue.NodeID == attributes[prefix+"_node_id"] && issue.PullRequest == nil
+}
+
+func (adapter *SandboxAdapter) observeRepositoryFiles(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
+	result := []engine.SandboxObservedResource{}
+	for _, desired := range adapter.config.Resources {
+		if desired.Kind != engine.SandboxResourceRepositoryFile {
+			continue
+		}
+		content, found, err := adapter.readRepositoryFile(ctx, credential, desired)
+		if err != nil {
+			return nil, err
+		}
+		if !found || !strings.Contains(content.Decoded, desired.Marker) || sandboxContentDigest(content.Decoded) != desired.Attributes["content_sha256"] {
+			continue
+		}
+		result = append(result, engine.SandboxObservedResource{
+			Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: content.SHA, Marker: desired.Marker,
+			Attributes: desiredAttributes(desired, map[string]string{"path": desired.Attributes["path"], "branch": desired.Attributes["branch"], "content_sha256": sandboxContentDigest(content.Decoded)}),
+		})
+	}
+	return result, nil
+}
+
+func sandboxContentDigest(content string) string {
+	digest := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(digest[:])
+}
+
+type sandboxRepositoryContent struct {
+	SHA     string `json:"sha"`
+	Content string `json:"content"`
+	Decoded string `json:"-"`
+}
+
+func (adapter *SandboxAdapter) readRepositoryFile(ctx context.Context, credential Credential, resource engine.SandboxResourceSpec) (sandboxRepositoryContent, bool, error) {
+	var content sandboxRepositoryContent
+	path := adapter.repoPath() + "/contents/" + escapePath(resource.Attributes["path"]) + "?ref=" + url.QueryEscape(resource.Attributes["branch"])
+	_, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &content)
+	if isResponseStatus(err, http.StatusNotFound) {
+		return sandboxRepositoryContent{}, false, nil
+	}
+	if err != nil {
+		return sandboxRepositoryContent{}, false, err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(content.Content, "\n", ""))
+	if err != nil {
+		return sandboxRepositoryContent{}, false, errors.New("repository file content is not valid base64")
+	}
+	content.Decoded = string(decoded)
+	return content, true, nil
+}
+
+func (adapter *SandboxAdapter) applyIssueRelationship(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	source, err := adapter.readSandboxIssue(ctx, credential, effect.Resource.Attributes["source_number"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	target, err := adapter.readSandboxIssue(ctx, credential, effect.Resource.Attributes["target_number"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if !sandboxIssueMatchesIdentity(source, effect.Resource.Attributes, "source") || !sandboxIssueMatchesIdentity(target, effect.Resource.Attributes, "target") || !strings.Contains(source.Body, effect.Resource.Marker) || !strings.Contains(target.Body, effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "issue relationship endpoint identities or marker ownership changed"}, nil
+	}
+	method := http.MethodPost
+	path := adapter.repoPath() + "/issues/" + effect.Resource.Attributes["source_number"] + "/sub_issues"
+	body := map[string]any{"sub_issue_id": target.ID}
+	if effect.Resource.Attributes["relationship"] == "blocker-dependent" {
+		path = adapter.repoPath() + "/issues/" + effect.Resource.Attributes["target_number"] + "/dependencies/blocked_by"
+		body = map[string]any{"issue_id": source.ID}
+	}
+	if effect.Kind == "remove-resource" {
+		method = http.MethodDelete
+		if effect.Resource.Attributes["relationship"] == "parent-sub-issue" {
+			path = adapter.repoPath() + "/issues/" + effect.Resource.Attributes["source_number"] + "/sub_issue"
+		} else {
+			path += "/" + effect.Resource.Attributes["source_id"]
+		}
+	}
+	if _, err := adapter.rest(ctx, credential, method, path, body, nil); err != nil {
+		if effect.Kind == "remove-resource" && isResponseStatus(err, http.StatusNotFound) {
+			return engine.SandboxEffectResult{Outcome: "no-change", Detail: "exact marker-owned issue relationship is absent"}, nil
+		}
+		return engine.SandboxEffectResult{}, err
+	}
+	verb := "reconciled"
+	if effect.Kind == "remove-resource" {
+		verb = "removed"
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: effect.Resource.Attributes["source_id"] + ":" + effect.Resource.Attributes["target_id"], Detail: "exact marker-owned issue relationship " + verb}, nil
+}
+
+func (adapter *SandboxAdapter) applyRepositoryFile(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	existing, found, err := adapter.readRepositoryFile(ctx, credential, effect.Resource)
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if found && !strings.Contains(existing.Decoded, effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: existing.SHA, Detail: "repository file exists without the exact approved ownership marker"}, nil
+	}
+	path := adapter.repoPath() + "/contents/" + escapePath(effect.Resource.Attributes["path"])
+	if effect.Kind == "remove-resource" {
+		if !found {
+			return engine.SandboxEffectResult{Outcome: "no-change", Detail: "exact marker-owned repository file is absent"}, nil
+		}
+		if sandboxContentDigest(existing.Decoded) != effect.Resource.Attributes["content_sha256"] {
+			return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: existing.SHA, Detail: "marker-owned repository file changed after approval and will not be deleted"}, nil
+		}
+		body := map[string]any{"message": effect.Resource.Marker, "sha": existing.SHA, "branch": effect.Resource.Attributes["branch"]}
+		if _, err := adapter.rest(ctx, credential, http.MethodDelete, path, body, nil); err != nil {
+			return engine.SandboxEffectResult{}, err
+		}
+		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: existing.SHA, Detail: "exact marker-owned repository file deleted"}, nil
+	}
+	body := map[string]any{
+		"message": effect.Resource.Marker, "content": base64.StdEncoding.EncodeToString([]byte(effect.Resource.Attributes["input:content"])), "branch": effect.Resource.Attributes["branch"],
+	}
+	if found {
+		body["sha"] = existing.SHA
+	}
+	var response struct {
+		Content struct {
+			SHA string `json:"sha"`
+		} `json:"content"`
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodPut, path, body, &response); err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: response.Content.SHA, Detail: "exact marker-owned repository file reconciled"}, nil
 }
 
 func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
