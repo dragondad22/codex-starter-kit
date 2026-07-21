@@ -9,12 +9,11 @@ and design; the approved product contract lives in `docs/`.
 - Read `docs/decisions/INDEX.md` for governing decisions. The discovery document preserves
   source history; stop and reconcile any conflict instead of choosing silently.
 - Do not start implementation without a GitHub issue whose Readiness is `Ready`.
-- Before setting a `type:task` issue to Ready, confirm it is one singular, actionable,
-  independently completable delivery step. Use a bounded decomposition outline during
-  refinement; if any section can be completed, evidenced, and closed independently while
-  leaving a useful outcome, create native child tasks instead of hiding multiple
-  deliveries in one issue. Multiple files, modules, tests, or coordinated atomic steps do
-  not by themselves require decomposition.
+- Before setting a `type:task` issue to Ready, confirm its outcome is actionable and its
+  context is sufficient to begin. Decompose implementation organically into the tasks,
+  subtasks, and steps the work warrants. Create native child issues only when durable
+  independent tracking, ownership, dependencies, authority, review, evidence, scheduling,
+  or handoff value warrants it; a step being independently completable is not sufficient.
 - When conversation surfaces durable untracked work, a consequential question, or a
   decision that must be promoted, search open and closed GitHub issues before you suggest
   creating or updating the appropriate item. Prompt at a natural checkpoint such as a
@@ -38,8 +37,8 @@ and design; the approved product contract lives in `docs/`.
 - After start-time freshness and task-fitness checks pass, keep an active structured
   implementation plan when sequencing, cross-module work, live effects, recovery, or
   uncertainty benefits from it. A runtime without a plan surface uses an agent-neutral
-  ordered checklist with exactly one active step. Plan steps coordinate one delivery;
-  independently completable steps trigger decomposition or `Needs refinement`.
+  ordered checklist with exactly one active step. Plans may reveal useful issue boundaries,
+  but neither a fixed child count nor a prescribed decomposition depth is required.
 - Neither a structured plan nor its checklist fallback expands issue scope or authority.
 - Keep one writer per mutable boundary. Independent reviewers remain read-only or work in
   isolated copies; they do not concurrently edit the writer's branch.

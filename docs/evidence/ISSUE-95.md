@@ -1,22 +1,24 @@
-# Issue #95 — singular actionable task evidence
+# Issue #95 — organic task decomposition evidence
 
 **Date:** 2026-07-21
 
 **Issue:** [#95](https://github.com/dragondad22/codex-starter-kit/issues/95)
 
-## Delivered contract
+## Delivered contract and owner correction
 
-- Added a pre-Ready task-fitness gate: one task is one singular, actionable,
-  independently completable delivery with one coherent completion transition, review
-  boundary, evidence boundary, and Project state.
-- Added the operational decomposition test. Work becomes separate native child tasks when
-  a section can be delivered, evidenced, and closed independently while leaving a useful,
-  truthful outcome, unless transactional correctness, rollout, or recovery requires one
-  transition.
-- Distinguished delivery boundaries from implementation detail. Multiple files, modules,
-  tests, commits, or coordinated atomic steps do not alone require decomposition.
+The first implementation incorrectly interpreted planning decomposition as mandatory
+native-issue decomposition for every independently completable unit. The owner corrected
+that interpretation after PR #97, and #95 was reopened.
+
+- A Ready task has an actionable outcome and sufficient context to begin; it need not be
+  reduced to one independently completable implementation unit.
+- Implementation decomposes organically into the tasks, subtasks, and steps warranted by
+  the actual work. There is no prescribed child count or decomposition depth.
+- Native child issues are created when durable independent tracking adds value, including
+  distinct ownership, scheduling, dependencies, authority, review/evidence boundaries,
+  release value, or handoff needs. Independent completable-ness alone is insufficient.
 - Required freshness and fitness checks before implementation planning and after material
-  change. Structured plans coordinate a fit task; runtimes without that facility use an
+  change. Structured plans coordinate work; runtimes without that facility use an
   agent-neutral ordered checklist with exactly one active step.
 - Made both plan forms subordinate to issue authority: neither can expand issue scope or
   authority.
@@ -25,11 +27,9 @@
 
 ## Intake and template behavior
 
-The task form now states the fitness test and asks for one coherent scope, ownership,
-review, and evidence boundary. Initiative refinement requires a bounded decomposition
-outline before executable children become Ready. A coherent bug remains an Intake defect
-record and may be promoted in place; independently completable remediations become native
-child tasks.
+The task form asks for an actionable outcome and contextual decomposition. Initiative and
+bug forms use the same durable-tracking criteria without requiring child issues merely
+because remediation steps could be completed independently.
 
 These additions are descriptions and Markdown guidance only. Existing issue-form field
 IDs, headings, parser contracts, and lifecycle-engine schemas remain unchanged.
@@ -41,9 +41,9 @@ agent-neutral planning, and writer-boundary markers across the repository rules,
 issue-tracker contract, lifecycle guide, and issue forms. Unit tests cover acceptance of
 the complete contract and rejection when planning/decomposition guidance is absent.
 
-The validator protects durable policy presence; it does not claim to decide semantic task
-singularity. That judgment uses current acceptance, authority, dependencies, implemented
-state, review boundaries, and evidence boundaries during refinement and freshness review.
+The validator protects durable policy presence; it does not prescribe task granularity or
+decide which implementation units deserve native issues. That contextual judgment remains
+part of planning and tracker stewardship.
 
 ## Verification state
 
@@ -53,6 +53,5 @@ validation, Go tests, structured change check, and whitespace validation.
 
 ## Reconciliation and handoff
 
-Issue #95 is an independently completable correction related to #74, not a new native
-blocker for #75. Completing it leaves parent #4 in progress and allows the selected
-feature sequence to continue with #75 and then #76.
+The rejected rigid rule is not a reason to split #75. After this correction, #75 returns
+to its prior planning flow and parent #4 remains in progress.

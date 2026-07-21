@@ -74,7 +74,7 @@
       "id": "promotion-gate",
       "attributes": {
         "label": "Refinement and promotion gate",
-        "description": "Name the research, feedback, ADR/decision, prototype, or bounded decomposition outline required before executable tasks may become Ready. Each child must be one singular, actionable, independently completable delivery with its own Project and evidence state."
+        "description": "Name the research, feedback, ADR/decision, prototype, or planning needed before implementation may begin. Decompose organically and create child issues only where durable independent tracking adds value."
       },
       "validations": {"required": true}
     },

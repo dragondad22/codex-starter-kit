@@ -100,33 +100,34 @@ CONVERSATIONAL_CAPTURE_MARKERS = {
 }
 TASK_FITNESS_MARKERS = {
     "AGENTS.md": (
-        "independently completable delivery step",
+        "Decompose implementation organically",
+        "a step being independently completable is not sufficient",
         "ordered checklist with exactly one active step",
         "expands issue scope or authority",
         "one writer per mutable boundary",
     ),
     "docs/agents/issue-tracker.md": (
         "Task fitness and implementation planning",
-        "bounded decomposition outline or deep plan",
-        "outcomes become native child tasks",
-        "Readiness, Status, evidence, and completing change",
+        "decompose the implementation organically",
+        "Independent completable-ness alone does not require a child issue",
+        "there is no prescribed child count or decomposition depth",
         "Neither plan form expands the issue's scope or authority",
     ),
     "docs/architecture/LIFECYCLES.md": (
-        "An independently completable plan section is a decomposition signal",
-        "Neither coordination form expands issue scope",
+        "decompose implementation organically",
+        "Independent completable-ness alone does not force",
+        "scope or authority. One writer owns each mutable boundary",
         "One writer owns each mutable boundary",
     ),
     ".github/ISSUE_TEMPLATE/task.yml": (
-        "Task fitness: describe one singular, actionable, independently completable delivery step",
-        "Do not hide independently completable deliverables here",
+        "Decompose implementation organically",
+        "independent completable-ness alone does not require one",
     ),
     ".github/ISSUE_TEMPLATE/bug.yml": (
-        "create native child tasks for independently completable remediation outcomes",
+        "A coherent bug may retain several remediation tasks or steps",
     ),
     ".github/ISSUE_TEMPLATE/initiative.yml": (
-        "bounded decomposition outline required before executable tasks may become Ready",
-        "its own Project and evidence state",
+        "Decompose organically and create child issues only where durable independent tracking adds value",
     ),
 }
 

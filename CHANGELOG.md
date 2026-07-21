@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:bc71562de18caec9774508f75509f819200c89ce775a6735a52ae3f55420b176 -->
+<!-- source-digest: sha256:ad270fbc6cabcad80356bfa29b53b59c65412c4ac9cbbdef3d28dd6dcde0353b -->
 
 ## [Unreleased]
 
@@ -24,7 +24,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 ### Changed
 - Make managed-repository creation safe to replay, interrupt, recover, and reconcile without deleting ambiguous user content. (#29)
 - Qualify plugin routing, capability modes, fallback behavior, and native development installation while preserving unpublished-engine limitations. (#54)
-- Require singular actionable task boundaries and structured implementation planning when coordination warrants. (#95)
+- Guide organic implementation decomposition and create separate issues only when durable tracking adds value. (#95)
 
 ### Fixed
 - Reconcile closed items, native parent progress, and direct dependencies through immutable lifecycle plans with before-and-after receipts. (#15)
