@@ -191,6 +191,73 @@ creates; one match recovers, multiple matches are ambiguous, and GraphQL partial
 `not-configured` until the separately approved sandbox exists. See
 [the GitHub adapter contract](GITHUB_ADAPTER.md).
 
+### Governed delivery lifecycle
+
+Issue delivery is a separate lifecycle module above GitHub transport and beside Work
+Manager. It exposes `InspectDelivery`, `PlanDelivery`, `ApplyDelivery`,
+`VerifyDelivery`, and `DeliveryStatus`. Each plan contains at most one next semantic
+transition, so branch creation, draft-PR creation, readying, review routing, squash merge,
+and completion reconciliation remain individually observable and recoverable.
+
+```mermaid
+stateDiagram-v2
+    [*] --> BranchAbsent
+    BranchAbsent --> PullRequestAbsent: create issue-named branch
+    PullRequestAbsent --> Draft: create claimed draft PR
+    Draft --> ChecksPending: exact-head checks pending
+    Draft --> ChecksFailed: exact-head check fails
+    Draft --> Ready: exact-head checks pass, mark ready
+    Ready --> ChecksPending: new exact-head checks pending
+    Ready --> ChecksFailed: exact-head check fails
+    ChecksPending --> ChecksFailed: required check fails
+    ChecksFailed --> ChecksPending: new exact-head evidence
+    ChecksPending --> ReviewUnrequested: exact-head checks pass
+    Ready --> ReviewUnrequested: reviewer not routed
+    Ready --> ReviewPending: reviewer already routed
+    ReviewUnrequested --> ReviewPending: request declared reviewer
+    ReviewPending --> ChangesRequested: reviewer requests changes
+    ChangesRequested --> ChecksPending: head changes
+    ReviewPending --> ApprovalUnrequested: distinct capable review passes
+    ApprovalUnrequested --> ApprovalPending: request required product approver
+    ApprovalPending --> MergeReady: required approval passes
+    ReviewPending --> MergeReady: no separate product approval required
+    MergeReady --> Merged: squash exact head
+    Merged --> Complete: reconcile item and related work
+    Draft --> ClosedUnmerged: PR closed without merge
+    ChecksPending --> ClosedUnmerged: PR closed without merge
+    ReviewPending --> ClosedUnmerged: PR closed without merge
+```
+
+Checks, review requests, review results, optional product approval, effective branch rules,
+and merge authorization are orthogonal evidence. Only checks and review evidence for the
+current exact head participate. A capable review outside the implementation context is
+universal; qualified independence and a separate product approver compose only when the
+governed requirement asks for them. Rules describe effective gates and supported merge
+methods but grant neither review evidence nor bypass authority.
+
+The delivery intent binds the managed issue, governed source and operating profile,
+immutable repository/Project target, issue-named head, base, required checks, reviewer
+roles, squash method, canonical delivery claim, and effect boundary. Wrong or ambiguous
+linkage, branch/head drift, stale capability, changed effective rules, missing evidence,
+unsupported stronger rules, closed-unmerged state, or an unverified merge remains an
+explicit non-pass or waiting disposition.
+
+Every external transition requires one content-addressed DEC-0022 mandate covering that
+effect and exact delivery intent. Effects are single-attempt. An ambiguous or lost
+response is recovered only by exact postcondition observation; it is never blindly
+replayed. Mandate usage is reserved in the shared cumulative Work Manager ledger before
+the call. The adapter may use a distinct, narrowed effect credential while observation
+uses a read credential, but both transports must bind the same repository.
+
+GitHub does not provide reliable retrospective proof of the merge method. A merged PR
+therefore qualifies as `squash` only when a retained successful exact-head squash-effect
+receipt matches its reachable merge revision. The terminal transition records
+issue/source/PR/head/merge identity, checks, reviews, approvals, effective rules, mandate,
+and nested Work Manager reconciliation receipts in integrity-protected state at
+`.starter-kit/delivery/state.json`. It invokes Work Manager with the same execution
+mandate to close the item and reconcile its bounded parent/direct-dependent slice. Exact
+completed replay is no-change and preserves historical receipts.
+
 ## Professional Engineering Baseline
 
 Every supported delivery path applies the same professional engineering baseline even

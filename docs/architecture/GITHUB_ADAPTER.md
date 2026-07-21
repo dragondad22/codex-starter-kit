@@ -2,7 +2,7 @@
 
 **Status:** Implemented deterministic production transport; isolated sandbox baseline qualified
 
-**Issues:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72), [#74](https://github.com/dragondad22/codex-starter-kit/issues/74)
+**Issues:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72), [#74](https://github.com/dragondad22/codex-starter-kit/issues/74), [#75](https://github.com/dragondad22/codex-starter-kit/issues/75)
 
 **Sandbox and live authority:** [#73](https://github.com/dragondad22/codex-starter-kit/issues/73)
 
@@ -13,6 +13,17 @@ interface. Work Manager continues to own desired lifecycle policy, immutable pla
 preconditions, receipts, verification, and recovery. The adapter owns only ephemeral
 credential acquisition, a fixed target manifest, normalized GitHub observation, and
 allowlisted REST/GraphQL effects.
+
+Issue #75 adds a separate `DeliveryAdapter` seam. The engine owns delivery policy,
+one-transition plans, mandates, receipts, verification, recovery, and completion memory.
+The adapter observes normalized branch, PR, check, review, approval, rule, and merge facts
+and applies only the engine-selected delivery effect. `NewDeliveryAdapter` may receive a
+separate effect transport, allowing a narrowed logical merger credential without giving
+that credential to read-side observation; both transports must bind the same host, API
+route, repository owner/name, and immutable repository ID. Reviewer capability,
+implementation-context separation, qualified independence, and product-approver trust are
+explicit non-secret configuration rather than conclusions inferred from GitHub checks or
+rules.
 
 Issue #73 adds a separate `SandboxAdapter` seam for baseline and fixture resources whose
 authority differs from routine one-task reconciliation. `NewSandbox` accepts one immutable
@@ -116,6 +127,42 @@ mutation outside creation is an explicitly qualified exact stale-context refresh
 adapter reparses and compares the exact contract digest after PATCH. Semantic body changes
 stop before mutation.
 
+The delivery adapter starts from the exact managed issue marker and independently reads
+the effective base-branch rules, current base revision, issue-named Git ref, bounded issue
+timeline, and same-repository linked PRs. It accepts at most one PR matching the expected
+head, base, and immutable repository. It then reads the exact-head check runs and combined
+statuses, requested reviewers, paginated review history, repository squash capability,
+and current delivery-claim reachability. A missing branch and a present branch without a
+PR are clean lifecycle states; multiple matching PRs, pagination exhaustion, mismatched
+claim/head/base, missing open head, conflicting effective evidence, and unsupported
+stronger rules are explicit non-passes.
+
+Check and review observations bind evidence identity, actor or context, exact commit, and
+observation time. Only the latest unambiguous evidence for the current PR head is eligible.
+Review trust is evaluated separately from requested-reviewer routing. Reviews from a
+configured product approver also populate the optional approval evidence channel, while
+one evidence identity cannot satisfy both required baseline review and separate product
+approval. Effective rules must exactly match the governed required-check set and permit
+squash; rules never imply review, approval, bypass, or permission to mutate rules.
+
+The allowlisted delivery effects are:
+
+- `create-branch`, posting an exact issue-named ref from the observed base revision;
+- `create-pull-request`, rechecking the branch revision and creating a draft PR whose body
+  is the canonical #74 delivery claim;
+- `mark-ready`, applying the native draft-to-ready transition to the exact PR;
+- `request-review`, routing the declared reviewer without treating a request as approval;
+  and
+- `squash-merge`, binding GitHub's squash endpoint to the exact current head SHA.
+
+Every non-GET remains single-attempt. Ambiguous responses return to the engine, which may
+recover only when a fresh exact observation proves the intended postcondition. The squash
+response must affirm a merge and supply its immutable merge SHA. Because GitHub does not
+reliably expose retrospective merge method, subsequent qualification composes current
+default-branch reachability with the engine's matching retained squash-effect receipt.
+Completion reconciliation itself is engine-owned and reuses Work Manager rather than
+adding broader Project effects to this adapter.
+
 `ObserveGovernedWork` extends the same seam with bounded delivery evidence. It reads the
 selected issue timeline, follows only same-repository pull-request cross-references, and
 re-reads each PR. A merged PR counts as complete only when its versioned delivery claim
@@ -158,6 +205,19 @@ scheduling, native hierarchy/dependency observation, unavailable relationship en
 Actions limitations, bounded transient user/Project identity and field-inventory
 recovery, single-attempt semantic and effect failures, cancellation, and unsupported
 combinations.
+
+#75 deterministic fixtures additionally cover absent/present branch and PR states,
+draft-to-ready progression, exact-head check pass/pending/failure, requested and submitted
+distinct review, changes requested, optional product approval, effective rules, stale
+head/source rejection, closed-unmerged PRs, exact-head squash, lost-response
+re-observation, completion reconciliation, restart, and no-change replay. This is a
+development-candidate transport and policy contract until the exact completing revision
+passes independent review, native CI, and the separately mandated live sandbox journey.
+It does not claim live branch, PR, review-routing, merge, or rule effects. The existing
+fixture-seeder App installation may serve as the logical merger with a short-lived token
+narrowed to the sandbox repository and required `contents:write` and
+`pull_requests:write`; no new human account is required. Reviewer and rules authority
+remain separate, and no bypass or operational rules mutation is authorized.
 
 Those receipts are labeled `simulated`. They prove implementation semantics and native
 HTTP portability, not a GitHub permission or service claim. No live target, token, App,

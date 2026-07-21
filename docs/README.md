@@ -128,6 +128,9 @@
     downstream handoff evidence.
 61. `evidence/ISSUE-95.md` — singular task-fitness, bounded decomposition, agent-neutral
     implementation planning, deterministic validation, limitation, and handoff evidence.
+62. `evidence/ISSUE-75.md` — development-candidate delivery lifecycle, exact-head gates,
+    mandate-contained transitions, squash completion memory, deterministic coverage, and
+    pending live/native qualification.
 
 ## Document lifecycle
 
