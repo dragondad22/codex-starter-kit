@@ -14,11 +14,9 @@ import (
 )
 
 type DeliveryReviewerTrust struct {
-	Actor                string
-	Capable              bool
-	DistinctContext      bool
-	QualifiedIndependent bool
-	ProductApprover      bool
+	Declaration             engine.DeliveryReviewDeclaration
+	StrongerPolicySatisfied bool
+	ProductApprover         bool
 }
 
 type DeliveryAdapter struct {
@@ -41,16 +39,17 @@ func NewDeliveryAdapter(base *Adapter, reviewers []DeliveryReviewerTrust, effect
 	effectBase := base
 	if len(effectAdapters) == 1 {
 		effectBase = effectAdapters[0]
-		if effectBase.config.Host != base.config.Host || effectBase.config.RESTBaseURL != base.config.RESTBaseURL || effectBase.config.RepositoryOwner != base.config.RepositoryOwner || effectBase.config.RepositoryName != base.config.RepositoryName || effectBase.config.RepositoryID != base.config.RepositoryID {
+		if effectBase.config.Host != base.config.Host || effectBase.config.RESTBaseURL != base.config.RESTBaseURL || effectBase.config.GraphQLURL != base.config.GraphQLURL || effectBase.config.APIVersion != base.config.APIVersion || effectBase.config.RepositoryOwner != base.config.RepositoryOwner || effectBase.config.RepositoryName != base.config.RepositoryName || effectBase.config.RepositoryID != base.config.RepositoryID || effectBase.config.ProjectID != base.config.ProjectID {
 			return nil, errors.New("delivery observation and effect transports must bind the same repository")
 		}
 	}
 	trusted := map[string]DeliveryReviewerTrust{}
 	for _, reviewer := range reviewers {
-		if reviewer.Actor == "" || trusted[reviewer.Actor].Actor != "" {
+		actor := reviewer.Declaration.Actor
+		if actor == "" || reviewer.Declaration.Role == "" || reviewer.Declaration.Capability == "" || reviewer.Declaration.ReviewedSourceRevision == "" || reviewer.Declaration.ImplementationContext == "" || reviewer.Declaration.ReviewContext == "" || reviewer.Declaration.ReviewContext == reviewer.Declaration.ImplementationContext || reviewer.Declaration.ApprovalRoute == "" || reviewer.Declaration.FindingsRoute == "" || len(reviewer.Declaration.Limitations) == 0 || trusted[actor].Declaration.Actor != "" {
 			return nil, errors.New("delivery reviewer trust is invalid or duplicated")
 		}
-		trusted[reviewer.Actor] = reviewer
+		trusted[actor] = reviewer
 	}
 	return &DeliveryAdapter{base: base, effectBase: effectBase, reviewers: trusted}, nil
 }
@@ -126,6 +125,11 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	observation.PullRequest = engine.DeliveryPullRequestObservation{
 		ID: pull.ID, NodeID: pull.NodeID, Number: pull.Number, State: strings.ToLower(pull.State), Draft: pull.Draft, Base: pull.Base.Ref, Head: pull.Head.Ref, HeadRevision: pull.Head.SHA,
 		Merged: pull.Merged, MergeRevision: pull.MergeCommitSHA, RequestedReviewers: pull.requestedReviewerLogins(),
+	}
+	if closesExactIssue(pull.Body, issue.Number) {
+		observation.PullRequest.ClosesIssueNumber = issue.Number
+	} else {
+		observation.Problems = append(observation.Problems, "pull request does not contain the exact managed issue closing linkage")
 	}
 	if !branchMissing && pull.Head.SHA != branch.Object.SHA {
 		observation.Problems = append(observation.Problems, "pull request head does not match the observed delivery branch")
@@ -247,6 +251,9 @@ func (adapter *DeliveryAdapter) observeDeliveryChecks(ctx context.Context, crede
 			Conclusion  string    `json:"conclusion"`
 			HeadSHA     string    `json:"head_sha"`
 			CompletedAt time.Time `json:"completed_at"`
+			App         struct {
+				ID int64 `json:"id"`
+			} `json:"app"`
 		} `json:"check_runs"`
 	}
 	checks := []engine.DeliveryCheckObservation{}
@@ -264,7 +271,7 @@ func (adapter *DeliveryAdapter) observeDeliveryChecks(ctx context.Context, crede
 			} else if run.Status == "completed" {
 				state = "failed"
 			}
-			checks = append(checks, engine.DeliveryCheckObservation{Name: run.Name, HeadRevision: run.HeadSHA, State: state, EvidenceID: "check-run:" + strconv.FormatInt(run.ID, 10), ObservedAt: run.CompletedAt})
+			checks = append(checks, engine.DeliveryCheckObservation{Name: run.Name, IntegrationID: run.App.ID, HeadRevision: run.HeadSHA, State: state, EvidenceID: "check-run:" + strconv.FormatInt(run.ID, 10), ObservedAt: run.CompletedAt})
 		}
 		next, err = adapter.base.nextRESTPath(response.Header.Get("Link"))
 		if err != nil {
@@ -339,9 +346,10 @@ func (adapter *DeliveryAdapter) observeDeliveryReviews(ctx context.Context, cred
 		trust := adapter.reviewers[review.User.Login]
 		state := strings.ToLower(strings.ReplaceAll(review.State, "_", "-"))
 		evidenceID := "review:" + strconv.FormatInt(review.ID, 10)
-		result = append(result, engine.DeliveryReviewObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable, QualifiedIndependent: trust.QualifiedIndependent, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
+		declaration := trust.Declaration
+		result = append(result, engine.DeliveryReviewObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, Role: declaration.Role, Capability: declaration.Capability, ReviewedSourceRevision: declaration.ReviewedSourceRevision, ImplementationContext: declaration.ImplementationContext, ReviewContext: declaration.ReviewContext, ApprovalRoute: declaration.ApprovalRoute, FindingsRoute: declaration.FindingsRoute, Limitations: slices.Clone(declaration.Limitations), StrongerPolicySatisfied: trust.StrongerPolicySatisfied, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
 		if trust.ProductApprover {
-			approvals = append(approvals, engine.DeliveryApprovalObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable, QualifiedIndependent: trust.QualifiedIndependent, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
+			approvals = append(approvals, engine.DeliveryApprovalObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: declaration.ReviewContext != declaration.ImplementationContext, Capable: declaration.Capability != "", QualifiedIndependent: trust.StrongerPolicySatisfied, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
 		}
 	}
 	return result, approvals, nil
@@ -352,7 +360,8 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 		Type       string `json:"type"`
 		Parameters struct {
 			Required []struct {
-				Context string `json:"context"`
+				Context       string `json:"context"`
+				IntegrationID int64  `json:"integration_id"`
 			} `json:"required_status_checks"`
 			RequiredApprovals             int  `json:"required_approving_review_count"`
 			RequireCodeOwner              bool `json:"require_code_owner_review"`
@@ -363,13 +372,13 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, path, nil, &rules); err != nil {
 		return engine.DeliveryRulesObservation{}, err
 	}
-	required := []string{}
+	required := []engine.DeliveryCheckIdentity{}
 	problems := []string{}
 	for _, rule := range rules {
 		switch rule.Type {
 		case "required_status_checks":
 			for _, check := range rule.Parameters.Required {
-				required = append(required, check.Context)
+				required = append(required, engine.DeliveryCheckIdentity{Name: check.Context, IntegrationID: check.IntegrationID})
 			}
 		case "pull_request":
 			if rule.Parameters.RequiredApprovals > 1 || rule.Parameters.RequireCodeOwner || rule.Parameters.RequireConversationResolution {
@@ -379,7 +388,15 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 			problems = append(problems, "effective branch rules include unsupported merge gate: "+rule.Type)
 		}
 	}
-	slices.Sort(required)
+	slices.SortFunc(required, func(left, right engine.DeliveryCheckIdentity) int {
+		if left.Name < right.Name {
+			return -1
+		}
+		if left.Name > right.Name {
+			return 1
+		}
+		return int(left.IntegrationID - right.IntegrationID)
+	})
 	required = slices.Compact(required)
 	var repository struct {
 		NodeID           string `json:"node_id"`
@@ -418,6 +435,17 @@ func deliveryClaimMatches(body string, expected engine.WorkDeliveryClaim) bool {
 	return leftErr == nil && rightErr == nil && left == right
 }
 
+func closesExactIssue(body string, issueNumber int) bool {
+	expected := "Closes #" + strconv.Itoa(issueNumber)
+	count := 0
+	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
+		if strings.TrimSpace(line) == expected {
+			count++
+		}
+	}
+	return count == 1
+}
+
 func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine.DeliveryEffect) (engine.DeliveryEffectResult, error) {
 	credential, err := adapter.effectBase.credential(ctx)
 	if err != nil {
@@ -425,7 +453,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 	}
 	if effect.Kind == engine.DeliveryEffectCreateBranch {
 		body := map[string]string{"ref": "refs/heads/" + effect.Branch, "sha": effect.HeadRevision}
-		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/git/refs", body, nil); err != nil {
+		if _, err := adapter.effectBase.mutateREST(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/git/refs", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "create-branch result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "created exact delivery branch"}, nil
@@ -451,7 +479,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 			return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery issue number is missing", Recoverable: true}, errors.New("delivery issue number is missing")
 		}
 		body := map[string]any{"title": effect.Title, "body": "Closes #" + strconv.Itoa(effect.IssueNumber) + "\n\n" + marker, "head": effect.Branch, "base": effect.BaseBranch, "draft": true}
-		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/pulls", body, nil); err != nil {
+		if _, err := adapter.effectBase.mutateREST(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/pulls", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "create-pull-request result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "created claimed draft pull request"}, nil
@@ -467,7 +495,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 	switch effect.Kind {
 	case engine.DeliveryEffectRequestReview:
 		body := map[string]any{"reviewers": []string{effect.Reviewer}}
-		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, path+"/requested_reviewers", body, nil); err != nil {
+		if _, err := adapter.effectBase.mutateREST(ctx, credential, http.MethodPost, path+"/requested_reviewers", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "request-review result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "requested the declared delivery reviewer"}, nil
@@ -487,7 +515,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 			Message string `json:"message"`
 			SHA     string `json:"sha"`
 		}
-		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPut, path+"/merge", body, &merged); err != nil {
+		if _, err := adapter.effectBase.mutateREST(ctx, credential, http.MethodPut, path+"/merge", body, &merged); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "squash-merge result requires exact re-observation", Recoverable: true}, err
 		}
 		if !merged.Merged || merged.SHA == "" {

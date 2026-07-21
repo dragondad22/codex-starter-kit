@@ -19,16 +19,17 @@ import (
 )
 
 const (
-	sandboxRepositoryID = "R_kgDOTa0WSg"
-	sandboxProjectID    = "PVT_kwDOEjyyNM4Bdm9F"
-	sandboxAccount      = "codex-starter-kit-labs"
-	deliveryBranch      = "contract/issue-75-20260721-01"
-	implementedPath     = ".github/workflows/issue-75-fixture-check.yml"
-	requiredCheck       = "contract-delivery"
-	reviewer            = "american-dragon-designs"
-	operatingProfile    = "delegated-v1"
-	operationID         = "issue-75-live-delivery-v1"
-	deliveryIssueMarker = "starter-kit-contract:issue-75-20260721-01:issue:delivery"
+	sandboxRepositoryID        = "R_kgDOTa0WSg"
+	sandboxProjectID           = "PVT_kwDOEjyyNM4Bdm9F"
+	sandboxAccount             = "codex-starter-kit-labs"
+	deliveryBranch             = "contract/issue-75-20260721-01"
+	implementedPath            = ".github/workflows/issue-75-fixture-check.yml"
+	requiredCheck              = "contract-delivery"
+	requiredCheckIntegrationID = int64(15368)
+	reviewer                   = "american-dragon-designs"
+	operatingProfile           = "delegated-v1"
+	operationID                = "issue-75-live-delivery-v1"
+	deliveryIssueMarker        = "starter-kit-contract:issue-75-20260721-01:issue:delivery"
 )
 
 var (
@@ -43,20 +44,21 @@ type issueIdentity struct {
 }
 
 type artifactContract struct {
-	SchemaVersion       int                          `json:"schema_version"`
-	EvidenceMode        string                       `json:"evidence_mode"`
-	RequestPointer      string                       `json:"request_pointer"`
-	MandatePointer      string                       `json:"mandate_pointer"`
-	ExecutableIssueBody string                       `json:"executable_issue_body"`
-	Parent              issueIdentity                `json:"parent"`
-	Delivery            issueIdentity                `json:"delivery"`
-	Dependent           issueIdentity                `json:"dependent"`
-	ImplementedSource   engine.GovernedSourceBinding `json:"implemented_source"`
-	HeadBranch          string                       `json:"head_branch"`
-	RequiredCheck       string                       `json:"required_check"`
-	Reviewer            string                       `json:"reviewer"`
-	MergeMethod         string                       `json:"merge_method"`
-	NativeVerification  []string                     `json:"native_verification"`
+	SchemaVersion              int                          `json:"schema_version"`
+	EvidenceMode               string                       `json:"evidence_mode"`
+	RequestPointer             string                       `json:"request_pointer"`
+	MandatePointer             string                       `json:"mandate_pointer"`
+	ExecutableIssueBody        string                       `json:"executable_issue_body"`
+	Parent                     issueIdentity                `json:"parent"`
+	Delivery                   issueIdentity                `json:"delivery"`
+	Dependent                  issueIdentity                `json:"dependent"`
+	ImplementedSource          engine.GovernedSourceBinding `json:"implemented_source"`
+	HeadBranch                 string                       `json:"head_branch"`
+	RequiredCheck              string                       `json:"required_check"`
+	RequiredCheckIntegrationID int64                        `json:"required_check_integration_id"`
+	Reviewer                   string                       `json:"reviewer"`
+	MergeMethod                string                       `json:"merge_method"`
+	NativeVerification         []string                     `json:"native_verification"`
 }
 
 type outputEnvelope struct {
@@ -226,9 +228,14 @@ func build(value options) (outputEnvelope, error) {
 		SchemaVersion: 1, OperationID: operationID, SourceRevision: value.sourceRevision,
 		OperatingProfileRevision: operatingProfile, ManagedID: managedID,
 		Title: "Issue 75 contract fixture: governed delivery", Target: target, BaseBranch: "main", HeadBranch: deliveryBranch,
-		RequiredChecks: []string{requiredCheck},
-		Review:         engine.WorkReviewRequirement{Role: reviewer, DistinctContext: true},
-		MergeMethod:    "squash", Claim: claim, EffectBoundary: boundary,
+		RequiredChecks: []engine.DeliveryCheckIdentity{{Name: requiredCheck, IntegrationID: requiredCheckIntegrationID}},
+		Review: engine.DeliveryReviewDeclaration{
+			Actor: reviewer, Role: "delivery-reviewer", Capability: "governed-delivery-review",
+			ReviewedSourceRevision: value.sourceRevision, ImplementationContext: "codex-issue-75-delivery-implementation",
+			ReviewContext: "github-pull-request-review", ApprovalRoute: "github-pull-request-review",
+			FindingsRoute: "github-pull-request-review-comments", Limitations: []string{"exact synthetic fixture head only"},
+		},
+		MergeMethod: "squash", Claim: claim, EffectBoundary: boundary,
 	}
 	completion := engine.WorkDesiredIntent{
 		SchemaVersion: 2, OperationID: operationID, SourceRevision: value.sourceRevision,
@@ -272,7 +279,7 @@ func build(value options) (outputEnvelope, error) {
 	artifact := artifactContract{
 		SchemaVersion: 1, EvidenceMode: "credential-free-input", RequestPointer: "/request", MandatePointer: "/mandate", ExecutableIssueBody: issueBody,
 		Parent: value.parent, Delivery: value.delivery, Dependent: value.dependent, ImplementedSource: implemented,
-		HeadBranch: deliveryBranch, RequiredCheck: requiredCheck, Reviewer: reviewer, MergeMethod: "squash",
+		HeadBranch: deliveryBranch, RequiredCheck: requiredCheck, RequiredCheckIntegrationID: requiredCheckIntegrationID, Reviewer: reviewer, MergeMethod: "squash",
 		NativeVerification: []string{
 			"observe exact parent, delivery, and dependent issue number, database ID, and node ID",
 			"observe the delivery issue as Ready, Done, and closed after squash merge",

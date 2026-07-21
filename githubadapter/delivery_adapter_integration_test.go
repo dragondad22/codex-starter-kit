@@ -156,6 +156,47 @@ func TestDeliveryAdapterUsesASeparateLeastAuthorityEffectCredential(t *testing.T
 	}
 }
 
+func TestDeliveryAdapterSerializesRESTMutations(t *testing.T) {
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	requestedReview := false
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/octocat/example/git/refs":
+			json.NewEncoder(writer).Encode(map[string]any{})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/octocat/example/pulls/101":
+			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "head": map[string]any{"sha": "head-1"}})
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/octocat/example/pulls/101/requested_reviewers":
+			requestedReview = true
+			json.NewEncoder(writer).Encode(map[string]any{})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	config := adapterConfig(server, "user-token", "merger", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.MutationInterval = time.Hour
+	base, err := githubadapter.New(config, credentialProvider(now, "user-token", "merger", config.RequiredPermissions), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := githubadapter.NewDeliveryAdapter(base, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75", HeadRevision: "base-1"}); err != nil || result.Outcome != "applied" {
+		t.Fatalf("first mutation = %#v, %v", result, err)
+	}
+	timed, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := adapter.ApplyDelivery(timed, engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"}); err == nil {
+		t.Fatal("second REST mutation bypassed serialized pacing")
+	}
+	if requestedReview {
+		t.Fatal("paced review mutation reached GitHub after cancellation")
+	}
+}
+
 func deliveryIntent(claim *engine.WorkDeliveryClaim) engine.DeliveryIntent {
 	if claim == nil {
 		value := engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:75", SourceRevision: "source-1", ContractDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ImplementedSources: []engine.GovernedSourceBinding{{ID: "source", Path: "docs/implementation.md", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
@@ -171,6 +212,7 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	pullBody := "Closes #75\n\n" + marker
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -182,15 +224,15 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 		case "/repos/octocat/example/git/ref/heads/task/75-delivery-squash-completion":
 			json.NewEncoder(writer).Encode(map[string]any{"object": map[string]any{"sha": "head-1"}})
 		case "/repos/octocat/example/pulls/101":
-			json.NewEncoder(writer).Encode(map[string]any{"id": 1001, "number": 101, "node_id": "PR_101", "state": "open", "draft": false, "body": marker, "requested_reviewers": []any{map[string]any{"login": "reviewer"}}, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
+			json.NewEncoder(writer).Encode(map[string]any{"id": 1001, "number": 101, "node_id": "PR_101", "state": "open", "draft": false, "body": pullBody, "requested_reviewers": []any{map[string]any{"login": "reviewer"}}, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
 		case "/repos/octocat/example/commits/head-1/check-runs":
-			json.NewEncoder(writer).Encode(map[string]any{"check_runs": []any{map[string]any{"name": "foundation", "status": "completed", "conclusion": "success", "head_sha": "head-1"}}})
+			json.NewEncoder(writer).Encode(map[string]any{"check_runs": []any{map[string]any{"name": "foundation", "status": "completed", "conclusion": "success", "head_sha": "head-1", "app": map[string]any{"id": 15368}}}})
 		case "/repos/octocat/example/commits/head-1/status":
 			json.NewEncoder(writer).Encode(map[string]any{"statuses": []any{}})
 		case "/repos/octocat/example/pulls/101/reviews":
 			json.NewEncoder(writer).Encode([]any{map[string]any{"id": 501, "state": "APPROVED", "commit_id": "head-1", "user": map[string]any{"login": "reviewer"}}})
 		case "/repos/octocat/example/rules/branches/main":
-			json.NewEncoder(writer).Encode([]any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "foundation"}}}}})
+			json.NewEncoder(writer).Encode([]any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "foundation", "integration_id": 15368}}}}})
 		case "/repos/octocat/example":
 			json.NewEncoder(writer).Encode(map[string]any{"node_id": "R_repo", "default_branch": "main", "allow_squash_merge": true})
 		case "/repos/octocat/example/branches/main":
@@ -202,19 +244,44 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	defer server.Close()
 
 	base := newUserAdapter(t, server, now)
-	adapter, err := githubadapter.NewDeliveryAdapter(base, []githubadapter.DeliveryReviewerTrust{{Actor: "reviewer", Capable: true, DistinctContext: true}})
+	review := engine.DeliveryReviewDeclaration{Actor: "reviewer", Role: "delivery-reviewer", Capability: "governed-delivery-review", ReviewedSourceRevision: "source-1", ImplementationContext: "implementation-context", ReviewContext: "github-pull-request-review", ApprovalRoute: "github-pull-request-review", FindingsRoute: "github-pull-request-review-comments", Limitations: []string{"exact head only"}}
+	adapter, err := githubadapter.NewDeliveryAdapter(base, []githubadapter.DeliveryReviewerTrust{{Declaration: review}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	observation, err := adapter.ObserveDelivery(context.Background(), engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", OperatingProfileRevision: "profile-1", ManagedID: "issue:75", Title: "Deliver issue 75", Target: managedTarget(),
-		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"}, Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", Claim: &claim,
+		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation", IntegrationID: 15368}}, Review: review, MergeMethod: "squash", Claim: &claim,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || len(observation.Reviews) != 1 || !observation.Reviews[0].Capable || observation.Rules.Revision == "" {
+	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || observation.PullRequest.ClosesIssueNumber != 75 || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || observation.Checks[0].IntegrationID != 15368 || len(observation.Reviews) != 1 || observation.Reviews[0].Capability != review.Capability || observation.Rules.Revision == "" {
 		t.Fatalf("delivery observation = %#v", observation)
+	}
+	pullBody = marker
+	unlinked, err := adapter.ObserveDelivery(context.Background(), engine.DeliveryIntent{
+		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", OperatingProfileRevision: "profile-1", ManagedID: "issue:75", Title: "Deliver issue 75", Target: managedTarget(),
+		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation", IntegrationID: 15368}}, Review: review, MergeMethod: "squash", Claim: &claim,
+	})
+	if err != nil || unlinked.PullRequest.ClosesIssueNumber != 0 || len(unlinked.Problems) == 0 {
+		t.Fatalf("non-reciprocal PR linkage was accepted: %#v, %v", unlinked, err)
+	}
+}
+
+func TestDeliveryAdapterRejectsObserverEffectAPIRouteMismatch(t *testing.T) {
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	observer := newUserAdapter(t, server, now)
+	config := adapterConfig(server, "user-token", "merger", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.GraphQLURL = server.URL + "/different-graphql"
+	effect, err := githubadapter.New(config, credentialProvider(now, "user-token", "merger", config.RequiredPermissions), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := githubadapter.NewDeliveryAdapter(observer, nil, effect); err == nil {
+		t.Fatal("different GraphQL API route was accepted for the effect transport")
 	}
 }
 
@@ -236,7 +303,7 @@ func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing
 		case "/repos/octocat/example/git/ref/heads/task/75-delivery-squash-completion":
 			http.NotFound(writer, request)
 		case "/repos/octocat/example/pulls/101":
-			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "state": "closed", "merged": true, "merged_at": now, "merge_commit_sha": "merge-1", "body": marker, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
+			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "state": "closed", "merged": true, "merged_at": now, "merge_commit_sha": "merge-1", "body": "Closes #75\n\n" + marker, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
 		case "/repos/octocat/example/pulls/101/files":
 			json.NewEncoder(writer).Encode([]any{map[string]any{"filename": "docs/implementation.md", "status": "modified"}})
 		case "/repos/octocat/example/commits/head-1/check-runs":
@@ -266,7 +333,7 @@ func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing
 	}
 	intent := deliveryIntent(&claim)
 	intent.RequiredChecks = nil
-	intent.Review = engine.WorkReviewRequirement{}
+	intent.Review = engine.DeliveryReviewDeclaration{}
 	observation, err := adapter.ObserveDelivery(context.Background(), intent)
 	if err != nil {
 		t.Fatal(err)

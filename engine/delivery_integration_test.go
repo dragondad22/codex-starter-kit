@@ -2,11 +2,73 @@ package engine_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
 )
+
+func TestDeliveryRequiresACompleteDistinctReviewDeclaration(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*engine.DeliveryReviewDeclaration)
+	}{
+		{name: "empty", mutate: func(review *engine.DeliveryReviewDeclaration) { *review = engine.DeliveryReviewDeclaration{} }},
+		{name: "same implementation context", mutate: func(review *engine.DeliveryReviewDeclaration) {
+			review.ReviewContext = review.ImplementationContext
+		}},
+		{name: "wrong source", mutate: func(review *engine.DeliveryReviewDeclaration) { review.ReviewedSourceRevision = "other" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+			test.mutate(&request.Intent.Review)
+			inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if inspection.Disposition != engine.DeliveryDispositionNeedsReview || len(inspection.Problems) == 0 {
+				t.Fatalf("invalid review declaration was accepted: %#v", inspection)
+			}
+		})
+	}
+}
+
+func TestDeliveryRejectsReviewEvidenceNotBoundToDeclaration(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.Reviews[0].ReviewedSourceRevision = "other-source"
+		return observation
+	})
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionReviewPending {
+		t.Fatalf("unbound review evidence disposition = %q", inspection.Disposition)
+	}
+}
+
+func TestDeliveryAppBoundCheckCannotBeSatisfiedBySameNamedStatus(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.Checks = []engine.DeliveryCheckObservation{
+			{Name: "foundation", IntegrationID: 15368, HeadRevision: "head-1", State: "pending", EvidenceID: "check-run:1"},
+			{Name: "foundation", HeadRevision: "head-1", State: "passed", EvidenceID: "status:1"},
+		}
+		observation.Rules.RequiredChecks = []engine.DeliveryCheckIdentity{{Name: "foundation", IntegrationID: 15368}}
+		return observation
+	})
+	request.Intent.RequiredChecks = []engine.DeliveryCheckIdentity{{Name: "foundation", IntegrationID: 15368}}
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionChecksPending {
+		t.Fatalf("same-named status satisfied App check: %#v", inspection)
+	}
+}
 
 func TestDeliveryPlansReadyTransitionOnlyAfterExactHeadGatesPass(t *testing.T) {
 	lifecycle, _, request := deliveryFixture(t, func(engine.DeliveryObservation) engine.DeliveryObservation { return readyDraftObservation() })
@@ -154,10 +216,10 @@ func TestDeliveryKeepsPendingDistinctReviewSeparateFromChecks(t *testing.T) {
 func TestDeliveryRequiresQualifiedIndependenceWhenPolicyAddsIt(t *testing.T) {
 	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
 		observation.PullRequest.Draft = false
-		observation.Reviews[0].QualifiedIndependent = false
+		observation.Reviews[0].StrongerPolicySatisfied = false
 		return observation
 	})
-	request.Intent.Review.QualifiedIndependent = true
+	request.Intent.Review.StrongerPolicyRequired = true
 	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -171,10 +233,11 @@ func TestDeliveryUsesLatestEffectiveReviewForEachActor(t *testing.T) {
 	now := time.Date(2026, 7, 21, 20, 0, 0, 0, time.UTC)
 	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
 		observation.PullRequest.Draft = false
-		observation.Reviews = []engine.DeliveryReviewObservation{
-			{Actor: "reviewer", HeadRevision: "head-1", State: "changes-requested", DistinctContext: true, Capable: true, EvidenceID: "review:1", ObservedAt: now},
-			{Actor: "reviewer", HeadRevision: "head-1", State: "approved", DistinctContext: true, Capable: true, EvidenceID: "review:2", ObservedAt: now.Add(time.Minute)},
-		}
+		first := deliveryReviewObservation("changes-requested")
+		first.EvidenceID, first.ObservedAt = "review:1", now
+		second := deliveryReviewObservation("approved")
+		second.EvidenceID, second.ObservedAt = "review:2", now.Add(time.Minute)
+		observation.Reviews = []engine.DeliveryReviewObservation{first, second}
 		return observation
 	})
 	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
@@ -404,6 +467,45 @@ func TestDeliveryMandateMustContainExactActorTargetAndEffect(t *testing.T) {
 	}
 }
 
+func TestDeliveryReacquiresExactCapabilityBeforeEffect(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := plan.Capability
+	changed.InstallationID = "changed-installation"
+	adapter.SetCapability(changed)
+	if _, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, deliveryMandate(request, []string{"merger"}, plan.Effects[0].Kind)); err == nil {
+		t.Fatal("changed apply-time capability was accepted")
+	}
+	if adapter.ApplyCount() != 0 {
+		t.Fatal("changed capability reached an external effect")
+	}
+}
+
+func TestDeliveryInspectDoesNotTreatCorruptRetainedStateAsAbsence(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	if _, err := lifecycle.InspectDelivery(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(request.Repository, ".starter-kit", "delivery", "state.json")
+	if err := os.WriteFile(path, []byte("corrupt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.InspectDelivery(context.Background(), request); err == nil {
+		t.Fatal("corrupt retained delivery state was treated as clean absence")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "corrupt\n" {
+		t.Fatal("corrupt evidence was overwritten during failed inspection")
+	}
+}
+
 func TestDeliveryAppliesContainedReadyTransitionAndReobservesIt(t *testing.T) {
 	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
 	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
@@ -612,8 +714,8 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	lifecycle := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(workAdapter), engine.WithDeliveryAdapter(deliveryAdapter))
 	request := engine.DeliveryRequest{Repository: completion.Repository, CompletionIntent: &completion.Intent, Intent: engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision, Title: completion.Intent.Task.Title,
-		ManagedID: completion.Intent.Task.ManagedID, Target: completion.Intent.Target, BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"},
-		Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", Claim: &claim, EffectBoundary: completion.Intent.EffectBoundary,
+		ManagedID: completion.Intent.Task.ManagedID, Target: completion.Intent.Target, BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation"}},
+		Review: deliveryReviewDeclaration(completion.Intent.SourceRevision, completion.Intent.OperatingProfileRevision), MergeMethod: "squash", Claim: &claim, EffectBoundary: completion.Intent.EffectBoundary,
 	}}
 	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
 	if err != nil {
@@ -681,8 +783,8 @@ func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engin
 	lifecycle := engine.New(engine.WithClock(deliveryClock{now}), engine.WithDeliveryAdapter(adapter))
 	request := engine.DeliveryRequest{Repository: t.TempDir(), Intent: engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", ManagedID: "issue:75", Title: "Deliver issue 75",
-		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"},
-		Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", OperatingProfileRevision: "profile-1",
+		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation"}},
+		Review: deliveryReviewDeclaration("source-1", "profile-1"), MergeMethod: "squash", OperatingProfileRevision: "profile-1",
 		Target:         engine.WorkTarget{Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project"},
 		Claim:          &engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:75", SourceRevision: "source-1", ContractDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ImplementedSources: []engine.GovernedSourceBinding{{ID: "source", Path: "docs/implementation.md", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}},
 		EffectBoundary: engine.WorkEffectBoundary{DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "repository-evidence", RecoveryOwner: "owner"},
@@ -736,12 +838,21 @@ func readyDraftObservation() engine.DeliveryObservation {
 		Issue:         engine.DeliveryIssueObservation{ManagedID: "issue:75", Number: 75, State: "open"},
 		Branch:        engine.DeliveryBranchObservation{Name: "task/75-delivery-squash-completion", Revision: "head-1", Present: true},
 		PullRequest: engine.DeliveryPullRequestObservation{
-			Number: 101, State: "open", Draft: true, Base: "main", Head: "task/75-delivery-squash-completion", HeadRevision: "head-1",
+			Number: 101, State: "open", Draft: true, Base: "main", Head: "task/75-delivery-squash-completion", HeadRevision: "head-1", ClosesIssueNumber: 75,
 		},
 		Checks:  []engine.DeliveryCheckObservation{{Name: "foundation", HeadRevision: "head-1", State: "passed"}},
-		Reviews: []engine.DeliveryReviewObservation{{Actor: "reviewer", HeadRevision: "head-1", State: "approved", DistinctContext: true, Capable: true}},
-		Rules:   engine.DeliveryRulesObservation{Revision: "rules-1", BaseRevision: "base-1", RequiredChecks: []string{"foundation"}, MergeMethods: []string{"squash"}},
+		Reviews: []engine.DeliveryReviewObservation{deliveryReviewObservation("approved")},
+		Rules:   engine.DeliveryRulesObservation{Revision: "rules-1", BaseRevision: "base-1", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation"}}, MergeMethods: []string{"squash"}},
 	}
+}
+
+func deliveryReviewDeclaration(source, profile string) engine.DeliveryReviewDeclaration {
+	return engine.DeliveryReviewDeclaration{Actor: "reviewer", Role: "delivery-reviewer", Capability: "governed-delivery-review", ReviewedSourceRevision: source, ImplementationContext: "implementation-" + profile, ReviewContext: "distinct-review-context", ApprovalRoute: "github-pull-request-review", FindingsRoute: "github-pull-request-review-comments", Limitations: []string{"exact governed head only"}}
+}
+
+func deliveryReviewObservation(state string) engine.DeliveryReviewObservation {
+	declaration := deliveryReviewDeclaration("source-1", "profile-1")
+	return engine.DeliveryReviewObservation{Actor: declaration.Actor, HeadRevision: "head-1", State: state, Role: declaration.Role, Capability: declaration.Capability, ReviewedSourceRevision: declaration.ReviewedSourceRevision, ImplementationContext: declaration.ImplementationContext, ReviewContext: declaration.ReviewContext, ApprovalRoute: declaration.ApprovalRoute, FindingsRoute: declaration.FindingsRoute, Limitations: declaration.Limitations}
 }
 
 type deliveryClock struct{ now time.Time }

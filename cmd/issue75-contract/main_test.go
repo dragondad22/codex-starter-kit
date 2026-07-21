@@ -212,7 +212,7 @@ func contractFixture(t *testing.T) (engine.DeliveryRequest, engine.WorkExecution
 	intent := engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: "issue-75-live-v1", SourceRevision: source, OperatingProfileRevision: "delegated-v1",
 		ManagedID: "issue:15", Title: "Contract fixture: governed delivery", Target: target, BaseBranch: "main", HeadBranch: "contract/issue-75-20260721-01",
-		RequiredChecks: []string{"contract-fixture"}, Review: engine.WorkReviewRequirement{Role: "american-dragon-designs", DistinctContext: true}, MergeMethod: "squash",
+		RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "contract-delivery", IntegrationID: 15368}}, Review: engine.DeliveryReviewDeclaration{Actor: "american-dragon-designs", Role: "delivery-reviewer", Capability: "governed-delivery-review", ReviewedSourceRevision: source, ImplementationContext: "codex-issue-75-delivery-implementation", ReviewContext: "github-pull-request-review", ApprovalRoute: "github-pull-request-review", FindingsRoute: "github-pull-request-review-comments", Limitations: []string{"exact fixture head only"}}, MergeMethod: "squash",
 		Claim:          &engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:15", SourceRevision: source, ContractDigest: contractDigest, ImplementedSources: []engine.GovernedSourceBinding{{ID: "issue", Path: "fixtures/issue-75.md", Digest: "sha256:" + strings.Repeat("b", 64)}}},
 		EffectBoundary: boundary,
 	}

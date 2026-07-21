@@ -23,23 +23,24 @@ import (
 )
 
 const (
-	sandboxOwnerID      = "305967668"
-	sandboxRepositoryID = "R_kgDOTa0WSg"
-	sandboxRESTID       = int64(1303189066)
-	sandboxProjectID    = "PVT_kwDOEjyyNM4Bdm9F"
-	sandboxRepository   = "codex-starter-kit-labs/codex-starter-kit-sandbox"
-	sandboxOwner        = "codex-starter-kit-labs"
-	sandboxName         = "codex-starter-kit-sandbox"
-	configuration       = "issue-75-sandbox-config-v1"
-	runMarker           = "starter-kit-contract:issue-75-20260721-01"
-	deliveryHeadBranch  = "contract/issue-75-20260721-01"
-	workflowPath        = ".github/workflows/issue-75-fixture-check.yml"
-	statusFieldID       = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTIk"
-	readinessFieldID    = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZA"
-	statusBacklogID     = "f75ad846"
-	statusInProgressID  = "47fc9ee4"
-	readinessReadyID    = "2323ce77"
-	readinessBlockedID  = "983e3745"
+	sandboxOwnerID             = "305967668"
+	sandboxRepositoryID        = "R_kgDOTa0WSg"
+	sandboxRESTID              = int64(1303189066)
+	sandboxProjectID           = "PVT_kwDOEjyyNM4Bdm9F"
+	sandboxRepository          = "codex-starter-kit-labs/codex-starter-kit-sandbox"
+	sandboxOwner               = "codex-starter-kit-labs"
+	sandboxName                = "codex-starter-kit-sandbox"
+	configuration              = "issue-75-sandbox-config-v1"
+	runMarker                  = "starter-kit-contract:issue-75-20260721-01"
+	deliveryHeadBranch         = "contract/issue-75-20260721-01"
+	workflowPath               = ".github/workflows/issue-75-fixture-check.yml"
+	statusFieldID              = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTIk"
+	readinessFieldID           = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZA"
+	statusBacklogID            = "f75ad846"
+	statusInProgressID         = "47fc9ee4"
+	readinessReadyID           = "2323ce77"
+	readinessBlockedID         = "983e3745"
+	githubActionsIntegrationID = int64(15368)
 )
 
 var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -93,7 +94,7 @@ func main() {
 func run(args []string, now time.Time, output io.Writer) error {
 	flags := flag.NewFlagSet("issue75-sandbox", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	stage := flags.String("stage", "", "issues-setup, issues-governed, project-setup, relationships-setup, file-initial, file-stale, cleanup-relationships, cleanup-file, cleanup-delivery, or cleanup-issues")
+	stage := flags.String("stage", "", "issues-setup, issues-governed, project-setup, relationships-setup, rules-setup, file-initial, file-stale, cleanup-relationships, cleanup-rules, cleanup-file, cleanup-delivery, or cleanup-issues")
 	repository := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact starter-kit source revision")
 	approvedBy := flags.String("approved-by", "", "approving human identity")
@@ -226,8 +227,14 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 			makeAbsent(resources)
 		}
 		return githubadapter.SandboxRoleReconciler, resources, nil
+	case "rules-setup", "cleanup-rules":
+		resources := rulesResources()
+		if value.stage == "cleanup-rules" {
+			makeAbsent(resources)
+		}
+		return githubadapter.SandboxRoleRules, resources, nil
 	case "file-initial":
-		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource(deliveryHeadBranch, initialWorkflow(), false)}, nil
+		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource("main", initialWorkflow(), false)}, nil
 	case "file-stale":
 		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource(deliveryHeadBranch, finalWorkflow(), false)}, nil
 	case "cleanup-file":
@@ -437,6 +444,11 @@ func workflowResource(branch, content string, absent bool) engine.SandboxResourc
 	}, absent)
 }
 
+func rulesResources() []engine.SandboxResourceSpec {
+	definition := fmt.Sprintf(`{"enforcement":"active","target":"branch","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":%d}],"strict_required_status_checks_policy":true}}]}`, githubActionsIntegrationID)
+	return []engine.SandboxResourceSpec{resource("ruleset:delivery-check", engine.SandboxResourceRuleset, runMarker+":ruleset:delivery-check", runMarker, map[string]string{"enforcement": "active", "target": "branch", "input:definition": definition}, false)}
+}
+
 func initialWorkflow() string {
 	return "# " + runMarker + "\nname: Issue 75 contract\non:\n  pull_request:\njobs:\n  contract-delivery:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo initial-head\n"
 }
@@ -473,6 +485,10 @@ func roleConfiguration(role, stage string) (githubadapter.SandboxRoleExpectation
 			permissions = []string{"metadata:read", "organization-projects:write"}
 			tokenPermissions = map[string]string{"metadata": "read", "organization_projects": "write"}
 		}
+	} else if role == githubadapter.SandboxRoleRules {
+		actor, appID, installationID = "codex-starter-kit-labs-rules", "4319800", "147094473"
+		permissions = []string{"administration:write", "metadata:read"}
+		tokenPermissions = map[string]string{"administration": "write", "metadata": "read"}
 	} else if slices.Contains([]string{"file-initial", "file-stale", "cleanup-file"}, stage) {
 		permissions = []string{"contents:write", "metadata:read"}
 		tokenPermissions = map[string]string{"contents": "write", "metadata": "read"}

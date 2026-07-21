@@ -46,25 +46,25 @@ type workflowStep struct {
 }
 
 type envelope struct {
-	SchemaVersion            int                             `json:"schema_version"`
-	EvidenceMode             string                          `json:"evidence_mode"`
-	Outcome                  string                          `json:"outcome"`
-	Target                   engine.WorkTarget               `json:"target"`
-	ManagedID                string                          `json:"managed_id"`
-	OperationID              string                          `json:"operation_id"`
-	SourceRevision           string                          `json:"source_revision"`
-	OperatingProfileRevision string                          `json:"operating_profile_revision"`
-	BaseBranch               string                          `json:"base_branch"`
-	HeadBranch               string                          `json:"head_branch"`
-	RequiredChecks           []string                        `json:"required_checks"`
-	Review                   engine.WorkReviewRequirement    `json:"review"`
-	ProductApproval          engine.WorkReviewRequirement    `json:"product_approval,omitempty"`
-	DeliveryResourceDigest   string                          `json:"delivery_resource_digest"`
-	MandateID                string                          `json:"mandate_id"`
-	ApprovedEffects          []string                        `json:"approved_effects"`
-	Authorities              []engine.WorkExecutionAuthority `json:"authorities"`
-	Workflow                 []workflowStep                  `json:"workflow"`
-	Limitations              []string                        `json:"limitations"`
+	SchemaVersion            int                              `json:"schema_version"`
+	EvidenceMode             string                           `json:"evidence_mode"`
+	Outcome                  string                           `json:"outcome"`
+	Target                   engine.WorkTarget                `json:"target"`
+	ManagedID                string                           `json:"managed_id"`
+	OperationID              string                           `json:"operation_id"`
+	SourceRevision           string                           `json:"source_revision"`
+	OperatingProfileRevision string                           `json:"operating_profile_revision"`
+	BaseBranch               string                           `json:"base_branch"`
+	HeadBranch               string                           `json:"head_branch"`
+	RequiredChecks           []engine.DeliveryCheckIdentity   `json:"required_checks"`
+	Review                   engine.DeliveryReviewDeclaration `json:"review"`
+	ProductApproval          engine.WorkReviewRequirement     `json:"product_approval,omitempty"`
+	DeliveryResourceDigest   string                           `json:"delivery_resource_digest"`
+	MandateID                string                           `json:"mandate_id"`
+	ApprovedEffects          []string                         `json:"approved_effects"`
+	Authorities              []engine.WorkExecutionAuthority  `json:"authorities"`
+	Workflow                 []workflowStep                   `json:"workflow"`
+	Limitations              []string                         `json:"limitations"`
 }
 
 type transitionEvidence struct {
@@ -147,7 +147,15 @@ func runWithDependencies(ctx context.Context, args []string, getenv func(string)
 			"failed gates, stale identity, or authority mismatch remain explicit non-passes",
 		},
 	}
-	slices.Sort(result.RequiredChecks)
+	slices.SortFunc(result.RequiredChecks, func(left, right engine.DeliveryCheckIdentity) int {
+		if left.Name < right.Name {
+			return -1
+		}
+		if left.Name > right.Name {
+			return 1
+		}
+		return int(left.IntegrationID - right.IntegrationID)
+	})
 	slices.Sort(result.ApprovedEffects)
 	slices.SortFunc(result.Authorities, func(left, right engine.WorkExecutionAuthority) int {
 		return strings.Compare(left.Actor+"\x00"+left.CredentialMode, right.Actor+"\x00"+right.CredentialMode)
@@ -174,7 +182,7 @@ func executeTransition(ctx context.Context, request engine.DeliveryRequest, mand
 	if err != nil {
 		return err
 	}
-	delivery, err := githubadapter.NewDeliveryAdapter(observer, []githubadapter.DeliveryReviewerTrust{{Actor: "american-dragon-designs", Capable: true, DistinctContext: true}}, effect)
+	delivery, err := githubadapter.NewDeliveryAdapter(observer, []githubadapter.DeliveryReviewerTrust{{Declaration: request.Intent.Review}}, effect)
 	if err != nil {
 		return err
 	}
@@ -321,16 +329,16 @@ func validateEnvelope(request engine.DeliveryRequest, mandate engine.WorkExecuti
 	if intent.SchemaVersion != 1 || intent.Target.Host != sandboxHost || intent.Target.RepositoryID != sandboxRepository || intent.Target.ProjectID != sandboxProject || !managedPattern.MatchString(intent.ManagedID) || intent.Title == "" || intent.OperationID == "" || intent.SourceRevision != expectedSourceRevision || intent.OperatingProfileRevision == "" {
 		return errors.New("delivery request is not bound to the approved immutable issue #75 sandbox target")
 	}
-	if request.Repository != "." || intent.BaseBranch != "main" || !strings.HasPrefix(intent.HeadBranch, "contract/issue-75-") || intent.MergeMethod != "squash" || len(intent.RequiredChecks) == 0 || hasDuplicateOrEmpty(intent.RequiredChecks) {
+	if request.Repository != "." || intent.BaseBranch != "main" || !strings.HasPrefix(intent.HeadBranch, "contract/issue-75-") || intent.MergeMethod != "squash" || !slices.Equal(intent.RequiredChecks, []engine.DeliveryCheckIdentity{{Name: "contract-delivery", IntegrationID: 15368}}) || invalidCheckIdentities(intent.RequiredChecks) {
 		return errors.New("delivery request branch, checks, or squash policy is invalid")
 	}
-	if intent.Review.Role != "american-dragon-designs" || !intent.Review.DistinctContext || intent.Claim == nil || intent.Claim.ManagedID != intent.ManagedID || intent.Claim.SourceRevision != intent.SourceRevision || !digestPattern.MatchString(intent.Claim.ContractDigest) {
+	if intent.Review.Actor != "american-dragon-designs" || intent.Review.Role == "" || intent.Review.Capability == "" || intent.Review.ReviewedSourceRevision != intent.SourceRevision || intent.Review.ImplementationContext == "" || intent.Review.ReviewContext == "" || intent.Review.ReviewContext == intent.Review.ImplementationContext || intent.Review.ApprovalRoute == "" || intent.Review.FindingsRoute == "" || len(intent.Review.Limitations) == 0 || intent.Claim == nil || intent.Claim.ManagedID != intent.ManagedID || intent.Claim.SourceRevision != intent.SourceRevision || !digestPattern.MatchString(intent.Claim.ContractDigest) {
 		return errors.New("delivery request lacks the approved distinct review or governed claim identity")
 	}
 	if _, err := engine.RenderWorkDeliveryClaim(*intent.Claim); err != nil {
 		return errors.New("delivery request claim is invalid")
 	}
-	if intent.ProductApproval.Role != "" && intent.ProductApproval.Role == intent.Review.Role {
+	if intent.ProductApproval.Role != "" && intent.ProductApproval.Role == intent.Review.Actor {
 		return errors.New("product approval cannot reuse the distinct review identity")
 	}
 	if intent.EffectBoundary.DataClass != "public-synthetic" || intent.EffectBoundary.CostCeiling != "zero-dollar" || intent.EffectBoundary.Destructive == "" || intent.EffectBoundary.Retention == "" || intent.EffectBoundary.RecoveryOwner == "" {
@@ -374,6 +382,18 @@ func hasDuplicateOrEmpty(values []string) bool {
 			return true
 		}
 		seen[value] = true
+	}
+	return false
+}
+
+func invalidCheckIdentities(values []engine.DeliveryCheckIdentity) bool {
+	seen := map[string]bool{}
+	for _, value := range values {
+		key := fmt.Sprintf("%s#%d", value.Name, value.IntegrationID)
+		if value.Name == "" || value.IntegrationID < 0 || seen[key] {
+			return true
+		}
+		seen[key] = true
 	}
 	return false
 }

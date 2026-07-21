@@ -30,9 +30,11 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 		{"issues-governed", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
 		{"project-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceProjectItemField, 6, []string{"metadata:read", "organization-projects:write"}, false},
 		{"relationships-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, false},
+		{"rules-setup", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, false},
 		{"file-initial", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, false},
 		{"file-stale", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, false},
 		{"cleanup-relationships", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, true},
+		{"cleanup-rules", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, true},
 		{"cleanup-file", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, true},
 		{"cleanup-delivery", githubadapter.SandboxRoleSeeder, "", 2, []string{"contents:write", "metadata:read", "pull-requests:write"}, true},
 		{"cleanup-issues", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, true},
@@ -163,7 +165,7 @@ func TestWorkflowStagesBindChangedHeadContentAndExactFinalCleanup(t *testing.T) 
 	initial := mustBuild(t, "file-initial").Request.Manifest.Resources[0]
 	stale := mustBuild(t, "file-stale").Request.Manifest.Resources[0]
 	cleanup := mustBuild(t, "cleanup-file").Request.Manifest.Resources[0]
-	if initial.Attributes["branch"] != deliveryHeadBranch || stale.Attributes["branch"] != deliveryHeadBranch || cleanup.Attributes["branch"] != "main" {
+	if initial.Attributes["branch"] != "main" || stale.Attributes["branch"] != deliveryHeadBranch || cleanup.Attributes["branch"] != "main" {
 		t.Fatalf("workflow branches = %q/%q/%q", initial.Attributes["branch"], stale.Attributes["branch"], cleanup.Attributes["branch"])
 	}
 	if initial.Attributes["path"] != ".github/workflows/issue-75-fixture-check.yml" {
@@ -179,6 +181,40 @@ func TestWorkflowStagesBindChangedHeadContentAndExactFinalCleanup(t *testing.T) 
 		if !strings.Contains(content, runMarker) || !strings.Contains(content, "pull_request:") || !strings.Contains(content, "contract-delivery:") {
 			t.Fatalf("workflow content = %q", content)
 		}
+	}
+}
+
+func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T) {
+	setup := mustBuild(t, "rules-setup").Request.Manifest.Resources[0]
+	cleanup := mustBuild(t, "cleanup-rules").Request.Manifest.Resources[0]
+	if setup.Name != runMarker+":ruleset:delivery-check" || setup.Marker != runMarker || setup.Attributes["enforcement"] != "active" || setup.Attributes["target"] != "branch" {
+		t.Fatalf("rules setup identity = %#v", setup)
+	}
+	var definition struct {
+		Enforcement string `json:"enforcement"`
+		Conditions  struct {
+			RefName struct {
+				Include []string `json:"include"`
+			} `json:"ref_name"`
+		} `json:"conditions"`
+		Rules []struct {
+			Type       string `json:"type"`
+			Parameters struct {
+				Required []struct {
+					Context       string `json:"context"`
+					IntegrationID int64  `json:"integration_id"`
+				} `json:"required_status_checks"`
+			} `json:"parameters"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(setup.Attributes["input:definition"]), &definition); err != nil {
+		t.Fatal(err)
+	}
+	if definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 1 || definition.Rules[0].Type != "required_status_checks" || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID {
+		t.Fatalf("rules definition = %#v", definition)
+	}
+	if cleanup.DesiredState != engine.SandboxResourceAbsent || cleanup.Name != setup.Name || cleanup.Attributes["input:definition"] != setup.Attributes["input:definition"] {
+		t.Fatalf("rules cleanup is not exact: %#v", cleanup)
 	}
 }
 
