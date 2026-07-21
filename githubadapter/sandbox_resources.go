@@ -559,6 +559,7 @@ type sandboxPullRequest struct {
 	Draft  bool   `json:"draft"`
 	Head   struct {
 		Ref string `json:"ref"`
+		SHA string `json:"sha"`
 	} `json:"head"`
 	Base struct {
 		Ref string `json:"ref"`
@@ -568,13 +569,13 @@ type sandboxPullRequest struct {
 func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
 	result := []engine.SandboxObservedResource{}
 	var issues []sandboxIssue
-	if adapter.hasResourceKind(engine.SandboxResourceFixtureIssue) {
+	if adapter.hasLegacyFixtureCleanup(engine.SandboxResourceFixtureIssue) {
 		if _, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/issues?state=all&per_page=100", nil, &issues); err != nil {
 			return nil, err
 		}
 	}
 	var pulls []sandboxPullRequest
-	if adapter.hasResourceKind(engine.SandboxResourceFixturePR) {
+	if adapter.hasLegacyFixtureCleanup(engine.SandboxResourceFixturePR) {
 		if _, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/pulls?state=all&per_page=100", nil, &pulls); err != nil {
 			return nil, err
 		}
@@ -582,9 +583,32 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 	for _, desired := range adapter.config.Resources {
 		switch desired.Kind {
 		case engine.SandboxResourceFixtureIssue:
+			if exactFixtureIssueCleanup(desired) {
+				issue, found, err := adapter.readFixtureIssue(ctx, credential, desired.Attributes["number"])
+				if err != nil {
+					return nil, err
+				}
+				if !found {
+					continue
+				}
+				owned := fixtureIssueIdentityMatches(issue, desired) && issue.PullRequest == nil && strings.Contains(issue.Body, desired.Marker)
+				if owned && issue.State == "closed" {
+					continue
+				}
+				marker := ""
+				if strings.Contains(issue.Body, desired.Marker) {
+					marker = desired.Marker
+				}
+				result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(issue.Number), Marker: marker, Attributes: desiredAttributes(desired, map[string]string{"number": strconv.Itoa(issue.Number), "id": strconv.FormatInt(issue.ID, 10), "node_id": issue.NodeID, "state": issue.State})})
+				continue
+			}
 			for _, issue := range issues {
 				if issue.PullRequest == nil && strings.Contains(issue.Body, desired.Marker) {
-					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(issue.Number), Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"title": issue.Title, "state": issue.State, "node_id": issue.NodeID})})
+					attributes := desiredAttributes(desired, map[string]string{"title": issue.Title, "state": issue.State})
+					attributes["number"] = strconv.Itoa(issue.Number)
+					attributes["id"] = strconv.FormatInt(issue.ID, 10)
+					attributes["node_id"] = issue.NodeID
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(issue.Number), Marker: desired.Marker, Attributes: attributes})
 				}
 			}
 		case engine.SandboxResourceFixtureBranch:
@@ -603,9 +627,28 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 			}
 			result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: ref.Object.SHA, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"sha": ref.Object.SHA})})
 		case engine.SandboxResourceFixturePR:
+			if exactFixturePRCleanup(desired) {
+				pull, found, err := adapter.readFixturePull(ctx, credential, desired.Attributes["number"])
+				if err != nil {
+					return nil, err
+				}
+				if !found {
+					continue
+				}
+				owned := fixturePullIdentityMatches(pull, desired) && strings.Contains(pull.Body, desired.Marker)
+				if owned && pull.State == "closed" {
+					continue
+				}
+				marker := ""
+				if strings.Contains(pull.Body, desired.Marker) {
+					marker = desired.Marker
+				}
+				result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(pull.Number), Marker: marker, Attributes: desiredAttributes(desired, map[string]string{"number": strconv.Itoa(pull.Number), "id": strconv.FormatInt(pull.ID, 10), "node_id": pull.NodeID, "state": pull.State, "head": pull.Head.Ref, "base": pull.Base.Ref, "head_sha": pull.Head.SHA})})
+				continue
+			}
 			for _, pull := range pulls {
 				if strings.Contains(pull.Body, desired.Marker) {
-					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(pull.Number), Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"title": pull.Title, "state": pull.State, "draft": strconv.FormatBool(pull.Draft), "head": pull.Head.Ref, "base": pull.Base.Ref, "node_id": pull.NodeID})})
+					result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.Itoa(pull.Number), Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"title": pull.Title, "state": pull.State, "draft": strconv.FormatBool(pull.Draft), "head": pull.Head.Ref, "base": pull.Base.Ref, "head_sha": pull.Head.SHA, "node_id": pull.NodeID})})
 				}
 			}
 		case engine.SandboxResourceFixtureWorkflow:
@@ -629,6 +672,52 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 		}
 	}
 	return result, nil
+}
+
+func (adapter *SandboxAdapter) hasLegacyFixtureCleanup(kind string) bool {
+	for _, resource := range adapter.config.Resources {
+		if resource.Kind != kind {
+			continue
+		}
+		if kind == engine.SandboxResourceFixtureIssue && !exactFixtureIssueCleanup(resource) || kind == engine.SandboxResourceFixturePR && !exactFixturePRCleanup(resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func exactFixtureIssueCleanup(resource engine.SandboxResourceSpec) bool {
+	return resource.DesiredState == engine.SandboxResourceAbsent && resource.Attributes["number"] != "" && resource.Attributes["id"] != "" && resource.Attributes["node_id"] != ""
+}
+
+func exactFixturePRCleanup(resource engine.SandboxResourceSpec) bool {
+	return exactFixtureIssueCleanup(resource) && resource.Attributes["head"] != "" && resource.Attributes["base"] != "" && resource.Attributes["head_sha"] != ""
+}
+
+func (adapter *SandboxAdapter) readFixtureIssue(ctx context.Context, credential Credential, number string) (sandboxIssue, bool, error) {
+	var issue sandboxIssue
+	_, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/issues/"+number, nil, &issue)
+	if isResponseStatus(err, http.StatusNotFound) {
+		return sandboxIssue{}, false, nil
+	}
+	return issue, err == nil, err
+}
+
+func (adapter *SandboxAdapter) readFixturePull(ctx context.Context, credential Credential, number string) (sandboxPullRequest, bool, error) {
+	var pull sandboxPullRequest
+	_, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/pulls/"+number, nil, &pull)
+	if isResponseStatus(err, http.StatusNotFound) {
+		return sandboxPullRequest{}, false, nil
+	}
+	return pull, err == nil, err
+}
+
+func fixtureIssueIdentityMatches(issue sandboxIssue, desired engine.SandboxResourceSpec) bool {
+	return strconv.Itoa(issue.Number) == desired.Attributes["number"] && strconv.FormatInt(issue.ID, 10) == desired.Attributes["id"] && issue.NodeID == desired.Attributes["node_id"]
+}
+
+func fixturePullIdentityMatches(pull sandboxPullRequest, desired engine.SandboxResourceSpec) bool {
+	return strconv.Itoa(pull.Number) == desired.Attributes["number"] && strconv.FormatInt(pull.ID, 10) == desired.Attributes["id"] && pull.NodeID == desired.Attributes["node_id"] && pull.Head.Ref == desired.Attributes["head"] && pull.Base.Ref == desired.Attributes["base"] && pull.Head.SHA == desired.Attributes["head_sha"]
 }
 
 func (adapter *SandboxAdapter) observeIssueRelationships(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
@@ -707,7 +796,7 @@ func (adapter *SandboxAdapter) observeRepositoryFiles(ctx context.Context, crede
 
 func sandboxContentDigest(content string) string {
 	digest := sha256.Sum256([]byte(content))
-	return hex.EncodeToString(digest[:])
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 type sandboxRepositoryContent struct {
@@ -817,6 +906,9 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 	switch effect.Resource.Kind {
 	case engine.SandboxResourceFixtureIssue:
 		if effect.Kind == "remove-resource" {
+			if exactFixtureIssueCleanup(effect.Resource) {
+				return adapter.closeExactFixtureIssue(ctx, credential, effect)
+			}
 			return adapter.closeFixture(ctx, credential, "issues", effect)
 		}
 		body := map[string]any{"title": effect.Resource.Attributes["title"], "body": markerBody(effect.Resource)}
@@ -845,6 +937,22 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 		path := adapter.repoPath() + "/git/refs"
 		if effect.Kind == "remove-resource" {
 			path = adapter.repoPath() + "/git/refs/heads/" + escapePath(effect.Resource.Name)
+			if expected := effect.Resource.Attributes["sha"]; expected != "" {
+				var ref struct {
+					Object struct {
+						SHA string `json:"sha"`
+					} `json:"object"`
+				}
+				if _, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/git/ref/heads/"+escapePath(effect.Resource.Name), nil, &ref); err != nil {
+					if isResponseStatus(err, http.StatusNotFound) {
+						return engine.SandboxEffectResult{Outcome: "no-change", Detail: "exact fixture branch is absent"}, nil
+					}
+					return engine.SandboxEffectResult{}, err
+				}
+				if ref.Object.SHA != expected {
+					return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: ref.Object.SHA, Detail: "fixture branch head changed after cleanup approval"}, nil
+				}
+			}
 			if _, err := adapter.rest(ctx, credential, http.MethodDelete, path, nil, nil); err != nil && !isResponseStatus(err, http.StatusNotFound) {
 				return engine.SandboxEffectResult{}, err
 			}
@@ -873,6 +981,9 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: ref.Object.SHA, Detail: "marked fixture branch created"}, nil
 	case engine.SandboxResourceFixturePR:
 		if effect.Kind == "remove-resource" {
+			if exactFixturePRCleanup(effect.Resource) {
+				return adapter.closeExactFixturePull(ctx, credential, effect)
+			}
 			return adapter.closeFixture(ctx, credential, "pulls", effect)
 		}
 		body := map[string]any{"title": effect.Resource.Attributes["title"], "body": markerBody(effect.Resource), "head": effect.Resource.Attributes["head"], "base": effect.Resource.Attributes["base"], "draft": effect.Resource.Attributes["draft"] == "true"}
@@ -954,6 +1065,40 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: response.Content.SHA, Detail: "marked fixture workflow reconciled"}, nil
 	}
 	return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "fixture resource kind is unsupported"}, nil
+}
+
+func (adapter *SandboxAdapter) closeExactFixtureIssue(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	issue, found, err := adapter.readFixtureIssue(ctx, credential, effect.Resource.Attributes["number"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if !found || fixtureIssueIdentityMatches(issue, effect.Resource) && issue.PullRequest == nil && strings.Contains(issue.Body, effect.Resource.Marker) && issue.State == "closed" {
+		return engine.SandboxEffectResult{Outcome: "no-change", Detail: "exact marker-owned fixture issue is absent or closed"}, nil
+	}
+	if !fixtureIssueIdentityMatches(issue, effect.Resource) || issue.PullRequest != nil || !strings.Contains(issue.Body, effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: strconv.Itoa(issue.Number), Detail: "fixture issue identity or marker ownership changed"}, nil
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodPatch, adapter.repoPath()+"/issues/"+effect.Resource.Attributes["number"], map[string]string{"state": "closed"}, nil); err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: effect.Resource.Attributes["number"], Detail: "exact marker-owned fixture issue closed"}, nil
+}
+
+func (adapter *SandboxAdapter) closeExactFixturePull(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	pull, found, err := adapter.readFixturePull(ctx, credential, effect.Resource.Attributes["number"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if !found || fixturePullIdentityMatches(pull, effect.Resource) && strings.Contains(pull.Body, effect.Resource.Marker) && pull.State == "closed" {
+		return engine.SandboxEffectResult{Outcome: "no-change", Detail: "exact marker-owned fixture pull request is absent or closed"}, nil
+	}
+	if !fixturePullIdentityMatches(pull, effect.Resource) || !strings.Contains(pull.Body, effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: strconv.Itoa(pull.Number), Detail: "fixture pull request identity, head, or marker ownership changed"}, nil
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodPatch, adapter.repoPath()+"/pulls/"+effect.Resource.Attributes["number"], map[string]string{"state": "closed"}, nil); err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: effect.Resource.Attributes["number"], Detail: "exact marker-owned fixture pull request closed"}, nil
 }
 
 func (adapter *SandboxAdapter) closeFixture(ctx context.Context, credential Credential, family string, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
