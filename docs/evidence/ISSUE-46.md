@@ -58,9 +58,11 @@ field creation.
 The production adapter now validates the complete existing catalog—including the exact
 option count, names, and immutable IDs—before item effects.
 The engine's content-addressed external-resource lifecycle also plans the exact Phase
-field, nine options, `Phases` view, and nine feature assignments under a separate
-operational target and DEC-0022 mandate. It verifies the API user and classic `project`
-scope while retaining and exactly binding every other observed classic OAuth scope. Apply
+field, nine options, nine feature assignments, and this repository's observed `Phases`
+view under a separate operational target and DEC-0022 mandate. The view is retained as
+repository-specific evidence, not as a required managed-repository layout. It verifies
+the API user and classic `project` scope while retaining and exactly binding every other
+observed classic OAuth scope. Apply
 accepts only an independently retained mandate JSON artifact whose approver and recovery
 owner match the pinned target owner, whose approval identity is a retained #46 owner record,
 target, actors, timestamps, authority profile, resource digests, ceilings, retention, and
@@ -78,24 +80,28 @@ separately prove that an already-pinned stale identity remains non-pass. The his
 `Sandbox*` type names remain v1 compatibility labels; the operational mandate does not
 inherit sandbox authority.
 
-## Saved view and current live state
+## Optional saved view and current live state
 
 The owner created and renamed the human-facing view before the supported automation route
 was applied. A native GraphQL read now identifies `Phases` as
 `PVTV_lAHOASd_cc4BdI9qzgLBdLU`, table view number 6. It is grouped and sorted ascending by
 the immutable Phase field and displays Title, Status, Readiness, and native sub-issue
 progress. This makes Phase membership and progress understandable without making Phase a
-release or completion signal.
+release or completion signal. Saved views remain human-owned presentation: an individual
+or team may omit this view or arrange its own views without failing the governed Phase
+contract. Automation must not replace or normalize those choices.
 
 GitHub API version `2026-03-10` documents saved-view creation for user-owned Projects at
 [`POST /users/{user_id}/projectsV2/{project_number}/views`](https://docs.github.com/en/rest/projects/views#create-a-view-for-a-user-owned-project).
 That endpoint does not support
 GitHub App user, App installation, or fine-grained personal access tokens. The adapter
 therefore uses the classic user-token route only after native actor/scope verification.
-Its request schema does not expose grouping or sorting. The adapter consequently returns
-`not-configured` without creating a partial view when the required grouped/ascending-sorted
-`Phases` view is absent; it can still verify and replay the existing matching human-created
-view. No live Project effect was attempted by the correction itself. The deliberate
+Its request schema does not expose grouping or sorting. The repository-specific manifest
+consequently returns `not-configured` without creating a partial view when its
+grouped/ascending-sorted `Phases` view is absent; it can still verify and replay the
+existing matching human-created view. This is evidence about that optional manifest
+resource, not a universal Phase qualification gate. No live Project effect was attempted
+by the correction itself. The deliberate
 owner-approval seam was first exercised by the historical bounded non-pass below and then
 completed by the exact-head zero-effect qualification after transient-read recovery was
 implemented.
@@ -200,7 +206,8 @@ Coverage includes direct immutable-option projection and replay, native-parent-b
 context without copied assignment, clearing a duplicated child value, justified
 cross-cutting assignment, invalid Phase, orphan/duplicate parent assignment, incomplete
 catalog, renamed option, duplicate/wrong-type field, stale option identity, exact saved-
-view observation and re-read, explicit non-pass without partial creation when required
+view observation and re-read for the repository-specific manifest, explicit non-pass
+without partial creation when requested
 grouping/sorting is not expressible, unavailable user view route, immutable Project-item
 field update/replay, verified API user/classic scope, and the existing target,
 configuration, and partial-effect failure cases. It also covers unexpected broader classic

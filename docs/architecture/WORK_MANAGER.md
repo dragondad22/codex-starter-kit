@@ -136,7 +136,8 @@ transport outcomes, and simulated/live receipt separation. See the
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
 owns separately approved sandbox provisioning. #15 owns the deterministic reconciliation
-backstop; #46 owns governed Phase field, option, assignment, and saved-view configuration;
+backstop; #46 owns governed Phase field, option, and assignment configuration while its
+repository-specific receipt also observes an optional human-owned saved view;
 #74 consumes those results while owning full intake, subtype, Horizon, Phase, and Project
 governance; #75 owns branch/PR/review/gate delivery; and #76 owns aggregate live
 qualification, including the live item/parent/dependent reconciliation receipt.
@@ -152,5 +153,6 @@ Project-level Phase configuration uses the engine's existing content-addressed e
 resource lifecycle rather than the one-task intent. Its v1 implementation names remain
 `Sandbox*` for compatibility, but #46 supplies a distinct operational target, user-token
 authority profile, manifest, mandate, and state repository. The plan covers exactly one
-Phase catalog, one `Phases` view, and feature #1–#9 assignments; it cannot inherit #73's
-sandbox authority or widen routine Work Manager effects.
+Phase catalog, feature #1–#9 assignments, and the repository's observed optional `Phases`
+view; it cannot inherit #73's sandbox authority or widen routine Work Manager effects.
+Work Manager does not prescribe saved-view presence or layout.

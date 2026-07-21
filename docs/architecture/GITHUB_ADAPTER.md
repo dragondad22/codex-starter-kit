@@ -144,14 +144,18 @@ Project, issue, or paid feature was created or mutated for #72. #73 subsequently
 qualified the isolated sandbox baseline. #46 later observed, verified, and replayed the
 approved operational Phase catalog through a separately approved owner route with zero
 effects. That result qualifies the exact external-resource lifecycle candidate, not the
-routine Work Adapter Phase effect. #46 observed the matching human-created `Phases` view;
-automated creation remains `not-configured` when the required grouping and sorting cannot
-be expressed. #76 owns aggregate qualification and support claims.
+routine Work Adapter Phase effect. #46 observed the matching human-created `Phases` view
+as repository-specific evidence. Managed repositories do not require that view or any
+universal view layout; views remain human-owned presentation. When an explicit manifest
+does request a view, automated creation remains `not-configured` if the complete requested
+grouping and sorting cannot be expressed. #76 owns aggregate qualification and support
+claims.
 
-The Project-configuration route plans the complete Phase field/option catalog, the saved
-`Phases` view, and feature #1–#9 assignments as immutable resources. Existing name/type,
-option, node, item, layout, visible-field, grouping, sorting, or assignment conflicts stop
-instead of creating duplicates or overwriting human state. A missing view may be created
+The #46 Project-configuration route plans the complete Phase field/option catalog, the
+repository's saved `Phases` view, and feature #1–#9 assignments as immutable resources.
+The saved view is optional presentation rather than a universal Phase resource. Existing
+name/type, option, node, item, layout, visible-field, grouping, sorting, or assignment
+conflicts stop instead of creating duplicates or overwriting human state. A missing view may be created
 through the version-pinned REST route only when that route can express its complete desired
 configuration, and must be re-observed through GraphQL. GitHub's current create-view request
 accepts name, layout, filter, and visible fields but not grouping or sorting, so a missing

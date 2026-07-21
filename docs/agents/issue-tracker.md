@@ -21,9 +21,10 @@ synonym for a Scrum product backlog and does not mean Horizon `Later`.
 execution queue, while Horizon `Next` is product direction. Always name the field when
 the distinction is not obvious.
 
-Once configured, the `Phases` Project view is a human navigation surface over these
-governed facts. It does not become another roadmap authority and its progress context
-does not prove a phase or release complete.
+Saved Project views are optional, human-owned navigation surfaces over these governed
+facts. Individuals and teams may arrange them to fit their work. A `Phases` view, when
+used, does not become another roadmap authority and its progress context does not prove a
+phase or release complete; its absence or a different layout does not invalidate Phase.
 
 Triage labels route a complete item to the intended executor; they do not supersede the
 Project gate. For example, `ready-for-agent` plus Readiness `Blocked` means the brief is
