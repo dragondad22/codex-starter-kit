@@ -124,7 +124,7 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 		observation.Branch = engine.DeliveryBranchObservation{Name: pull.Head.Ref, Revision: pull.Head.SHA, Historical: true}
 	}
 	observation.PullRequest = engine.DeliveryPullRequestObservation{
-		Number: pull.Number, State: strings.ToLower(pull.State), Draft: pull.Draft, Base: pull.Base.Ref, Head: pull.Head.Ref, HeadRevision: pull.Head.SHA,
+		ID: pull.ID, NodeID: pull.NodeID, Number: pull.Number, State: strings.ToLower(pull.State), Draft: pull.Draft, Base: pull.Base.Ref, Head: pull.Head.Ref, HeadRevision: pull.Head.SHA,
 		Merged: pull.Merged, MergeRevision: pull.MergeCommitSHA, RequestedReviewers: pull.requestedReviewerLogins(),
 	}
 	if !branchMissing && pull.Head.SHA != branch.Object.SHA {
@@ -158,6 +158,7 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 }
 
 type deliveryPull struct {
+	ID                 int64      `json:"id"`
 	Number             int        `json:"number"`
 	NodeID             string     `json:"node_id"`
 	State              string     `json:"state"`

@@ -91,6 +91,8 @@ type DeliveryBranchObservation struct {
 }
 
 type DeliveryPullRequestObservation struct {
+	ID                 int64    `json:"id"`
+	NodeID             string   `json:"node_id"`
 	Number             int      `json:"number"`
 	State              string   `json:"state"`
 	Draft              bool     `json:"draft"`

@@ -34,6 +34,12 @@ const (
 	runMarker           = "starter-kit-contract:issue-75-20260721-01"
 	deliveryHeadBranch  = "contract/issue-75-20260721-01"
 	workflowPath        = ".github/workflows/issue-75-fixture-check.yml"
+	statusFieldID       = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTIk"
+	readinessFieldID    = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZA"
+	statusBacklogID     = "f75ad846"
+	statusInProgressID  = "47fc9ee4"
+	readinessReadyID    = "2323ce77"
+	readinessBlockedID  = "983e3745"
 )
 
 var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -86,7 +92,7 @@ func main() {
 func run(args []string, now time.Time, output io.Writer) error {
 	flags := flag.NewFlagSet("issue75-sandbox", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	stage := flags.String("stage", "", "issues-setup, relationships-setup, file-initial, file-stale, cleanup-relationships, cleanup-file, cleanup-delivery, or cleanup-issues")
+	stage := flags.String("stage", "", "issues-setup, project-setup, relationships-setup, file-initial, file-stale, cleanup-relationships, cleanup-file, cleanup-delivery, or cleanup-issues")
 	repository := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact starter-kit source revision")
 	approvedBy := flags.String("approved-by", "", "approving human identity")
@@ -197,6 +203,11 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 	switch value.stage {
 	case "issues-setup":
 		return githubadapter.SandboxRoleSeeder, fixtureIssues(false, value), nil
+	case "project-setup":
+		if err := validateIssueIdentities(value.parent, value.delivery, value.dependent); err != nil {
+			return "", nil, err
+		}
+		return githubadapter.SandboxRoleReconciler, projectResources(value), nil
 	case "relationships-setup", "cleanup-relationships":
 		if err := validateIssueIdentities(value.parent, value.delivery, value.dependent); err != nil {
 			return "", nil, err
@@ -233,12 +244,38 @@ func contractForStage(stage string) stageContract {
 	switch stage {
 	case "issues-setup":
 		contract.IdentityOutputs = issueIdentities
-	case "relationships-setup", "cleanup-relationships", "cleanup-issues":
+	case "project-setup", "relationships-setup", "cleanup-relationships", "cleanup-issues":
 		contract.IdentityRequirements = issueIdentities
 	case "cleanup-delivery":
 		contract.IdentityRequirements = []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}
 	}
 	return contract
+}
+
+func projectResources(value options) []engine.SandboxResourceSpec {
+	resources := []engine.SandboxResourceSpec{}
+	for _, item := range []struct {
+		name      string
+		identity  issueIdentity
+		status    string
+		readiness string
+	}{
+		{name: "parent", identity: value.parent, status: statusInProgressID, readiness: readinessReadyID},
+		{name: "delivery", identity: value.delivery, status: statusInProgressID, readiness: readinessReadyID},
+		{name: "dependent", identity: value.dependent, status: statusBacklogID, readiness: readinessBlockedID},
+	} {
+		resources = append(resources,
+			projectItemField("project-item:"+item.name+":status", item.name+" status", item.identity.NodeID, "Status", statusFieldID, item.status),
+			projectItemField("project-item:"+item.name+":readiness", item.name+" readiness", item.identity.NodeID, "Readiness", readinessFieldID, item.readiness),
+		)
+	}
+	return resources
+}
+
+func projectItemField(key, name, contentID, field, fieldID, optionID string) engine.SandboxResourceSpec {
+	return resource(key, engine.SandboxResourceProjectItemField, name, runMarker, map[string]string{
+		"content_id": contentID, "field": field, "field_id": fieldID, "option_id": optionID,
+	}, false)
 }
 
 func validateIssueIdentities(values ...issueIdentity) error {
@@ -357,6 +394,10 @@ func roleConfiguration(role, stage string) (githubadapter.SandboxRoleExpectation
 	tokenPermissions := map[string]string{"issues": "write", "metadata": "read"}
 	if role == githubadapter.SandboxRoleReconciler {
 		actor, appID, installationID = "codex-starter-kit-labs-reconciler", "4319725", "147093185"
+		if stage == "project-setup" {
+			permissions = []string{"metadata:read", "organization-projects:write"}
+			tokenPermissions = map[string]string{"metadata": "read", "organization_projects": "write"}
+		}
 	} else if slices.Contains([]string{"file-initial", "file-stale", "cleanup-file"}, stage) {
 		permissions = []string{"contents:write", "metadata:read"}
 		tokenPermissions = map[string]string{"contents": "write", "metadata": "read"}

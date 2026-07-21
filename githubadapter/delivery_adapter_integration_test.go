@@ -182,7 +182,7 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 		case "/repos/octocat/example/git/ref/heads/task/75-delivery-squash-completion":
 			json.NewEncoder(writer).Encode(map[string]any{"object": map[string]any{"sha": "head-1"}})
 		case "/repos/octocat/example/pulls/101":
-			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "state": "open", "draft": false, "body": marker, "requested_reviewers": []any{map[string]any{"login": "reviewer"}}, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
+			json.NewEncoder(writer).Encode(map[string]any{"id": 1001, "number": 101, "node_id": "PR_101", "state": "open", "draft": false, "body": marker, "requested_reviewers": []any{map[string]any{"login": "reviewer"}}, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
 		case "/repos/octocat/example/commits/head-1/check-runs":
 			json.NewEncoder(writer).Encode(map[string]any{"check_runs": []any{map[string]any{"name": "foundation", "status": "completed", "conclusion": "success", "head_sha": "head-1"}}})
 		case "/repos/octocat/example/commits/head-1/status":
@@ -213,7 +213,7 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(observation.Problems) != 0 || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || len(observation.Reviews) != 1 || !observation.Reviews[0].Capable || observation.Rules.Revision == "" {
+	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || len(observation.Reviews) != 1 || !observation.Reviews[0].Capable || observation.Rules.Revision == "" {
 		t.Fatalf("delivery observation = %#v", observation)
 	}
 }

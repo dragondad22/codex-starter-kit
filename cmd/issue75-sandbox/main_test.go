@@ -26,6 +26,7 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 		cleanup     bool
 	}{
 		{"issues-setup", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
+		{"project-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceProjectItemField, 6, []string{"metadata:read", "organization-projects:write"}, false},
 		{"relationships-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, false},
 		{"file-initial", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, false},
 		{"file-stale", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, false},
@@ -72,6 +73,24 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 			}
 			validateManifest(t, input)
 		})
+	}
+}
+
+func TestProjectSetupSelectsReadyWorkAndBlockedDependent(t *testing.T) {
+	resources := mustBuild(t, "project-setup").Request.Manifest.Resources
+	if len(resources) != 6 {
+		t.Fatalf("project resources = %#v", resources)
+	}
+	want := []struct{ content, field, option string }{
+		{"I_parent", statusFieldID, statusInProgressID}, {"I_parent", readinessFieldID, readinessReadyID},
+		{"I_delivery", statusFieldID, statusInProgressID}, {"I_delivery", readinessFieldID, readinessReadyID},
+		{"I_dependent", statusFieldID, statusBacklogID}, {"I_dependent", readinessFieldID, readinessBlockedID},
+	}
+	for index, expected := range want {
+		attributes := resources[index].Attributes
+		if attributes["content_id"] != expected.content || attributes["field_id"] != expected.field || attributes["option_id"] != expected.option {
+			t.Fatalf("project resource %d = %#v", index, resources[index])
+		}
 	}
 }
 
