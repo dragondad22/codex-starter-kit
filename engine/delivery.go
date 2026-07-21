@@ -2,11 +2,16 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 )
+
+const deliveryStatePath = ".starter-kit/delivery/state.json"
 
 type DeliveryDisposition string
 
@@ -36,6 +41,7 @@ type DeliveryIntent struct {
 	RequiredChecks           []string              `json:"required_checks"`
 	Review                   WorkReviewRequirement `json:"review"`
 	MergeMethod              string                `json:"merge_method"`
+	Claim                    *WorkDeliveryClaim    `json:"delivery_claim"`
 	EffectBoundary           WorkEffectBoundary    `json:"effect_boundary"`
 }
 
@@ -148,10 +154,57 @@ type DeliveryEffectResult struct {
 }
 
 type DeliveryApplyResult struct {
-	SchemaVersion int                    `json:"schema_version"`
-	PlanID        string                 `json:"plan_id"`
-	Status        WorkApplyStatus        `json:"status"`
-	Results       []DeliveryEffectResult `json:"results"`
+	SchemaVersion int                     `json:"schema_version"`
+	PlanID        string                  `json:"plan_id"`
+	Status        WorkApplyStatus         `json:"status"`
+	Results       []DeliveryEffectResult  `json:"results"`
+	Receipts      []DeliveryEffectReceipt `json:"receipts"`
+}
+
+type DeliveryEffectReceipt struct {
+	SchemaVersion       int       `json:"schema_version"`
+	PlanID              string    `json:"plan_id"`
+	EffectID            string    `json:"effect_id"`
+	EffectKind          string    `json:"effect_kind"`
+	ManagedID           string    `json:"managed_id"`
+	PullRequest         int       `json:"pull_request"`
+	HeadRevision        string    `json:"head_revision"`
+	MergeRevision       string    `json:"merge_revision,omitempty"`
+	Actor               string    `json:"actor"`
+	CredentialMode      string    `json:"credential_mode"`
+	MandateID           string    `json:"mandate_id"`
+	SourceRevision      string    `json:"source_revision"`
+	ObservationRevision string    `json:"observation_revision"`
+	Outcome             string    `json:"outcome"`
+	Recoverable         bool      `json:"recoverable"`
+	Detail              string    `json:"detail"`
+	RecordedAt          time.Time `json:"recorded_at"`
+}
+
+type DeliveryVerification struct {
+	SchemaVersion int                     `json:"schema_version"`
+	OverallState  ControlState            `json:"overall_state"`
+	Disposition   DeliveryDisposition     `json:"disposition"`
+	Receipts      []DeliveryEffectReceipt `json:"receipts"`
+	VerifiedAt    time.Time               `json:"verified_at"`
+}
+
+type DeliveryStatusResult struct {
+	SchemaVersion int                     `json:"schema_version"`
+	Disposition   DeliveryDisposition     `json:"disposition"`
+	PlanID        string                  `json:"plan_id,omitempty"`
+	Receipts      []DeliveryEffectReceipt `json:"receipts"`
+}
+
+type deliveryState struct {
+	SchemaVersion int                     `json:"schema_version"`
+	StateDigest   string                  `json:"state_digest"`
+	Request       DeliveryRequest         `json:"request"`
+	Inspection    DeliveryInspection      `json:"inspection"`
+	Plan          *DeliveryPlan           `json:"plan,omitempty"`
+	Receipts      []DeliveryEffectReceipt `json:"receipts"`
+	Verification  *DeliveryVerification   `json:"verification,omitempty"`
+	Disposition   DeliveryDisposition     `json:"disposition"`
 }
 
 func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (DeliveryInspection, error) {
@@ -182,6 +235,9 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 		Capability  DeliveryCapability
 		Observation DeliveryObservation
 	}{root, request.Intent, capability, observation})
+	if err := writeDeliveryState(root, deliveryState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: []DeliveryEffectReceipt{}, Disposition: disposition}); err != nil {
+		return DeliveryInspection{}, err
+	}
 	return inspection, nil
 }
 
@@ -192,6 +248,9 @@ func (e *Engine) PlanDelivery(_ context.Context, inspection DeliveryInspection) 
 	if slices.Contains([]DeliveryDisposition{DeliveryDispositionChecksPending, DeliveryDispositionReviewPending, DeliveryDispositionChangesRequested, DeliveryDispositionClosedUnmerged}, inspection.Disposition) {
 		plan := DeliveryPlan{SchemaVersion: 1, Repository: inspection.Repository, Intent: inspection.Intent, Capability: inspection.Capability, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, NoChange: true}
 		plan.ID = digestJSON(plan)
+		if err := retainDeliveryPlan(inspection.Repository, inspection.ID, plan); err != nil {
+			return DeliveryPlan{}, err
+		}
 		return plan, nil
 	}
 	kind := DeliveryEffectMarkReady
@@ -204,6 +263,9 @@ func (e *Engine) PlanDelivery(_ context.Context, inspection DeliveryInspection) 
 	effect.ID = digestJSON(effect)
 	plan := DeliveryPlan{SchemaVersion: 1, Repository: inspection.Repository, Intent: inspection.Intent, Capability: inspection.Capability, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, Effects: []DeliveryEffect{effect}}
 	plan.ID = digestJSON(plan)
+	if err := retainDeliveryPlan(inspection.Repository, inspection.ID, plan); err != nil {
+		return DeliveryPlan{}, err
+	}
 	return plan, nil
 }
 
@@ -212,7 +274,19 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 		return DeliveryApplyResult{}, errors.New("delivery plan identity is invalid")
 	}
 	if plan.NoChange && len(plan.Effects) == 0 {
+		state, err := readDeliveryState(plan.Repository)
+		if err != nil {
+			return DeliveryApplyResult{}, err
+		}
+		state.Disposition = state.Inspection.Disposition
+		if err := writeDeliveryState(plan.Repository, state); err != nil {
+			return DeliveryApplyResult{}, err
+		}
 		return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: WorkApplyNoChange}, nil
+	}
+	state, err := readDeliveryState(plan.Repository)
+	if err != nil || state.Plan == nil || state.Plan.ID != plan.ID {
+		return DeliveryApplyResult{}, errors.New("delivery plan is not the retained active plan")
 	}
 	current, observeErr := e.deliveryAdapter.ObserveDelivery(ctx, plan.Intent)
 	if observeErr != nil {
@@ -235,22 +309,123 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 		return DeliveryApplyResult{}, errors.New("delivery execution mandate effect ceiling is exhausted")
 	}
 	results := make([]DeliveryEffectResult, 0, len(plan.Effects))
+	receipts := []DeliveryEffectReceipt{}
 	for _, effect := range plan.Effects {
 		usage[mandate.ID]++
 		if err := writeWorkMandateLedger(plan.Repository, usage); err != nil {
 			return DeliveryApplyResult{}, err
 		}
-		result, err := e.deliveryAdapter.ApplyDelivery(ctx, effect)
-		if err != nil {
-			return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: WorkApplyNonPass, Results: results}, err
+		result, applyErr := e.deliveryAdapter.ApplyDelivery(ctx, effect)
+		if applyErr != nil || result.Outcome == "ambiguous" {
+			observed, observeErr := e.deliveryAdapter.ObserveDelivery(ctx, plan.Intent)
+			if observeErr == nil && deliveryEffectObserved(effect, observed) {
+				result = DeliveryEffectResult{Outcome: "applied", Detail: "recovered effect by exact postcondition observation"}
+				applyErr = nil
+			}
 		}
 		results = append(results, result)
+		receipt := DeliveryEffectReceipt{
+			SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, EffectKind: effect.Kind, ManagedID: plan.Intent.ManagedID,
+			PullRequest: effect.PullRequest, HeadRevision: effect.HeadRevision, MergeRevision: effect.MergeRevision,
+			Actor: plan.Capability.Actor, CredentialMode: plan.Capability.Mode, MandateID: mandate.ID, SourceRevision: plan.Intent.SourceRevision,
+			ObservationRevision: plan.ObservationRevision, Outcome: result.Outcome, Recoverable: result.Recoverable, Detail: result.Detail, RecordedAt: e.clock.Now(),
+		}
+		state.Receipts = append(state.Receipts, receipt)
+		receipts = append(receipts, receipt)
+		if applyErr != nil || result.Outcome != "applied" {
+			state.Disposition = DeliveryDispositionNeedsReview
+			if err := writeDeliveryState(plan.Repository, state); err != nil {
+				return DeliveryApplyResult{}, err
+			}
+			return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: WorkApplyNonPass, Results: results, Receipts: receipts}, applyErr
+		}
+	}
+	state.Disposition = DeliveryDispositionNeedsReview
+	if err := writeDeliveryState(plan.Repository, state); err != nil {
+		return DeliveryApplyResult{}, err
 	}
 	status := WorkApplyApplied
 	if plan.NoChange {
 		status = WorkApplyNoChange
 	}
-	return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: status, Results: results}, nil
+	return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: status, Results: results, Receipts: receipts}, nil
+}
+
+func (e *Engine) VerifyDelivery(ctx context.Context, repository string) (DeliveryVerification, error) {
+	root, err := cleanRepositoryRoot(repository)
+	if err != nil {
+		return DeliveryVerification{}, err
+	}
+	state, err := readDeliveryState(root)
+	if err != nil {
+		return DeliveryVerification{}, err
+	}
+	observation, err := e.deliveryAdapter.ObserveDelivery(ctx, state.Request.Intent)
+	if err != nil {
+		return DeliveryVerification{}, err
+	}
+	problems := deliveryProblems(state.Request.Intent, state.Inspection.Capability, observation, e.clock.Now())
+	disposition := DeliveryDispositionNeedsReview
+	if len(problems) == 0 {
+		disposition = deliveryDisposition(state.Request.Intent, observation)
+	}
+	overall := ControlNeedsReview
+	if len(state.Receipts) != 0 && state.Receipts[len(state.Receipts)-1].Outcome == "applied" {
+		last := state.Receipts[len(state.Receipts)-1]
+		if last.EffectKind == DeliveryEffectMarkReady && disposition == DeliveryDispositionMergeReady || last.EffectKind == DeliveryEffectSquashMerge && observation.PullRequest.Merged && observation.PullRequest.DefaultReachable {
+			overall = ControlPass
+		}
+	}
+	verification := DeliveryVerification{SchemaVersion: 1, OverallState: overall, Disposition: disposition, Receipts: slices.Clone(state.Receipts), VerifiedAt: e.clock.Now()}
+	state.Verification = &verification
+	state.Disposition = disposition
+	if err := writeDeliveryState(root, state); err != nil {
+		return DeliveryVerification{}, err
+	}
+	return verification, nil
+}
+
+func (e *Engine) DeliveryStatus(_ context.Context, repository string) (DeliveryStatusResult, error) {
+	root, err := cleanRepositoryRoot(repository)
+	if err != nil {
+		return DeliveryStatusResult{}, err
+	}
+	state, err := readDeliveryState(root)
+	if err != nil {
+		return DeliveryStatusResult{}, err
+	}
+	planID := ""
+	if state.Plan != nil {
+		planID = state.Plan.ID
+	}
+	return DeliveryStatusResult{SchemaVersion: 1, Disposition: state.Disposition, PlanID: planID, Receipts: slices.Clone(state.Receipts)}, nil
+}
+
+func retainDeliveryPlan(repository, inspectionID string, plan DeliveryPlan) error {
+	state, err := readDeliveryState(repository)
+	if err != nil {
+		return err
+	}
+	if state.Inspection.ID != inspectionID {
+		return errors.New("delivery inspection is not the retained active inspection")
+	}
+	state.Plan = &plan
+	return writeDeliveryState(repository, state)
+}
+
+func deliveryEffectObserved(effect DeliveryEffect, observation DeliveryObservation) bool {
+	pull := observation.PullRequest
+	if pull.Number != effect.PullRequest || pull.HeadRevision != effect.HeadRevision {
+		return false
+	}
+	switch effect.Kind {
+	case DeliveryEffectMarkReady:
+		return pull.State == "open" && !pull.Draft && !pull.Merged
+	case DeliveryEffectSquashMerge:
+		return pull.State == "closed" && pull.Merged && pull.MergeMethod == "squash" && pull.DefaultReachable
+	default:
+		return false
+	}
 }
 
 func DeliveryResourceDigest(intent DeliveryIntent) string {
@@ -283,7 +458,12 @@ func deliveryPlanWithoutID(plan DeliveryPlan) DeliveryPlan {
 
 func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, observation DeliveryObservation, now time.Time) []string {
 	problems := slices.Clone(observation.Problems)
-	if intent.SchemaVersion != 1 || intent.OperationID == "" || intent.SourceRevision == "" || intent.OperatingProfileRevision == "" || intent.ManagedID == "" || intent.Target.RepositoryID == "" || intent.BaseBranch == "" || intent.HeadBranch == "" || intent.MergeMethod != "squash" {
+	claimValid := intent.Claim != nil && intent.Claim.ManagedID == intent.ManagedID && intent.Claim.SourceRevision == intent.SourceRevision
+	if claimValid {
+		_, claimErr := RenderWorkDeliveryClaim(*intent.Claim)
+		claimValid = claimErr == nil
+	}
+	if intent.SchemaVersion != 1 || intent.OperationID == "" || intent.SourceRevision == "" || intent.OperatingProfileRevision == "" || intent.ManagedID == "" || intent.Target.RepositoryID == "" || intent.BaseBranch == "" || intent.HeadBranch == "" || intent.MergeMethod != "squash" || !claimValid {
 		problems = append(problems, "delivery intent is invalid")
 	}
 	if capability.SchemaVersion != 1 || !capability.Online || !capability.Fresh || capability.Actor == "" || capability.Mode == "" || capability.ExpiresAt.IsZero() || !now.Before(capability.ExpiresAt) {
@@ -337,6 +517,14 @@ func deliveryDisposition(intent DeliveryIntent, observation DeliveryObservation)
 type InMemoryDeliveryAdapter struct {
 	capability  DeliveryCapability
 	observation DeliveryObservation
+	queued      []queuedDeliveryResult
+	applyCount  int
+}
+
+type queuedDeliveryResult struct {
+	result        DeliveryEffectResult
+	observeEffect bool
+	err           error
 }
 
 func NewInMemoryDeliveryAdapter(capability DeliveryCapability, observation DeliveryObservation) *InMemoryDeliveryAdapter {
@@ -356,6 +544,19 @@ func (adapter *InMemoryDeliveryAdapter) SetObservation(observation DeliveryObser
 }
 
 func (adapter *InMemoryDeliveryAdapter) ApplyDelivery(_ context.Context, effect DeliveryEffect) (DeliveryEffectResult, error) {
+	adapter.applyCount++
+	if len(adapter.queued) != 0 {
+		queued := adapter.queued[0]
+		adapter.queued = adapter.queued[1:]
+		if queued.observeEffect {
+			adapter.applyObservedEffect(effect)
+		}
+		return queued.result, queued.err
+	}
+	return adapter.applyObservedEffect(effect)
+}
+
+func (adapter *InMemoryDeliveryAdapter) applyObservedEffect(effect DeliveryEffect) (DeliveryEffectResult, error) {
 	switch effect.Kind {
 	case DeliveryEffectMarkReady:
 		adapter.observation.PullRequest.Draft = false
@@ -372,4 +573,81 @@ func (adapter *InMemoryDeliveryAdapter) ApplyDelivery(_ context.Context, effect 
 	default:
 		return DeliveryEffectResult{Outcome: "needs-review", Detail: "unsupported delivery effect", Recoverable: true}, errors.New("unsupported delivery effect")
 	}
+}
+
+func (adapter *InMemoryDeliveryAdapter) QueueApplyResult(result DeliveryEffectResult, observeEffect bool, err error) {
+	adapter.queued = append(adapter.queued, queuedDeliveryResult{result: result, observeEffect: observeEffect, err: err})
+}
+
+func (adapter *InMemoryDeliveryAdapter) ApplyCount() int {
+	return adapter.applyCount
+}
+
+func writeDeliveryState(root string, state deliveryState) error {
+	path := filepath.Join(root, filepath.FromSlash(deliveryStatePath))
+	if err := ensureNoSymlinkParents(root, deliveryStatePath); err != nil {
+		return fmt.Errorf("validate delivery state path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create delivery state directory: %w", err)
+	}
+	state.StateDigest = ""
+	state.StateDigest = digestJSON(state)
+	content, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode delivery state: %w", err)
+	}
+	if containsSensitiveText(string(content)) {
+		return errors.New("delivery state contains sensitive-looking material")
+	}
+	content = append(content, '\n')
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".delivery-state-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create delivery state staging file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write delivery state: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return fmt.Errorf("sync delivery state: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("commit delivery state: %w", err)
+	}
+	return nil
+}
+
+func readDeliveryState(root string) (deliveryState, error) {
+	if err := ensureNoSymlinkComponents(root, deliveryStatePath); err != nil {
+		return deliveryState{}, fmt.Errorf("validate delivery state path: %w", err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(deliveryStatePath)))
+	if err != nil {
+		return deliveryState{}, fmt.Errorf("read delivery state: %w", err)
+	}
+	var state deliveryState
+	if err := json.Unmarshal(content, &state); err != nil {
+		return deliveryState{}, fmt.Errorf("parse delivery state: %w", err)
+	}
+	if state.SchemaVersion != 1 {
+		return deliveryState{}, errors.New("unsupported delivery state schema")
+	}
+	recorded := state.StateDigest
+	state.StateDigest = ""
+	if recorded == "" || recorded != digestJSON(state) {
+		return deliveryState{}, errors.New("delivery state integrity is invalid")
+	}
+	state.StateDigest = recorded
+	return state, nil
 }

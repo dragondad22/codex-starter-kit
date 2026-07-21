@@ -302,6 +302,62 @@ func TestDeliveryRejectsPlanWhenExactHeadChangesBeforeApply(t *testing.T) {
 	}
 }
 
+func TestDeliveryRecoversLostEffectResponseByExactReobservationWithoutRetry(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
+	plan, _ := lifecycle.PlanDelivery(context.Background(), inspection)
+	adapter.QueueApplyResult(engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "response lost", Recoverable: true}, true, context.DeadlineExceeded)
+	mandate := deliveryMandate(request, []string{"merger"}, plan.Effects[0].Kind)
+
+	result, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != engine.WorkApplyApplied || len(result.Results) != 1 || result.Results[0].Outcome != "applied" || adapter.ApplyCount() != 1 {
+		t.Fatalf("lost-response recovery = %#v, calls=%d", result, adapter.ApplyCount())
+	}
+}
+
+func TestDeliveryKeepsUnresolvedLostResponseAsZeroRetryNonPass(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
+	plan, _ := lifecycle.PlanDelivery(context.Background(), inspection)
+	adapter.QueueApplyResult(engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "response lost", Recoverable: true}, false, context.DeadlineExceeded)
+	mandate := deliveryMandate(request, []string{"merger"}, plan.Effects[0].Kind)
+
+	result, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate)
+	if err == nil || result.Status != engine.WorkApplyNonPass || adapter.ApplyCount() != 1 {
+		t.Fatalf("unresolved response = %#v, err=%v, calls=%d", result, err, adapter.ApplyCount())
+	}
+}
+
+func TestDeliveryVerificationAndStatusSurviveRestart(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
+	plan, _ := lifecycle.PlanDelivery(context.Background(), inspection)
+	mandate := deliveryMandate(request, []string{"merger"}, plan.Effects[0].Kind)
+	if _, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	restarted := engine.New(engine.WithClock(deliveryClock{now}), engine.WithDeliveryAdapter(adapter))
+
+	verification, err := restarted.VerifyDelivery(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.OverallState != engine.ControlPass || len(verification.Receipts) != 1 || verification.Receipts[0].MandateID != mandate.ID {
+		t.Fatalf("verification = %#v", verification)
+	}
+	status, err := restarted.DeliveryStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Disposition != engine.DeliveryDispositionMergeReady || len(status.Receipts) != 1 {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
 func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engine.DeliveryObservation) (*engine.Engine, *engine.InMemoryDeliveryAdapter, engine.DeliveryRequest) {
 	t.Helper()
 	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
@@ -315,6 +371,7 @@ func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engin
 		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"},
 		Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", OperatingProfileRevision: "profile-1",
 		Target:         engine.WorkTarget{Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project"},
+		Claim:          &engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:75", SourceRevision: "source-1", ContractDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ImplementedSources: []engine.GovernedSourceBinding{{ID: "source", Path: "docs/implementation.md", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}},
 		EffectBoundary: engine.WorkEffectBoundary{DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "repository-evidence", RecoveryOwner: "owner"},
 	}}
 	return lifecycle, adapter, request
