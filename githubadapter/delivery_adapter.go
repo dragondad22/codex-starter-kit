@@ -446,10 +446,13 @@ func closesExactIssue(body string, issueNumber int) bool {
 	return count == 1
 }
 
-func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine.DeliveryEffect) (engine.DeliveryEffectResult, error) {
+func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine.DeliveryEffect, expected engine.DeliveryCapability) (engine.DeliveryEffectResult, error) {
 	credential, err := adapter.effectBase.credential(ctx)
 	if err != nil {
 		return engine.DeliveryEffectResult{Outcome: "denied", Detail: "delivery credential is unavailable", Recoverable: true}, err
+	}
+	if !deliveryCredentialMatchesCapability(credential, adapter.effectBase.config.RepositoryID, adapter.effectBase.now(), expected) {
+		return engine.DeliveryEffectResult{Outcome: "denied", Detail: "delivery credential changed after capability refresh", Recoverable: true}, errors.New("delivery credential changed after capability refresh")
 	}
 	if effect.Kind == engine.DeliveryEffectCreateBranch {
 		body := map[string]string{"ref": "refs/heads/" + effect.Branch, "sha": effect.HeadRevision}
@@ -525,4 +528,15 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 	default:
 		return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "unsupported delivery effect", Recoverable: true}, errors.New("unsupported delivery effect")
 	}
+}
+
+func deliveryCredentialMatchesCapability(credential Credential, repositoryID string, now time.Time, expected engine.DeliveryCapability) bool {
+	permissions := slices.Clone(credential.Permissions)
+	expectedPermissions := slices.Clone(expected.Permissions)
+	slices.Sort(permissions)
+	slices.Sort(expectedPermissions)
+	return expected.SchemaVersion == 1 && expected.Online && expected.Fresh && now.Before(credential.ExpiresAt) &&
+		credential.Actor == expected.Actor && credential.Mode == expected.Mode && credential.Account == expected.Account &&
+		credential.InstallationID == expected.InstallationID && repositoryID == expected.RepositoryID &&
+		credential.ExpiresAt.Equal(expected.ExpiresAt) && slices.Equal(permissions, expectedPermissions)
 }

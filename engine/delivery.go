@@ -227,7 +227,7 @@ type DeliveryPlan struct {
 type DeliveryAdapter interface {
 	Capability(context.Context) (DeliveryCapability, error)
 	ObserveDelivery(context.Context, DeliveryIntent) (DeliveryObservation, error)
-	ApplyDelivery(context.Context, DeliveryEffect) (DeliveryEffectResult, error)
+	ApplyDelivery(context.Context, DeliveryEffect, DeliveryCapability) (DeliveryEffectResult, error)
 }
 
 type DeliveryEffectResult struct {
@@ -493,7 +493,7 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 			if err := writeWorkMandateLedger(plan.Repository, usage); err != nil {
 				return DeliveryApplyResult{}, err
 			}
-			result, applyErr = e.deliveryAdapter.ApplyDelivery(ctx, effect)
+			result, applyErr = e.deliveryAdapter.ApplyDelivery(ctx, effect, currentCapability)
 		}
 		if effect.Kind != DeliveryEffectReconcileCompletion && (applyErr != nil || result.Outcome == "ambiguous") {
 			observed, observeErr := e.deliveryAdapter.ObserveDelivery(ctx, plan.Intent)
@@ -985,7 +985,10 @@ func (adapter *InMemoryDeliveryAdapter) SetCapability(capability DeliveryCapabil
 	adapter.capability = capability
 }
 
-func (adapter *InMemoryDeliveryAdapter) ApplyDelivery(_ context.Context, effect DeliveryEffect) (DeliveryEffectResult, error) {
+func (adapter *InMemoryDeliveryAdapter) ApplyDelivery(_ context.Context, effect DeliveryEffect, expected DeliveryCapability) (DeliveryEffectResult, error) {
+	if !sameDeliveryCapabilityAuthority(expected, adapter.capability, expected.ObservedAt) {
+		return DeliveryEffectResult{Outcome: "denied", Detail: "delivery effect capability changed", Recoverable: true}, errors.New("delivery effect capability changed")
+	}
 	adapter.applyCount++
 	if len(adapter.queued) != 0 {
 		queued := adapter.queued[0]

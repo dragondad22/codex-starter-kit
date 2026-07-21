@@ -644,6 +644,12 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 		if resource.Kind == SandboxResourceProjectView && !slices.Contains([]string{"table", "board", "roadmap"}, resource.Attributes["layout"]) {
 			return fmt.Errorf("Project view resource %s requires a supported layout", resource.Key)
 		}
+		if resource.Kind == SandboxResourceRuleset {
+			definition, err := canonicalSandboxJSON(resource.Attributes["input:definition"])
+			if err != nil || resource.Attributes["definition"] != definition || resource.Attributes["definition_sha256"] != digestBytes([]byte(definition)) || resource.Marker == "" || !strings.HasPrefix(resource.Marker, manifest.MarkerPrefix) {
+				return fmt.Errorf("ruleset resource %s requires an exact canonical definition, digest, and approved marker", resource.Key)
+			}
+		}
 		if resource.Kind == SandboxResourceIssueRelationship {
 			relationship := resource.Attributes["relationship"]
 			if !slices.Contains([]string{"parent-sub-issue", "blocker-dependent"}, relationship) || !validPositiveDecimal(resource.Attributes["source_number"]) || !validPositiveDecimal(resource.Attributes["source_id"]) || resource.Attributes["source_node_id"] == "" || !validPositiveDecimal(resource.Attributes["target_number"]) || !validPositiveDecimal(resource.Attributes["target_id"]) || resource.Attributes["target_node_id"] == "" || resource.Attributes["source_id"] == resource.Attributes["target_id"] {
@@ -674,6 +680,15 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 		seen[resource.Key] = struct{}{}
 	}
 	return nil
+}
+
+func canonicalSandboxJSON(raw string) (string, error) {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(value)
+	return string(encoded), err
 }
 
 func validPositiveDecimal(value string) bool {

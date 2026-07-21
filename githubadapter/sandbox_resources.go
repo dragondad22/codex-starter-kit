@@ -476,10 +476,12 @@ func (adapter *SandboxAdapter) projectFields(ctx context.Context, credential Cre
 }
 
 type sandboxRuleset struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Enforcement string `json:"enforcement"`
-	Target      string `json:"target"`
+	ID          int64           `json:"id"`
+	Name        string          `json:"name"`
+	Enforcement string          `json:"enforcement"`
+	Target      string          `json:"target"`
+	Conditions  json.RawMessage `json:"conditions"`
+	Rules       json.RawMessage `json:"rules"`
 }
 
 func (adapter *SandboxAdapter) observeRulesets(ctx context.Context, credential Credential) ([]engine.SandboxObservedResource, error) {
@@ -492,10 +494,23 @@ func (adapter *SandboxAdapter) observeRulesets(ctx context.Context, credential C
 		if desired.Kind != engine.SandboxResourceRuleset {
 			continue
 		}
-		for _, ruleset := range rulesets {
-			if ruleset.Name == desired.Name && (desired.Marker == "" || strings.Contains(ruleset.Name, desired.Marker)) {
-				result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: strconv.FormatInt(ruleset.ID, 10), Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"enforcement": ruleset.Enforcement, "target": ruleset.Target})})
+		for _, summary := range rulesets {
+			if summary.Name != desired.Name || desired.Marker != "" && !strings.Contains(summary.Name, desired.Marker) {
+				continue
 			}
+			var actual sandboxRuleset
+			if _, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/rulesets/"+strconv.FormatInt(summary.ID, 10), nil, &actual); err != nil {
+				return nil, err
+			}
+			definition, err := canonicalRulesetDefinition(actual)
+			if err != nil {
+				return nil, err
+			}
+			marker := ""
+			if actual.ID == summary.ID && actual.Name == summary.Name && desired.Marker != "" && strings.Contains(actual.Name, desired.Marker) {
+				marker = desired.Marker
+			}
+			result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: actual.Name, ID: strconv.FormatInt(actual.ID, 10), Marker: marker, Attributes: map[string]string{"enforcement": actual.Enforcement, "target": actual.Target, "definition": definition, "definition_sha256": rulesetDefinitionDigest(definition)}})
 		}
 	}
 	return result, nil
@@ -506,20 +521,30 @@ func (adapter *SandboxAdapter) applyRuleset(ctx context.Context, credential Cred
 	if err != nil {
 		return engine.SandboxEffectResult{}, err
 	}
-	var existingID string
+	var existing *engine.SandboxObservedResource
 	for _, resource := range resources {
 		if resource.Key == effect.Resource.Key {
-			existingID = resource.ID
+			candidate := resource
+			if existing != nil {
+				return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "marked ruleset identity is ambiguous"}, nil
+			}
+			existing = &candidate
 		}
 	}
 	if effect.Kind == "remove-resource" {
-		if existingID == "" {
+		if existing == nil {
 			return engine.SandboxEffectResult{Outcome: "no-change", Detail: "marked fixture ruleset is absent"}, nil
 		}
-		if _, err := adapter.rest(ctx, credential, http.MethodDelete, adapter.repoPath()+"/rulesets/"+existingID, nil, nil); err != nil {
+		if !exactRulesetMatches(effect.Resource, *existing) {
+			return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "marked ruleset drifted before cleanup"}, nil
+		}
+		if _, err := adapter.rest(ctx, credential, http.MethodDelete, adapter.repoPath()+"/rulesets/"+existing.ID, nil, nil); err != nil {
 			return engine.SandboxEffectResult{}, err
 		}
-		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: existingID, Detail: "marked fixture ruleset deleted"}, nil
+		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: existing.ID, Detail: "marked fixture ruleset deleted"}, nil
+	}
+	if existing != nil && (existing.Name != effect.Resource.Name || existing.Marker != effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "marked ruleset identity drifted before reconciliation"}, nil
 	}
 	var body map[string]any
 	if err := json.Unmarshal([]byte(effect.Resource.Attributes["input:definition"]), &body); err != nil {
@@ -528,15 +553,49 @@ func (adapter *SandboxAdapter) applyRuleset(ctx context.Context, credential Cred
 	body["name"] = effect.Resource.Name
 	method := http.MethodPost
 	path := adapter.repoPath() + "/rulesets"
-	if existingID != "" {
+	if existing != nil {
 		method = http.MethodPut
-		path += "/" + existingID
+		path += "/" + existing.ID
 	}
 	var ruleset sandboxRuleset
 	if _, err := adapter.rest(ctx, credential, method, path, body, &ruleset); err != nil {
 		return engine.SandboxEffectResult{}, err
 	}
 	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: strconv.FormatInt(ruleset.ID, 10), Detail: "marked fixture ruleset reconciled"}, nil
+}
+
+func canonicalRulesetDefinition(ruleset sandboxRuleset) (string, error) {
+	var conditions any
+	var rules any
+	if len(ruleset.Conditions) == 0 || len(ruleset.Rules) == 0 || json.Unmarshal(ruleset.Conditions, &conditions) != nil || json.Unmarshal(ruleset.Rules, &rules) != nil {
+		return "", errors.New("ruleset definition is incomplete")
+	}
+	encoded, err := json.Marshal(map[string]any{"enforcement": ruleset.Enforcement, "target": ruleset.Target, "conditions": conditions, "rules": rules})
+	if err != nil {
+		return "", errors.New("ruleset definition cannot be normalized")
+	}
+	return string(encoded), nil
+}
+
+func canonicalDesiredRulesetDefinition(raw string) (string, error) {
+	var value sandboxRuleset
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", errors.New("ruleset definition is invalid")
+	}
+	return canonicalRulesetDefinition(value)
+}
+
+func rulesetDefinitionDigest(definition string) string {
+	digest := sha256.Sum256([]byte(definition))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func exactRulesetMatches(desired engine.SandboxResourceSpec, observed engine.SandboxObservedResource) bool {
+	definition, err := canonicalDesiredRulesetDefinition(desired.Attributes["input:definition"])
+	if err != nil {
+		return false
+	}
+	return observed.Name == desired.Name && observed.Marker == desired.Marker && observed.Attributes["enforcement"] == desired.Attributes["enforcement"] && observed.Attributes["target"] == desired.Attributes["target"] && observed.Attributes["definition"] == definition && observed.Attributes["definition_sha256"] == rulesetDefinitionDigest(definition)
 }
 
 type sandboxIssue struct {

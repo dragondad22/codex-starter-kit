@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -102,13 +103,17 @@ func TestDeliveryAdapterAppliesOrganicProgressionEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	expected, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	effects := []engine.DeliveryEffect{
 		{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75-delivery-squash-completion", HeadRevision: "base-1"},
 		{Kind: engine.DeliveryEffectCreatePullRequest, Branch: "task/75-delivery-squash-completion", BaseBranch: "main", HeadRevision: "head-1", Title: "Deliver issue 75", IssueNumber: 75, Claim: claim},
 		{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"},
 	}
 	for _, effect := range effects {
-		result, err := adapter.ApplyDelivery(context.Background(), effect)
+		result, err := adapter.ApplyDelivery(context.Background(), effect, expected)
 		if err != nil || result.Outcome != "applied" {
 			t.Fatalf("%s result = %#v, err = %v", effect.Kind, result, err)
 		}
@@ -150,7 +155,7 @@ func TestDeliveryAdapterUsesASeparateLeastAuthorityEffectCredential(t *testing.T
 	if err != nil || capability.Actor != "merger" || len(capability.Permissions) != 1 || capability.Permissions[0] != "pull-requests:write" {
 		t.Fatalf("effect capability = %#v, err = %v", capability, err)
 	}
-	result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"})
+	result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"}, capability)
 	if err != nil || result.Outcome != "applied" {
 		t.Fatalf("result = %#v, err = %v", result, err)
 	}
@@ -184,16 +189,55 @@ func TestDeliveryAdapterSerializesRESTMutations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75", HeadRevision: "base-1"}); err != nil || result.Outcome != "applied" {
+	expected, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75", HeadRevision: "base-1"}, expected); err != nil || result.Outcome != "applied" {
 		t.Fatalf("first mutation = %#v, %v", result, err)
 	}
 	timed, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := adapter.ApplyDelivery(timed, engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"}); err == nil {
+	if _, err := adapter.ApplyDelivery(timed, engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"}, expected); err == nil {
 		t.Fatal("second REST mutation bypassed serialized pacing")
 	}
 	if requestedReview {
 		t.Fatal("paced review mutation reached GitHub after cancellation")
+	}
+}
+
+func TestDeliveryAdapterRejectsCredentialChangedAfterCapabilityRefresh(t *testing.T) {
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	config := adapterConfig(server, "user-token", "merger", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	calls := 0
+	provider := githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
+		calls++
+		actor := "merger"
+		permissions := slices.Clone(config.RequiredPermissions)
+		if calls > 1 {
+			actor = "different-actor"
+			permissions = append(permissions, "administration:write")
+		}
+		return githubadapter.Credential{Token: "token", Mode: "user-token", Actor: actor, Permissions: permissions, ExpiresAt: now.Add(time.Hour)}, nil
+	})
+	base, err := githubadapter.New(config, provider, server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := githubadapter.NewDeliveryAdapter(base, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75", HeadRevision: "base-1"}, expected)
+	if err == nil || result.Outcome != "denied" || requests != 0 {
+		t.Fatalf("changed effect credential result = %#v, requests=%d, err=%v", result, requests, err)
 	}
 }
 

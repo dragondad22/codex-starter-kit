@@ -445,8 +445,8 @@ func workflowResource(branch, content string, absent bool) engine.SandboxResourc
 }
 
 func rulesResources() []engine.SandboxResourceSpec {
-	definition := fmt.Sprintf(`{"enforcement":"active","target":"branch","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":%d}],"strict_required_status_checks_policy":true}}]}`, githubActionsIntegrationID)
-	return []engine.SandboxResourceSpec{resource("ruleset:delivery-check", engine.SandboxResourceRuleset, runMarker+":ruleset:delivery-check", runMarker, map[string]string{"enforcement": "active", "target": "branch", "input:definition": definition}, false)}
+	definition := fmt.Sprintf(`{"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":%d}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`, githubActionsIntegrationID)
+	return []engine.SandboxResourceSpec{resource("ruleset:delivery-check", engine.SandboxResourceRuleset, runMarker+":ruleset:delivery-check", runMarker, map[string]string{"enforcement": "active", "target": "branch", "definition": definition, "definition_sha256": contentDigest(definition), "input:definition": definition}, false)}
 }
 
 func initialWorkflow() string {
