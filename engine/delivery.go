@@ -23,6 +23,7 @@ const (
 	DeliveryDispositionMergeReady       DeliveryDisposition = "merge-ready"
 	DeliveryDispositionMerged           DeliveryDisposition = "merged"
 	DeliveryDispositionClosedUnmerged   DeliveryDisposition = "closed-unmerged"
+	DeliveryDispositionComplete         DeliveryDisposition = "complete"
 	DeliveryDispositionNeedsReview      DeliveryDisposition = "needs-review"
 	DeliveryEffectMarkReady                                 = "mark-ready"
 	DeliveryEffectSquashMerge                               = "squash-merge"
@@ -46,8 +47,9 @@ type DeliveryIntent struct {
 }
 
 type DeliveryRequest struct {
-	Repository string         `json:"repository"`
-	Intent     DeliveryIntent `json:"intent"`
+	Repository       string             `json:"repository"`
+	Intent           DeliveryIntent     `json:"intent"`
+	CompletionIntent *WorkDesiredIntent `json:"completion_intent,omitempty"`
 }
 
 type DeliveryCapability struct {
@@ -204,7 +206,19 @@ type deliveryState struct {
 	Plan          *DeliveryPlan           `json:"plan,omitempty"`
 	Receipts      []DeliveryEffectReceipt `json:"receipts"`
 	Verification  *DeliveryVerification   `json:"verification,omitempty"`
+	Completion    *DeliveryCompletion     `json:"completion,omitempty"`
 	Disposition   DeliveryDisposition     `json:"disposition"`
+}
+
+type DeliveryCompletion struct {
+	SchemaVersion  int       `json:"schema_version"`
+	ManagedID      string    `json:"managed_id"`
+	SourceRevision string    `json:"source_revision"`
+	PullRequest    int       `json:"pull_request"`
+	HeadRevision   string    `json:"head_revision"`
+	MergeRevision  string    `json:"merge_revision"`
+	MandateID      string    `json:"mandate_id"`
+	RecordedAt     time.Time `json:"recorded_at"`
 }
 
 func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (DeliveryInspection, error) {
@@ -224,6 +238,12 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 		return DeliveryInspection{}, err
 	}
 	problems := deliveryProblems(request.Intent, capability, observation, e.clock.Now())
+	if request.CompletionIntent != nil {
+		completion := request.CompletionIntent
+		if completion.OperationID != request.Intent.OperationID || completion.SourceRevision != request.Intent.SourceRevision || completion.OperatingProfileRevision != request.Intent.OperatingProfileRevision || completion.Task.ManagedID != request.Intent.ManagedID || !completion.Task.Closed || completion.Task.Status != "done" || !equalWorkTarget(completion.Target, request.Intent.Target) || completion.Governance == nil || request.Intent.Claim == nil || ExecutableIssueContractDigest(completion.Governance.Issue) != request.Intent.Claim.ContractDigest {
+			problems = append(problems, "delivery completion intent does not match the governed outcome")
+		}
+	}
 	disposition := DeliveryDispositionNeedsReview
 	if len(problems) == 0 {
 		disposition = deliveryDisposition(request.Intent, observation)
@@ -235,7 +255,17 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 		Capability  DeliveryCapability
 		Observation DeliveryObservation
 	}{root, request.Intent, capability, observation})
-	if err := writeDeliveryState(root, deliveryState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: []DeliveryEffectReceipt{}, Disposition: disposition}); err != nil {
+	receipts := []DeliveryEffectReceipt{}
+	var completion *DeliveryCompletion
+	if prior, priorErr := readDeliveryState(root); priorErr == nil {
+		receipts = slices.Clone(prior.Receipts)
+		completion = prior.Completion
+		if deliveryCompletionMatches(completion, request.Intent, observation) {
+			disposition = DeliveryDispositionComplete
+			inspection.Disposition = disposition
+		}
+	}
+	if err := writeDeliveryState(root, deliveryState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: receipts, Completion: completion, Disposition: disposition}); err != nil {
 		return DeliveryInspection{}, err
 	}
 	return inspection, nil
@@ -245,7 +275,7 @@ func (e *Engine) PlanDelivery(_ context.Context, inspection DeliveryInspection) 
 	if inspection.ID == "" || len(inspection.Problems) != 0 || inspection.Disposition == DeliveryDispositionNeedsReview {
 		return DeliveryPlan{}, errors.New("delivery inspection is not plannable")
 	}
-	if slices.Contains([]DeliveryDisposition{DeliveryDispositionChecksPending, DeliveryDispositionReviewPending, DeliveryDispositionChangesRequested, DeliveryDispositionClosedUnmerged}, inspection.Disposition) {
+	if slices.Contains([]DeliveryDisposition{DeliveryDispositionChecksPending, DeliveryDispositionReviewPending, DeliveryDispositionChangesRequested, DeliveryDispositionClosedUnmerged, DeliveryDispositionComplete}, inspection.Disposition) {
 		plan := DeliveryPlan{SchemaVersion: 1, Repository: inspection.Repository, Intent: inspection.Intent, Capability: inspection.Capability, InspectionID: inspection.ID, ObservationRevision: inspection.Observation.Revision, NoChange: true}
 		plan.ID = digestJSON(plan)
 		if err := retainDeliveryPlan(inspection.Repository, inspection.ID, plan); err != nil {
@@ -305,18 +335,30 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 	} else if !errors.Is(ledgerErr, os.ErrNotExist) {
 		return DeliveryApplyResult{}, ledgerErr
 	}
-	if usage[mandate.ID]+len(plan.Effects) > mandate.MaxEffects {
+	externalEffectCount := 0
+	for _, effect := range plan.Effects {
+		if effect.Kind != DeliveryEffectReconcileCompletion {
+			externalEffectCount++
+		}
+	}
+	if usage[mandate.ID]+externalEffectCount > mandate.MaxEffects {
 		return DeliveryApplyResult{}, errors.New("delivery execution mandate effect ceiling is exhausted")
 	}
 	results := make([]DeliveryEffectResult, 0, len(plan.Effects))
 	receipts := []DeliveryEffectReceipt{}
 	for _, effect := range plan.Effects {
-		usage[mandate.ID]++
-		if err := writeWorkMandateLedger(plan.Repository, usage); err != nil {
-			return DeliveryApplyResult{}, err
+		var result DeliveryEffectResult
+		var applyErr error
+		if effect.Kind == DeliveryEffectReconcileCompletion {
+			result, applyErr = e.applyDeliveryCompletion(ctx, state.Request, mandate)
+		} else {
+			usage[mandate.ID]++
+			if err := writeWorkMandateLedger(plan.Repository, usage); err != nil {
+				return DeliveryApplyResult{}, err
+			}
+			result, applyErr = e.deliveryAdapter.ApplyDelivery(ctx, effect)
 		}
-		result, applyErr := e.deliveryAdapter.ApplyDelivery(ctx, effect)
-		if applyErr != nil || result.Outcome == "ambiguous" {
+		if effect.Kind != DeliveryEffectReconcileCompletion && (applyErr != nil || result.Outcome == "ambiguous") {
 			observed, observeErr := e.deliveryAdapter.ObserveDelivery(ctx, plan.Intent)
 			if observeErr == nil && deliveryEffectObserved(effect, observed) {
 				result = DeliveryEffectResult{Outcome: "applied", Detail: "recovered effect by exact postcondition observation"}
@@ -332,6 +374,9 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 		}
 		state.Receipts = append(state.Receipts, receipt)
 		receipts = append(receipts, receipt)
+		if effect.Kind == DeliveryEffectReconcileCompletion && result.Outcome == "applied" {
+			state.Completion = &DeliveryCompletion{SchemaVersion: 1, ManagedID: plan.Intent.ManagedID, SourceRevision: plan.Intent.SourceRevision, PullRequest: effect.PullRequest, HeadRevision: effect.HeadRevision, MergeRevision: effect.MergeRevision, MandateID: mandate.ID, RecordedAt: e.clock.Now()}
+		}
 		if applyErr != nil || result.Outcome != "applied" {
 			state.Disposition = DeliveryDispositionNeedsReview
 			if err := writeDeliveryState(plan.Repository, state); err != nil {
@@ -349,6 +394,38 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 		status = WorkApplyNoChange
 	}
 	return DeliveryApplyResult{SchemaVersion: 1, PlanID: plan.ID, Status: status, Results: results, Receipts: receipts}, nil
+}
+
+func deliveryCompletionMatches(completion *DeliveryCompletion, intent DeliveryIntent, observation DeliveryObservation) bool {
+	if completion == nil {
+		return false
+	}
+	pull := observation.PullRequest
+	return completion.SchemaVersion == 1 && completion.ManagedID == intent.ManagedID && completion.SourceRevision == intent.SourceRevision && completion.PullRequest == pull.Number && completion.HeadRevision == pull.HeadRevision && completion.MergeRevision == pull.MergeRevision && observation.Issue.State == "closed" && pull.Merged && pull.DefaultReachable
+}
+
+func (e *Engine) applyDeliveryCompletion(ctx context.Context, request DeliveryRequest, mandate WorkExecutionMandate) (DeliveryEffectResult, error) {
+	if request.CompletionIntent == nil {
+		return DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery completion intent is absent", Recoverable: true}, errors.New("delivery completion intent is required")
+	}
+	managed := ManagedTaskRequest{Repository: request.Repository, Intent: *request.CompletionIntent, ExecutionMandate: &mandate}
+	inspection, err := e.InspectManagedTask(ctx, managed)
+	if err != nil {
+		return DeliveryEffectResult{Outcome: "needs-review", Detail: "completion inspection did not pass", Recoverable: true}, err
+	}
+	plan, err := e.PlanManagedTask(ctx, inspection)
+	if err != nil {
+		return DeliveryEffectResult{Outcome: "needs-review", Detail: "completion plan did not pass", Recoverable: true}, err
+	}
+	apply, err := e.ApplyManagedTaskWithMandate(ctx, plan.ID, plan, mandate)
+	if err != nil || apply.Status == WorkApplyNonPass {
+		return DeliveryEffectResult{Outcome: "needs-review", Detail: "completion reconciliation did not apply", Recoverable: true}, err
+	}
+	verification, err := e.VerifyManagedTask(ctx, request.Repository)
+	if err != nil || verification.OverallState != ControlPass {
+		return DeliveryEffectResult{Outcome: "needs-review", Detail: "completion reconciliation did not verify", Recoverable: true}, err
+	}
+	return DeliveryEffectResult{Outcome: "applied", Detail: "reconciled qualifying merge through Work Manager"}, nil
 }
 
 func (e *Engine) VerifyDelivery(ctx context.Context, repository string) (DeliveryVerification, error) {
@@ -471,7 +548,8 @@ func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, obse
 	}
 	pr := observation.PullRequest
 	validPullState := pr.State == "open" && !pr.Merged || pr.State == "closed"
-	if observation.SchemaVersion != 1 || observation.Revision == "" || observation.Issue.ManagedID != intent.ManagedID || observation.Issue.State != "open" || pr.Number <= 0 || !validPullState || pr.Base != intent.BaseBranch || pr.Head != intent.HeadBranch || pr.HeadRevision == "" {
+	validIssueState := observation.Issue.State == "open" || observation.Issue.State == "closed" && pr.Merged
+	if observation.SchemaVersion != 1 || observation.Revision == "" || observation.Issue.ManagedID != intent.ManagedID || !validIssueState || pr.Number <= 0 || !validPullState || pr.Base != intent.BaseBranch || pr.Head != intent.HeadBranch || pr.HeadRevision == "" {
 		problems = append(problems, "delivery linkage is incomplete or ambiguous")
 	}
 	if !slices.Contains(observation.Rules.MergeMethods, intent.MergeMethod) || !slices.Equal(observation.Rules.RequiredChecks, intent.RequiredChecks) {
