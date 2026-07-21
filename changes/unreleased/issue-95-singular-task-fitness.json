@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "issue-95-singular-task-fitness",
-  "summary": "Require singular actionable task boundaries and structured implementation planning when coordination warrants.",
+  "summary": "Guide organic implementation decomposition and create separate issues only when durable tracking adds value.",
   "category": "changed",
   "audiences": ["users", "operators", "developers", "stakeholders"],
   "components": ["github-workflow"],

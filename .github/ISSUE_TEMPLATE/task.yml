@@ -7,7 +7,7 @@
     {
       "type": "markdown",
       "attributes": {
-        "value": "Task fitness: describe one singular, actionable, independently completable delivery step. During refinement, use a bounded decomposition outline. If a section can be delivered, evidenced, and closed independently, preserve the shared outcome in a parent and create native child tasks; multiple files or coordinated atomic steps alone do not require decomposition."
+        "value": "Task fitness: describe an actionable outcome with enough context to begin. Decompose implementation organically into the tasks, subtasks, and steps the work warrants. Create native child issues only when durable independent tracking, ownership, dependency, authority, review, evidence, scheduling, or handoff value warrants it; independent completable-ness alone does not require one."
       }
     },
     {
@@ -40,7 +40,7 @@
       "id": "scope",
       "attributes": {
         "label": "Scope",
-        "description": "State one coherent completion transition plus its ownership, review boundary, and evidence boundary. Do not hide independently completable deliverables here."
+        "description": "State the actionable outcome, relevant boundaries, and enough context to begin. Implementation may contain several coordinated tasks or steps."
       },
       "validations": {"required": true}
     },

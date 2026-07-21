@@ -421,10 +421,10 @@ Do not use Status to express roadmap intent or readiness. Its states are:
 
 ### Task
 
-One singular, actionable, independently completable implementation or operational
-delivery step with explicit scope, acceptance criteria, ownership, dependencies, review
-and evidence boundaries, and one coherent completion transition. Multiple files or
-coordinated steps may belong to one task; independently closable outcomes do not.
+An actionable implementation or operational outcome with sufficient context to begin.
+Its implementation may be decomposed organically into tasks, subtasks, and steps. A
+separate native issue is used when durable tracking adds value, not merely because a step
+could be completed independently.
 
 ### Workflow capability mode
 

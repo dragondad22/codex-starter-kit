@@ -122,22 +122,20 @@ assigned human or AI does not invent unresolved decisions.
 
 Implementation refinement follows this order:
 
-1. use a bounded decomposition outline to test whether the proposed task is one singular,
-   actionable, independently completable delivery;
-2. retain multi-deliverable work in a feature or design-first parent and create native
-   child tasks with independent lifecycle and evidence state;
-3. promote only a fit, decision-complete task to Ready;
+1. confirm the proposed task has an actionable outcome and sufficient context to begin;
+2. decompose implementation organically into the tasks, subtasks, and steps warranted by
+   the work, without prescribing a child count or depth;
+3. create native child issues only when durable independent tracking adds value;
 4. repeat freshness and task fitness when selected and after material change; and
-5. maintain a structured implementation plan for useful coordination inside that one
-   delivery, or an agent-neutral ordered checklist with exactly one active step when the
+5. maintain a structured implementation plan for useful coordination inside the active
+   issue, or an agent-neutral ordered checklist with exactly one active step when the
    runtime has no plan surface.
 
-An independently completable plan section is a decomposition signal, not permission to
-continue a hidden subproject. Multiple files, modules, tests, or atomic coordinated steps
-are not by themselves separate deliveries. Neither coordination form expands issue scope
-or authority. One writer owns each mutable boundary; independent reviewers are read-only
-or isolated. A coherent bug may be promoted in place, while independently completable
-remediation outcomes become native child tasks.
+Independent completable-ness alone does not force a plan section into a native issue.
+Separate ownership, scheduling, dependencies, authority, review/evidence boundaries,
+release value, or durable handoff may justify one. Neither coordination form expands issue
+scope or authority. One writer owns each mutable boundary; independent reviewers are
+read-only or isolated. A coherent bug may retain several remediation steps.
 
 Readiness and completion are subtype-specific:
 

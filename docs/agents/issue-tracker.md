@@ -142,36 +142,35 @@ sections to the same parseable contract.
 
 ### Task fitness and implementation planning
 
-A `type:task` issue is Ready only when it represents one singular, actionable,
-independently completable delivery step with one coherent completion transition, owner,
-review boundary, evidence boundary, and Project state. During refinement, test task
-fitness against the current outcome and acceptance, governing references, ownership,
-dependencies, implemented state, review boundary, and evidence boundary.
+A `type:task` issue is Ready when its outcome is actionable and its current acceptance,
+governing references, ownership, dependencies, authority, implemented state, review
+boundary, and evidence needs are sufficient to begin. A task may contain several
+coordinated implementation tasks, subtasks, or steps.
 
-Use a bounded decomposition outline or deep plan before promotion to Ready. If a section
-can be implemented, evidenced, merged, and closed independently while leaving a truthful
-useful outcome, it is a separate delivery unless transactional correctness, rollout, or
-recovery requires one completion transition. Multiple files, modules, commits, tests, or
-coordinated atomic steps do not by themselves make a task unfit. Multi-deliverable work
-retains a feature or design-first parent and uses native child tasks, each with its own
-acceptance, dependencies, Readiness, Status, evidence, and completing change. The
-container remains `Needs refinement` until that decomposition is truthful and complete.
+Use a bounded outline or deep plan to decompose the implementation organically at the
+depth the work warrants. Promote a unit to a native child issue when durable independent
+tracking adds value—for example separate ownership, scheduling, dependency or authority
+gates, review/evidence boundaries, release value, or a handoff that must survive the active
+execution context. Independent completable-ness alone does not require a child issue, and
+there is no prescribed child count or decomposition depth. When native children are
+useful, retain the shared outcome in a parent and give each child truthful lifecycle and
+Project state.
 
-After a singular task passes its selection/start freshness check, maintain an active
-structured implementation plan when sequencing, cross-module changes, live effects,
-recovery, or uncertainty benefits from explicit coordination. Plan steps are checkpoints
-inside one delivery, not substitutes for decomposition. When no structured plan surface
-exists, use an agent-neutral ordered checklist with exactly one active step in the active
+After a task passes its selection/start freshness check, maintain an active structured
+implementation plan when sequencing, cross-module changes, live effects,
+recovery, or uncertainty benefits from explicit coordination. Plan steps may be tasks,
+subtasks, or smaller actions and may expose a useful new issue boundary. When no plan
+surface exists, use an agent-neutral ordered checklist with exactly one active step in the active
 execution context. At handoff, promote only material deviations and the next action into
 the issue or PR. Neither plan form expands the issue's scope or authority; both are
 coordination evidence, not authority.
 
 A material change to scope, acceptance, authority, ownership, architecture, policy,
 risk, dependencies, review boundary, evidence boundary, or implemented state repeats
-freshness and task-fitness review. A coherent bug remains one defect record and may be
-promoted in place into an executable contract; independently completable remediation
-outcomes become native child tasks. Keep one writer per mutable boundary. Independent
-reviewers remain read-only or work in isolated copies.
+freshness and task-fitness review. A coherent bug may remain one defect record with several
+remediation steps; use related issues only when the durable-tracking criteria above apply.
+Keep one writer per mutable boundary. Independent reviewers remain read-only or work in
+isolated copies.
 
 At selection/start, and again only after material change, refresh the current issue,
 governing sources, native relationships, Project configuration, and related delivery
