@@ -231,14 +231,18 @@ stateDiagram-v2
 Checks, review requests, review results, optional product approval, effective branch rules,
 and merge authorization are orthogonal evidence. Only checks and review evidence for the
 current exact head participate. A capable review outside the implementation context is
-universal; qualified independence and a separate product approver compose only when the
-governed requirement asks for them. Rules describe effective gates and supported merge
+universal and cannot be omitted from a delivery intent. Its declaration binds the exact
+reviewed source, actor, role, named capability, distinct contexts, findings/approval
+routes, limitations, and any stronger-policy requirement. Qualified independence and a
+separate product approver compose only when governed intent asks for them. Required checks
+bind provider integration identity when effective rules do; a same-named unbound status
+cannot replace an App-bound check. Rules describe effective gates and supported merge
 methods but grant neither review evidence nor bypass authority.
 
 The delivery intent binds the managed issue, governed source and operating profile,
 immutable repository/Project target, issue-named head, base, required checks, reviewer
 roles, squash method, canonical delivery claim, and effect boundary. Wrong or ambiguous
-linkage, branch/head drift, stale capability, changed effective rules, missing evidence,
+linkage (including reciprocal `Closes #N`), branch/head drift, stale capability, changed effective rules, missing evidence,
 unsupported stronger rules, closed-unmerged state, or an unverified merge remains an
 explicit non-pass or waiting disposition.
 
@@ -246,8 +250,11 @@ Every external transition requires one content-addressed DEC-0022 mandate coveri
 effect and exact delivery intent. Effects are single-attempt. An ambiguous or lost
 response is recovered only by exact postcondition observation; it is never blindly
 replayed. Mandate usage is reserved in the shared cumulative Work Manager ledger before
-the call. The adapter may use a distinct, narrowed effect credential while observation
-uses a read credential, but both transports must bind the same repository.
+the call. Apply reacquires capability and stops unless actor, mode, account, installation,
+repository, permissions, expiry, and freshness still match the planned authority. The
+adapter may use a distinct, narrowed effect credential while observation uses a read
+credential, but both transports must bind the same REST/GraphQL routes, API version,
+repository, and Project.
 
 GitHub does not provide reliable retrospective proof of the merge method. A merged PR
 therefore qualifies as `squash` only when a retained successful exact-head squash-effect

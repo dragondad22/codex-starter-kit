@@ -19,10 +19,11 @@ one-transition plans, mandates, receipts, verification, recovery, and completion
 The adapter observes normalized branch, PR, check, review, approval, rule, and merge facts
 and applies only the engine-selected delivery effect. `NewDeliveryAdapter` may receive a
 separate effect transport, allowing a narrowed logical merger credential without giving
-that credential to read-side observation; both transports must bind the same host, API
-route, repository owner/name, and immutable repository ID. Reviewer capability,
-implementation-context separation, qualified independence, and product-approver trust are
-explicit non-secret configuration rather than conclusions inferred from GitHub checks or
+that credential to read-side observation; both transports must bind the same host, REST
+and GraphQL routes, API version, repository owner/name, immutable repository ID, and
+Project ID. Reviewer capability and context are an exact-source declaration retained with
+the review role, findings/approval routes, limitations, and stronger-policy requirement;
+qualified independence and product-approver trust remain separate from GitHub checks or
 rules.
 
 Issue #73 adds a separate `SandboxAdapter` seam for baseline and fixture resources whose
@@ -139,16 +140,21 @@ stop before mutation.
 The delivery adapter starts from the exact managed issue marker and independently reads
 the effective base-branch rules, current base revision, issue-named Git ref, bounded issue
 timeline, and same-repository linked PRs. It accepts at most one PR matching the expected
-head, base, and immutable repository. It then reads the exact-head check runs and combined
+head, base, immutable repository, and reciprocal `Closes #N` body linkage. It then reads
+the exact-head check runs and combined
 statuses, requested reviewers, paginated review history, repository squash capability,
 and current delivery-claim reachability. A missing branch and a present branch without a
 PR are clean lifecycle states; multiple matching PRs, pagination exhaustion, mismatched
 claim/head/base, missing open head, conflicting effective evidence, and unsupported
 stronger rules are explicit non-passes.
 
-Check and review observations bind evidence identity, actor or context, exact commit, and
-observation time. Only the latest unambiguous evidence for the current PR head is eligible.
-Review trust is evaluated separately from requested-reviewer routing. Reviews from a
+Check observations bind context, GitHub App integration ID where rules require one,
+evidence identity, exact commit, and observation time. A same-named legacy status cannot
+satisfy or replace an App-bound check. Review observations bind actor, exact commit,
+declared role/capability, reviewed source, distinct implementation/review contexts,
+findings and approval routes, limitations, and any stronger-policy result. Only the latest
+unambiguous evidence for the current PR head is eligible. Review trust is evaluated
+separately from requested-reviewer routing. Reviews from a
 configured product approver also populate the optional approval evidence channel, while
 one evidence identity cannot satisfy both required baseline review and separate product
 approval. Effective rules must exactly match the governed required-check set and permit
@@ -158,13 +164,17 @@ The allowlisted delivery effects are:
 
 - `create-branch`, posting an exact issue-named ref from the observed base revision;
 - `create-pull-request`, rechecking the branch revision and creating a draft PR whose body
-  is the canonical #74 delivery claim;
+  contains both `Closes #N` for the exact managed issue and the canonical #74 delivery
+  claim;
 - `mark-ready`, applying the native draft-to-ready transition to the exact PR;
 - `request-review`, routing the declared reviewer without treating a request as approval;
   and
 - `squash-merge`, binding GitHub's squash endpoint to the exact current head SHA.
 
-Every non-GET remains single-attempt. Ambiguous responses return to the engine, which may
+Immediately before apply, the engine reacquires capability and requires the exact planned
+actor, mode, account, installation, repository, permission set, token expiry, freshness,
+and active mandate. Every non-GET remains serialized and single-attempt. Ambiguous
+responses return to the engine, which may
 recover only when a fresh exact observation proves the intended postcondition. The squash
 response must affirm a merge and supply its immutable merge SHA. Because GitHub does not
 reliably expose retrospective merge method, subsequent qualification composes current

@@ -20,9 +20,11 @@ on:
           - issues-governed
           - project-setup
           - relationships-setup
+          - rules-setup
           - file-initial
           - file-stale
           - cleanup-delivery
+          - cleanup-rules
           - cleanup-file
           - cleanup-relationships
           - cleanup-issues
@@ -68,7 +70,7 @@ concurrency:
 
 jobs:
   plan:
-    environment: ${{ (inputs.stage == 'project-setup' || inputs.stage == 'relationships-setup' || inputs.stage == 'cleanup-relationships') && 'contract-reconciler' || 'contract-seeder' }}
+    environment: ${{ (inputs.stage == 'rules-setup' || inputs.stage == 'cleanup-rules') && 'contract-rules' || ((inputs.stage == 'project-setup' || inputs.stage == 'relationships-setup' || inputs.stage == 'cleanup-relationships') && 'contract-reconciler' || 'contract-seeder') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out sandbox
@@ -102,6 +104,7 @@ jobs:
           cmp .github/workflows/issue-75-sandbox-stage-plan.yml \
             tool/docs/evidence/issue-75-sandbox-stage-plan.yml
           case "$STAGE" in
+            rules-setup|cleanup-rules) ROLE=rules ;;
             project-setup|relationships-setup|cleanup-relationships) ROLE=reconciler ;;
             issues-setup|issues-governed|file-initial|file-stale|cleanup-delivery|cleanup-file|cleanup-issues) ROLE=seeder ;;
             *) echo "unsupported Issue 75 stage" >&2; exit 1 ;;
