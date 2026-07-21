@@ -14,24 +14,36 @@ import (
 )
 
 type DeliveryReviewerTrust struct {
-	Actor           string
-	Capable         bool
-	DistinctContext bool
-	ProductApprover bool
+	Actor                string
+	Capable              bool
+	DistinctContext      bool
+	QualifiedIndependent bool
+	ProductApprover      bool
 }
 
 type DeliveryAdapter struct {
-	base      *Adapter
-	reviewers map[string]DeliveryReviewerTrust
+	base       *Adapter
+	effectBase *Adapter
+	reviewers  map[string]DeliveryReviewerTrust
 }
 
 func (adapter *Adapter) repoPath() string {
 	return "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName)
 }
 
-func NewDeliveryAdapter(base *Adapter, reviewers []DeliveryReviewerTrust) (*DeliveryAdapter, error) {
+func NewDeliveryAdapter(base *Adapter, reviewers []DeliveryReviewerTrust, effectAdapters ...*Adapter) (*DeliveryAdapter, error) {
 	if base == nil {
 		return nil, errors.New("delivery adapter requires a GitHub transport")
+	}
+	if len(effectAdapters) > 1 || len(effectAdapters) == 1 && effectAdapters[0] == nil {
+		return nil, errors.New("delivery adapter accepts at most one effect transport")
+	}
+	effectBase := base
+	if len(effectAdapters) == 1 {
+		effectBase = effectAdapters[0]
+		if effectBase.config.Host != base.config.Host || effectBase.config.RESTBaseURL != base.config.RESTBaseURL || effectBase.config.RepositoryOwner != base.config.RepositoryOwner || effectBase.config.RepositoryName != base.config.RepositoryName || effectBase.config.RepositoryID != base.config.RepositoryID {
+			return nil, errors.New("delivery observation and effect transports must bind the same repository")
+		}
 	}
 	trusted := map[string]DeliveryReviewerTrust{}
 	for _, reviewer := range reviewers {
@@ -40,17 +52,18 @@ func NewDeliveryAdapter(base *Adapter, reviewers []DeliveryReviewerTrust) (*Deli
 		}
 		trusted[reviewer.Actor] = reviewer
 	}
-	return &DeliveryAdapter{base: base, reviewers: trusted}, nil
+	return &DeliveryAdapter{base: base, effectBase: effectBase, reviewers: trusted}, nil
 }
 
 func (adapter *DeliveryAdapter) Capability(ctx context.Context) (engine.DeliveryCapability, error) {
-	credential, err := adapter.base.credential(ctx)
+	credential, err := adapter.effectBase.credential(ctx)
 	if err != nil {
 		return engine.DeliveryCapability{}, err
 	}
-	now := adapter.base.now()
+	now := adapter.effectBase.now()
 	return engine.DeliveryCapability{
 		SchemaVersion: 1, Online: true, Fresh: now.Before(credential.ExpiresAt), Actor: credential.Actor, Mode: credential.Mode,
+		Account: credential.Account, InstallationID: credential.InstallationID, RepositoryID: adapter.effectBase.config.RepositoryID,
 		Permissions: slices.Clone(credential.Permissions), ObservedAt: now, ExpiresAt: credential.ExpiresAt,
 	}, nil
 }
@@ -86,14 +99,17 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 		} `json:"object"`
 	}
 	branchPath := adapter.base.repoPath() + "/git/ref/heads/" + escapePath(intent.HeadBranch)
+	branchMissing := false
 	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, branchPath, nil, &branch); err != nil {
 		if isResponseStatus(err, http.StatusNotFound) {
-			observation.Revision = digest(observation)
-			return observation, nil
+			branchMissing = true
+		} else {
+			return engine.DeliveryObservation{}, err
 		}
-		return engine.DeliveryObservation{}, err
 	}
-	observation.Branch = engine.DeliveryBranchObservation{Name: intent.HeadBranch, Revision: branch.Object.SHA}
+	if !branchMissing {
+		observation.Branch = engine.DeliveryBranchObservation{Name: intent.HeadBranch, Revision: branch.Object.SHA, Present: true}
+	}
 	pull, err := adapter.findLinkedDeliveryPull(ctx, credential, issue, intent)
 	if err != nil {
 		observation.Problems = append(observation.Problems, err.Error())
@@ -104,11 +120,14 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 		observation.Revision = digest(observation)
 		return observation, nil
 	}
+	if branchMissing {
+		observation.Branch = engine.DeliveryBranchObservation{Name: pull.Head.Ref, Revision: pull.Head.SHA, Historical: true}
+	}
 	observation.PullRequest = engine.DeliveryPullRequestObservation{
 		Number: pull.Number, State: strings.ToLower(pull.State), Draft: pull.Draft, Base: pull.Base.Ref, Head: pull.Head.Ref, HeadRevision: pull.Head.SHA,
 		Merged: pull.Merged, MergeRevision: pull.MergeCommitSHA, RequestedReviewers: pull.requestedReviewerLogins(),
 	}
-	if pull.Head.SHA != branch.Object.SHA {
+	if !branchMissing && pull.Head.SHA != branch.Object.SHA {
 		observation.Problems = append(observation.Problems, "pull request head does not match the observed delivery branch")
 	}
 	if intent.Claim == nil || !deliveryClaimMatches(pull.Body, *intent.Claim) {
@@ -219,32 +238,48 @@ func (adapter *DeliveryAdapter) findLinkedDeliveryPull(ctx context.Context, cred
 
 func (adapter *DeliveryAdapter) observeDeliveryChecks(ctx context.Context, credential Credential, head string) ([]engine.DeliveryCheckObservation, error) {
 	path := adapter.base.repoPath() + "/commits/" + url.PathEscape(head)
-	var runs struct {
+	type checkRunsPage struct {
 		CheckRuns []struct {
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HeadSHA    string `json:"head_sha"`
+			ID          int64     `json:"id"`
+			Name        string    `json:"name"`
+			Status      string    `json:"status"`
+			Conclusion  string    `json:"conclusion"`
+			HeadSHA     string    `json:"head_sha"`
+			CompletedAt time.Time `json:"completed_at"`
 		} `json:"check_runs"`
 	}
-	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, path+"/check-runs?per_page=100", nil, &runs); err != nil {
-		return nil, err
-	}
 	checks := []engine.DeliveryCheckObservation{}
-	for _, run := range runs.CheckRuns {
-		state := "pending"
-		if run.Status == "completed" && run.Conclusion == "success" {
-			state = "passed"
-		} else if run.Status == "completed" {
-			state = "failed"
+	next := path + "/check-runs?per_page=100"
+	for page := 0; page < adapter.base.config.MaxPages && next != ""; page++ {
+		var runs checkRunsPage
+		response, err := adapter.base.rest(ctx, credential, http.MethodGet, next, nil, &runs)
+		if err != nil {
+			return nil, err
 		}
-		checks = append(checks, engine.DeliveryCheckObservation{Name: run.Name, HeadRevision: run.HeadSHA, State: state})
+		for _, run := range runs.CheckRuns {
+			state := "pending"
+			if run.Status == "completed" && run.Conclusion == "success" {
+				state = "passed"
+			} else if run.Status == "completed" {
+				state = "failed"
+			}
+			checks = append(checks, engine.DeliveryCheckObservation{Name: run.Name, HeadRevision: run.HeadSHA, State: state, EvidenceID: "check-run:" + strconv.FormatInt(run.ID, 10), ObservedAt: run.CompletedAt})
+		}
+		next, err = adapter.base.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if next != "" {
+		return nil, errors.New("GitHub delivery check pagination exceeded the configured bound")
 	}
 	var statuses struct {
 		Statuses []struct {
-			Context string `json:"context"`
-			State   string `json:"state"`
-			SHA     string `json:"sha"`
+			ID        int64     `json:"id"`
+			Context   string    `json:"context"`
+			State     string    `json:"state"`
+			SHA       string    `json:"sha"`
+			UpdatedAt time.Time `json:"updated_at"`
 		} `json:"statuses"`
 	}
 	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, path+"/status", nil, &statuses); err != nil {
@@ -257,31 +292,55 @@ func (adapter *DeliveryAdapter) observeDeliveryChecks(ctx context.Context, crede
 		} else if slices.Contains([]string{"failure", "error"}, status.State) {
 			state = "failed"
 		}
-		checks = append(checks, engine.DeliveryCheckObservation{Name: status.Context, HeadRevision: status.SHA, State: state})
+		checks = append(checks, engine.DeliveryCheckObservation{Name: status.Context, HeadRevision: status.SHA, State: state, EvidenceID: "status:" + strconv.FormatInt(status.ID, 10), ObservedAt: status.UpdatedAt})
 	}
 	return checks, nil
 }
 
 func (adapter *DeliveryAdapter) observeDeliveryReviews(ctx context.Context, credential Credential, number int) ([]engine.DeliveryReviewObservation, []engine.DeliveryApprovalObservation, error) {
 	var reviews []struct {
-		State    string `json:"state"`
-		CommitID string `json:"commit_id"`
-		User     struct {
+		ID          int64     `json:"id"`
+		State       string    `json:"state"`
+		CommitID    string    `json:"commit_id"`
+		SubmittedAt time.Time `json:"submitted_at"`
+		User        struct {
 			Login string `json:"login"`
 		} `json:"user"`
 	}
-	path := adapter.base.repoPath() + "/pulls/" + strconv.Itoa(number) + "/reviews?per_page=100"
-	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, path, nil, &reviews); err != nil {
-		return nil, nil, err
+	next := adapter.base.repoPath() + "/pulls/" + strconv.Itoa(number) + "/reviews?per_page=100"
+	allReviews := []struct {
+		ID          int64     `json:"id"`
+		State       string    `json:"state"`
+		CommitID    string    `json:"commit_id"`
+		SubmittedAt time.Time `json:"submitted_at"`
+		User        struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}{}
+	for page := 0; page < adapter.base.config.MaxPages && next != ""; page++ {
+		reviews = nil
+		response, err := adapter.base.rest(ctx, credential, http.MethodGet, next, nil, &reviews)
+		if err != nil {
+			return nil, nil, err
+		}
+		allReviews = append(allReviews, reviews...)
+		next, err = adapter.base.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return nil, nil, err
+		}
 	}
-	result := make([]engine.DeliveryReviewObservation, 0, len(reviews))
+	if next != "" {
+		return nil, nil, errors.New("GitHub delivery review pagination exceeded the configured bound")
+	}
+	result := make([]engine.DeliveryReviewObservation, 0, len(allReviews))
 	approvals := []engine.DeliveryApprovalObservation{}
-	for _, review := range reviews {
+	for _, review := range allReviews {
 		trust := adapter.reviewers[review.User.Login]
 		state := strings.ToLower(strings.ReplaceAll(review.State, "_", "-"))
-		result = append(result, engine.DeliveryReviewObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable})
+		evidenceID := "review:" + strconv.FormatInt(review.ID, 10)
+		result = append(result, engine.DeliveryReviewObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable, QualifiedIndependent: trust.QualifiedIndependent, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
 		if trust.ProductApprover {
-			approvals = append(approvals, engine.DeliveryApprovalObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable})
+			approvals = append(approvals, engine.DeliveryApprovalObservation{Actor: review.User.Login, HeadRevision: review.CommitID, State: state, DistinctContext: trust.DistinctContext, Capable: trust.Capable, QualifiedIndependent: trust.QualifiedIndependent, EvidenceID: evidenceID, ObservedAt: review.SubmittedAt})
 		}
 	}
 	return result, approvals, nil
@@ -294,6 +353,9 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 			Required []struct {
 				Context string `json:"context"`
 			} `json:"required_status_checks"`
+			RequiredApprovals             int  `json:"required_approving_review_count"`
+			RequireCodeOwner              bool `json:"require_code_owner_review"`
+			RequireConversationResolution bool `json:"required_review_thread_resolution"`
 		} `json:"parameters"`
 	}
 	path := adapter.base.repoPath() + "/rules/branches/" + escapePath(branch)
@@ -301,11 +363,19 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 		return engine.DeliveryRulesObservation{}, err
 	}
 	required := []string{}
+	problems := []string{}
 	for _, rule := range rules {
-		if rule.Type == "required_status_checks" {
+		switch rule.Type {
+		case "required_status_checks":
 			for _, check := range rule.Parameters.Required {
 				required = append(required, check.Context)
 			}
+		case "pull_request":
+			if rule.Parameters.RequiredApprovals > 1 || rule.Parameters.RequireCodeOwner || rule.Parameters.RequireConversationResolution {
+				problems = append(problems, "effective pull-request rules require unsupported stronger approval evidence")
+			}
+		case "merge_queue", "required_deployments", "required_code_scanning":
+			problems = append(problems, "effective branch rules include unsupported merge gate: "+rule.Type)
 		}
 	}
 	slices.Sort(required)
@@ -334,7 +404,7 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 		Rules      any
 		Repository any
 		Base       any
-	}{rules, repository, base}), BaseRevision: base.Commit.SHA, RequiredChecks: required, MergeMethods: methods}, nil
+	}{rules, repository, base}), BaseRevision: base.Commit.SHA, RequiredChecks: required, MergeMethods: methods, Problems: problems}, nil
 }
 
 func deliveryClaimMatches(body string, expected engine.WorkDeliveryClaim) bool {
@@ -348,13 +418,13 @@ func deliveryClaimMatches(body string, expected engine.WorkDeliveryClaim) bool {
 }
 
 func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine.DeliveryEffect) (engine.DeliveryEffectResult, error) {
-	credential, err := adapter.base.credential(ctx)
+	credential, err := adapter.effectBase.credential(ctx)
 	if err != nil {
 		return engine.DeliveryEffectResult{Outcome: "denied", Detail: "delivery credential is unavailable", Recoverable: true}, err
 	}
 	if effect.Kind == engine.DeliveryEffectCreateBranch {
 		body := map[string]string{"ref": "refs/heads/" + effect.Branch, "sha": effect.HeadRevision}
-		if _, err := adapter.base.rest(ctx, credential, http.MethodPost, adapter.base.repoPath()+"/git/refs", body, nil); err != nil {
+		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/git/refs", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "create-branch result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "created exact delivery branch"}, nil
@@ -372,19 +442,19 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 				SHA string `json:"sha"`
 			} `json:"object"`
 		}
-		branchPath := adapter.base.repoPath() + "/git/ref/heads/" + escapePath(effect.Branch)
-		if _, err := adapter.base.rest(ctx, credential, http.MethodGet, branchPath, nil, &branch); err != nil || branch.Object.SHA != effect.HeadRevision {
+		branchPath := adapter.effectBase.repoPath() + "/git/ref/heads/" + escapePath(effect.Branch)
+		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodGet, branchPath, nil, &branch); err != nil || branch.Object.SHA != effect.HeadRevision {
 			return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery branch changed before pull request creation", Recoverable: true}, err
 		}
 		body := map[string]any{"title": effect.Title, "body": marker, "head": effect.Branch, "base": effect.BaseBranch, "draft": true}
-		if _, err := adapter.base.rest(ctx, credential, http.MethodPost, adapter.base.repoPath()+"/pulls", body, nil); err != nil {
+		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/pulls", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "create-pull-request result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "created claimed draft pull request"}, nil
 	}
-	path := adapter.base.repoPath() + "/pulls/" + strconv.Itoa(effect.PullRequest)
+	path := adapter.effectBase.repoPath() + "/pulls/" + strconv.Itoa(effect.PullRequest)
 	var pull deliveryPull
-	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, path, nil, &pull); err != nil {
+	if _, err := adapter.effectBase.rest(ctx, credential, http.MethodGet, path, nil, &pull); err != nil {
 		return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery pull request cannot be re-observed", Recoverable: true}, err
 	}
 	if pull.Head.SHA != effect.HeadRevision {
@@ -393,7 +463,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 	switch effect.Kind {
 	case engine.DeliveryEffectRequestReview:
 		body := map[string]any{"reviewers": []string{effect.Reviewer}}
-		if _, err := adapter.base.rest(ctx, credential, http.MethodPost, path+"/requested_reviewers", body, nil); err != nil {
+		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, path+"/requested_reviewers", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "request-review result requires exact re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "requested the declared delivery reviewer"}, nil
@@ -402,7 +472,7 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 			Errors []graphQLError `json:"errors"`
 		}
 		query := `mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{id}}}`
-		if err := adapter.base.mutateGraphQL(ctx, credential, query, map[string]any{"id": pull.NodeID}, &response); err != nil || len(response.Errors) != 0 {
+		if err := adapter.effectBase.mutateGraphQL(ctx, credential, query, map[string]any{"id": pull.NodeID}, &response); err != nil || len(response.Errors) != 0 {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "mark-ready result requires re-observation", Recoverable: true}, err
 		}
 		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "marked exact pull request ready"}, nil
@@ -411,14 +481,15 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 		var merged struct {
 			Merged  bool   `json:"merged"`
 			Message string `json:"message"`
+			SHA     string `json:"sha"`
 		}
-		if _, err := adapter.base.rest(ctx, credential, http.MethodPut, path+"/merge", body, &merged); err != nil {
+		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPut, path+"/merge", body, &merged); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "squash-merge result requires exact re-observation", Recoverable: true}, err
 		}
-		if !merged.Merged {
+		if !merged.Merged || merged.SHA == "" {
 			return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "GitHub did not confirm the squash merge", Recoverable: true}, nil
 		}
-		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "squash merged exact pull request head"}, nil
+		return engine.DeliveryEffectResult{Outcome: "applied", Detail: "squash merged exact pull request head", ResourceRevision: merged.SHA}, nil
 	default:
 		return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "unsupported delivery effect", Recoverable: true}, errors.New("unsupported delivery effect")
 	}

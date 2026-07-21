@@ -64,14 +64,17 @@ type DeliveryRequest struct {
 }
 
 type DeliveryCapability struct {
-	SchemaVersion int       `json:"schema_version"`
-	Online        bool      `json:"online"`
-	Fresh         bool      `json:"fresh"`
-	Actor         string    `json:"actor"`
-	Mode          string    `json:"mode"`
-	Permissions   []string  `json:"permissions"`
-	ObservedAt    time.Time `json:"observed_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	SchemaVersion  int       `json:"schema_version"`
+	Online         bool      `json:"online"`
+	Fresh          bool      `json:"fresh"`
+	Actor          string    `json:"actor"`
+	Mode           string    `json:"mode"`
+	Account        string    `json:"account,omitempty"`
+	InstallationID string    `json:"installation_id,omitempty"`
+	RepositoryID   string    `json:"repository_id"`
+	Permissions    []string  `json:"permissions"`
+	ObservedAt     time.Time `json:"observed_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 type DeliveryIssueObservation struct {
@@ -80,8 +83,10 @@ type DeliveryIssueObservation struct {
 }
 
 type DeliveryBranchObservation struct {
-	Name     string `json:"name"`
-	Revision string `json:"revision"`
+	Name       string `json:"name"`
+	Revision   string `json:"revision"`
+	Present    bool   `json:"present"`
+	Historical bool   `json:"historical"`
 }
 
 type DeliveryPullRequestObservation struct {
@@ -99,25 +104,33 @@ type DeliveryPullRequestObservation struct {
 }
 
 type DeliveryCheckObservation struct {
-	Name         string `json:"name"`
-	HeadRevision string `json:"head_revision"`
-	State        string `json:"state"`
+	Name         string    `json:"name"`
+	HeadRevision string    `json:"head_revision"`
+	State        string    `json:"state"`
+	EvidenceID   string    `json:"evidence_id,omitempty"`
+	ObservedAt   time.Time `json:"observed_at,omitempty"`
 }
 
 type DeliveryReviewObservation struct {
-	Actor           string `json:"actor"`
-	HeadRevision    string `json:"head_revision"`
-	State           string `json:"state"`
-	DistinctContext bool   `json:"distinct_context"`
-	Capable         bool   `json:"capable"`
+	Actor                string    `json:"actor"`
+	HeadRevision         string    `json:"head_revision"`
+	State                string    `json:"state"`
+	DistinctContext      bool      `json:"distinct_context"`
+	Capable              bool      `json:"capable"`
+	QualifiedIndependent bool      `json:"qualified_independent"`
+	EvidenceID           string    `json:"evidence_id,omitempty"`
+	ObservedAt           time.Time `json:"observed_at,omitempty"`
 }
 
 type DeliveryApprovalObservation struct {
-	Actor           string `json:"actor"`
-	HeadRevision    string `json:"head_revision"`
-	State           string `json:"state"`
-	DistinctContext bool   `json:"distinct_context"`
-	Capable         bool   `json:"capable"`
+	Actor                string    `json:"actor"`
+	HeadRevision         string    `json:"head_revision"`
+	State                string    `json:"state"`
+	DistinctContext      bool      `json:"distinct_context"`
+	Capable              bool      `json:"capable"`
+	QualifiedIndependent bool      `json:"qualified_independent"`
+	EvidenceID           string    `json:"evidence_id,omitempty"`
+	ObservedAt           time.Time `json:"observed_at,omitempty"`
 }
 
 type DeliveryRulesObservation struct {
@@ -125,6 +138,7 @@ type DeliveryRulesObservation struct {
 	BaseRevision   string   `json:"base_revision"`
 	RequiredChecks []string `json:"required_checks"`
 	MergeMethods   []string `json:"merge_methods"`
+	Problems       []string `json:"problems,omitempty"`
 }
 
 type DeliveryObservation struct {
@@ -183,9 +197,11 @@ type DeliveryAdapter interface {
 }
 
 type DeliveryEffectResult struct {
-	Outcome     string `json:"outcome"`
-	Detail      string `json:"detail"`
-	Recoverable bool   `json:"recoverable"`
+	Outcome          string              `json:"outcome"`
+	Detail           string              `json:"detail"`
+	Recoverable      bool                `json:"recoverable"`
+	ResourceRevision string              `json:"resource_revision,omitempty"`
+	WorkReceipts     []WorkEffectReceipt `json:"work_receipts,omitempty"`
 }
 
 type DeliveryApplyResult struct {
@@ -225,33 +241,42 @@ type DeliveryVerification struct {
 }
 
 type DeliveryStatusResult struct {
-	SchemaVersion int                     `json:"schema_version"`
-	Disposition   DeliveryDisposition     `json:"disposition"`
-	PlanID        string                  `json:"plan_id,omitempty"`
-	Receipts      []DeliveryEffectReceipt `json:"receipts"`
+	SchemaVersion      int                     `json:"schema_version"`
+	Disposition        DeliveryDisposition     `json:"disposition"`
+	PlanID             string                  `json:"plan_id,omitempty"`
+	Receipts           []DeliveryEffectReceipt `json:"receipts"`
+	HistoricalReceipts []DeliveryEffectReceipt `json:"historical_receipts,omitempty"`
+	Completion         *DeliveryCompletion     `json:"completion,omitempty"`
 }
 
 type deliveryState struct {
-	SchemaVersion int                     `json:"schema_version"`
-	StateDigest   string                  `json:"state_digest"`
-	Request       DeliveryRequest         `json:"request"`
-	Inspection    DeliveryInspection      `json:"inspection"`
-	Plan          *DeliveryPlan           `json:"plan,omitempty"`
-	Receipts      []DeliveryEffectReceipt `json:"receipts"`
-	Verification  *DeliveryVerification   `json:"verification,omitempty"`
-	Completion    *DeliveryCompletion     `json:"completion,omitempty"`
-	Disposition   DeliveryDisposition     `json:"disposition"`
+	SchemaVersion      int                     `json:"schema_version"`
+	StateDigest        string                  `json:"state_digest"`
+	Request            DeliveryRequest         `json:"request"`
+	Inspection         DeliveryInspection      `json:"inspection"`
+	Plan               *DeliveryPlan           `json:"plan,omitempty"`
+	Receipts           []DeliveryEffectReceipt `json:"receipts"`
+	HistoricalReceipts []DeliveryEffectReceipt `json:"historical_receipts,omitempty"`
+	Verification       *DeliveryVerification   `json:"verification,omitempty"`
+	Completion         *DeliveryCompletion     `json:"completion,omitempty"`
+	Disposition        DeliveryDisposition     `json:"disposition"`
 }
 
 type DeliveryCompletion struct {
-	SchemaVersion  int       `json:"schema_version"`
-	ManagedID      string    `json:"managed_id"`
-	SourceRevision string    `json:"source_revision"`
-	PullRequest    int       `json:"pull_request"`
-	HeadRevision   string    `json:"head_revision"`
-	MergeRevision  string    `json:"merge_revision"`
-	MandateID      string    `json:"mandate_id"`
-	RecordedAt     time.Time `json:"recorded_at"`
+	SchemaVersion          int                           `json:"schema_version"`
+	ManagedID              string                        `json:"managed_id"`
+	SourceRevision         string                        `json:"source_revision"`
+	PullRequest            int                           `json:"pull_request"`
+	HeadRevision           string                        `json:"head_revision"`
+	MergeRevision          string                        `json:"merge_revision"`
+	MandateID              string                        `json:"mandate_id"`
+	IntentDigest           string                        `json:"intent_digest"`
+	Checks                 []DeliveryCheckObservation    `json:"checks"`
+	Reviews                []DeliveryReviewObservation   `json:"reviews"`
+	Approvals              []DeliveryApprovalObservation `json:"approvals"`
+	Rules                  DeliveryRulesObservation      `json:"rules"`
+	ReconciliationReceipts []WorkEffectReceipt           `json:"reconciliation_receipts"`
+	RecordedAt             time.Time                     `json:"recorded_at"`
 }
 
 func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (DeliveryInspection, error) {
@@ -272,12 +297,18 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 	}
 	var prior deliveryState
 	havePrior := false
+	historicalReceipts := []DeliveryEffectReceipt{}
 	if retained, priorErr := readDeliveryState(root); priorErr == nil {
 		prior = retained
-		havePrior = true
-		if deliverySquashReceiptMatches(prior.Receipts, request.Intent, observation) {
-			observation.PullRequest.MergeMethod = request.Intent.MergeMethod
-			observation.Revision = digestJSON(observation)
+		historicalReceipts = slices.Clone(prior.HistoricalReceipts)
+		if DeliveryResourceDigest(prior.Request.Intent) == DeliveryResourceDigest(request.Intent) {
+			havePrior = true
+			if deliverySquashReceiptMatches(prior.Receipts, request.Intent, observation) {
+				observation.PullRequest.MergeMethod = request.Intent.MergeMethod
+				observation.Revision = digestJSON(observation)
+			}
+		} else {
+			historicalReceipts = append(historicalReceipts, prior.Receipts...)
 		}
 	}
 	problems := deliveryProblems(request.Intent, capability, observation, e.clock.Now())
@@ -308,7 +339,7 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 			inspection.Disposition = disposition
 		}
 	}
-	if err := writeDeliveryState(root, deliveryState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: receipts, Completion: completion, Disposition: disposition}); err != nil {
+	if err := writeDeliveryState(root, deliveryState{SchemaVersion: 1, Request: request, Inspection: inspection, Receipts: receipts, HistoricalReceipts: historicalReceipts, Completion: completion, Disposition: disposition}); err != nil {
 		return DeliveryInspection{}, err
 	}
 	return inspection, nil
@@ -428,6 +459,9 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 			}
 		}
 		results = append(results, result)
+		if effect.Kind == DeliveryEffectSquashMerge && result.ResourceRevision != "" {
+			effect.MergeRevision = result.ResourceRevision
+		}
 		receipt := DeliveryEffectReceipt{
 			SchemaVersion: 1, PlanID: plan.ID, EffectID: effect.ID, EffectKind: effect.Kind, ManagedID: plan.Intent.ManagedID,
 			PullRequest: effect.PullRequest, HeadRevision: effect.HeadRevision, MergeRevision: effect.MergeRevision,
@@ -437,7 +471,7 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 		state.Receipts = append(state.Receipts, receipt)
 		receipts = append(receipts, receipt)
 		if effect.Kind == DeliveryEffectReconcileCompletion && result.Outcome == "applied" {
-			state.Completion = &DeliveryCompletion{SchemaVersion: 1, ManagedID: plan.Intent.ManagedID, SourceRevision: plan.Intent.SourceRevision, PullRequest: effect.PullRequest, HeadRevision: effect.HeadRevision, MergeRevision: effect.MergeRevision, MandateID: mandate.ID, RecordedAt: e.clock.Now()}
+			state.Completion = &DeliveryCompletion{SchemaVersion: 1, ManagedID: plan.Intent.ManagedID, SourceRevision: plan.Intent.SourceRevision, PullRequest: effect.PullRequest, HeadRevision: effect.HeadRevision, MergeRevision: effect.MergeRevision, MandateID: mandate.ID, IntentDigest: DeliveryResourceDigest(plan.Intent), Checks: slices.Clone(state.Inspection.Observation.Checks), Reviews: slices.Clone(state.Inspection.Observation.Reviews), Approvals: slices.Clone(state.Inspection.Observation.Approvals), Rules: state.Inspection.Observation.Rules, ReconciliationReceipts: slices.Clone(result.WorkReceipts), RecordedAt: e.clock.Now()}
 		}
 		if applyErr != nil || result.Outcome != "applied" {
 			state.Disposition = DeliveryDispositionNeedsReview
@@ -463,13 +497,13 @@ func deliveryCompletionMatches(completion *DeliveryCompletion, intent DeliveryIn
 		return false
 	}
 	pull := observation.PullRequest
-	return completion.SchemaVersion == 1 && completion.ManagedID == intent.ManagedID && completion.SourceRevision == intent.SourceRevision && completion.PullRequest == pull.Number && completion.HeadRevision == pull.HeadRevision && completion.MergeRevision == pull.MergeRevision && observation.Issue.State == "closed" && pull.Merged && pull.DefaultReachable
+	return completion.SchemaVersion == 1 && completion.IntentDigest == DeliveryResourceDigest(intent) && completion.ManagedID == intent.ManagedID && completion.SourceRevision == intent.SourceRevision && completion.PullRequest == pull.Number && completion.HeadRevision == pull.HeadRevision && completion.MergeRevision == pull.MergeRevision && observation.Issue.State == "closed" && pull.Merged && pull.DefaultReachable
 }
 
 func deliverySquashReceiptMatches(receipts []DeliveryEffectReceipt, intent DeliveryIntent, observation DeliveryObservation) bool {
 	pull := observation.PullRequest
-	return pull.Merged && pull.DefaultReachable && slices.ContainsFunc(receipts, func(receipt DeliveryEffectReceipt) bool {
-		return receipt.EffectKind == DeliveryEffectSquashMerge && receipt.Outcome == "applied" && receipt.ManagedID == intent.ManagedID && receipt.SourceRevision == intent.SourceRevision && receipt.PullRequest == pull.Number && receipt.HeadRevision == pull.HeadRevision
+	return pull.Merged && pull.DefaultReachable && pull.MergeRevision != "" && slices.ContainsFunc(receipts, func(receipt DeliveryEffectReceipt) bool {
+		return receipt.EffectKind == DeliveryEffectSquashMerge && receipt.Outcome == "applied" && receipt.ManagedID == intent.ManagedID && receipt.SourceRevision == intent.SourceRevision && receipt.PullRequest == pull.Number && receipt.HeadRevision == pull.HeadRevision && receipt.MergeRevision == pull.MergeRevision
 	})
 }
 
@@ -494,7 +528,7 @@ func (e *Engine) applyDeliveryCompletion(ctx context.Context, request DeliveryRe
 	if err != nil || verification.OverallState != ControlPass {
 		return DeliveryEffectResult{Outcome: "needs-review", Detail: "completion reconciliation did not verify", Recoverable: true}, err
 	}
-	return DeliveryEffectResult{Outcome: "applied", Detail: "reconciled qualifying merge through Work Manager"}, nil
+	return DeliveryEffectResult{Outcome: "applied", Detail: "reconciled qualifying merge through Work Manager", WorkReceipts: slices.Clone(apply.Receipts)}, nil
 }
 
 func (e *Engine) VerifyDelivery(ctx context.Context, repository string) (DeliveryVerification, error) {
@@ -519,10 +553,19 @@ func (e *Engine) VerifyDelivery(ctx context.Context, repository string) (Deliver
 		disposition = deliveryDisposition(state.Request.Intent, observation)
 	}
 	overall := ControlNeedsReview
-	if len(state.Receipts) != 0 && state.Receipts[len(state.Receipts)-1].Outcome == "applied" {
+	if len(problems) == 0 && len(state.Receipts) != 0 && state.Receipts[len(state.Receipts)-1].Outcome == "applied" {
 		last := state.Receipts[len(state.Receipts)-1]
-		if last.EffectKind == DeliveryEffectMarkReady && disposition == DeliveryDispositionMergeReady || last.EffectKind == DeliveryEffectSquashMerge && observation.PullRequest.Merged && observation.PullRequest.DefaultReachable {
+		if last.EffectKind == DeliveryEffectReconcileCompletion && deliveryCompletionMatches(state.Completion, state.Request.Intent, observation) {
+			disposition = DeliveryDispositionComplete
 			overall = ControlPass
+		} else if last.EffectKind == DeliveryEffectSquashMerge && disposition == DeliveryDispositionMerged {
+			overall = ControlPass
+		} else if state.Plan != nil {
+			for _, effect := range state.Plan.Effects {
+				if effect.ID == last.EffectID && deliveryEffectObserved(effect, observation) {
+					overall = ControlPass
+				}
+			}
 		}
 	}
 	verification := DeliveryVerification{SchemaVersion: 1, OverallState: overall, Disposition: disposition, Receipts: slices.Clone(state.Receipts), VerifiedAt: e.clock.Now()}
@@ -547,7 +590,7 @@ func (e *Engine) DeliveryStatus(_ context.Context, repository string) (DeliveryS
 	if state.Plan != nil {
 		planID = state.Plan.ID
 	}
-	return DeliveryStatusResult{SchemaVersion: 1, Disposition: state.Disposition, PlanID: planID, Receipts: slices.Clone(state.Receipts)}, nil
+	return DeliveryStatusResult{SchemaVersion: 1, Disposition: state.Disposition, PlanID: planID, Receipts: slices.Clone(state.Receipts), HistoricalReceipts: slices.Clone(state.HistoricalReceipts), Completion: state.Completion}, nil
 }
 
 func retainDeliveryPlan(repository, inspectionID string, plan DeliveryPlan) error {
@@ -573,11 +616,13 @@ func deliveryEffectObserved(effect DeliveryEffect, observation DeliveryObservati
 	case DeliveryEffectCreatePullRequest:
 		return pull.Number > 0 && pull.State == "open" && pull.Draft && pull.Head == effect.Branch && pull.Base == effect.BaseBranch && pull.HeadRevision == effect.HeadRevision
 	case DeliveryEffectRequestReview:
-		return pull.Number == effect.PullRequest && pull.HeadRevision == effect.HeadRevision && slices.Contains(pull.RequestedReviewers, effect.Reviewer)
+		return pull.Number == effect.PullRequest && pull.HeadRevision == effect.HeadRevision && (slices.Contains(pull.RequestedReviewers, effect.Reviewer) || slices.ContainsFunc(observation.Reviews, func(review DeliveryReviewObservation) bool {
+			return review.Actor == effect.Reviewer && review.HeadRevision == effect.HeadRevision
+		}))
 	case DeliveryEffectMarkReady:
 		return pull.Number == effect.PullRequest && pull.HeadRevision == effect.HeadRevision && pull.State == "open" && !pull.Draft && !pull.Merged
 	case DeliveryEffectSquashMerge:
-		return pull.Number == effect.PullRequest && pull.HeadRevision == effect.HeadRevision && pull.State == "closed" && pull.Merged && pull.DefaultReachable
+		return false
 	default:
 		return false
 	}
@@ -589,11 +634,14 @@ func DeliveryResourceDigest(intent DeliveryIntent) string {
 
 func validateDeliveryMandate(mandate WorkExecutionMandate, plan DeliveryPlan, now time.Time) error {
 	intent := plan.Intent
-	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != BindWorkExecutionMandate(mandate).ID || mandate.ApprovedBy == "" || mandate.ApprovalID == "" || now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt) {
+	if validateWorkExecutionMandateInput(mandate) != nil || now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt) {
 		return errors.New("delivery execution mandate is required or expired")
 	}
 	if !equalWorkTarget(mandate.Target, intent.Target) || mandate.OperationID != intent.OperationID || mandate.SelectedManagedID != intent.ManagedID || !slices.Contains(mandate.Actors, plan.Capability.Actor) || !slices.Contains(mandate.CredentialModes, plan.Capability.Mode) || !slices.Contains(mandate.SourceRevisions, intent.SourceRevision) || !slices.Contains(mandate.OperatingProfileRevisions, intent.OperatingProfileRevision) || !slices.Contains(mandate.ManagedIDs, intent.ManagedID) || !slices.Contains(mandate.ResourceDigests, DeliveryResourceDigest(intent)) {
 		return errors.New("delivery plan is outside execution mandate identity")
+	}
+	if !workAuthorityMatches(mandate, plan.Capability.Actor, plan.Capability.Mode, plan.Capability.Account, plan.Capability.InstallationID, plan.Capability.RepositoryID, plan.Capability.Permissions) {
+		return errors.New("delivery capability does not match its execution mandate authority")
 	}
 	if mandate.DataClass != intent.EffectBoundary.DataClass || mandate.CostCeiling != intent.EffectBoundary.CostCeiling || mandate.Destructive != intent.EffectBoundary.Destructive || mandate.Retention != intent.EffectBoundary.Retention || mandate.RecoveryOwner != intent.EffectBoundary.RecoveryOwner || mandate.MaxEffects < len(plan.Effects) {
 		return errors.New("delivery plan exceeds execution mandate boundary")
@@ -621,7 +669,7 @@ func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, obse
 	if intent.SchemaVersion != 1 || intent.OperationID == "" || intent.SourceRevision == "" || intent.OperatingProfileRevision == "" || intent.ManagedID == "" || intent.Title == "" || intent.Target.RepositoryID == "" || intent.BaseBranch == "" || intent.HeadBranch == "" || intent.MergeMethod != "squash" || !claimValid {
 		problems = append(problems, "delivery intent is invalid")
 	}
-	if capability.SchemaVersion != 1 || !capability.Online || !capability.Fresh || capability.Actor == "" || capability.Mode == "" || capability.ExpiresAt.IsZero() || !now.Before(capability.ExpiresAt) {
+	if capability.SchemaVersion != 1 || !capability.Online || !capability.Fresh || capability.Actor == "" || capability.Mode == "" || capability.RepositoryID != intent.Target.RepositoryID || capability.ExpiresAt.IsZero() || !now.Before(capability.ExpiresAt) {
 		problems = append(problems, "delivery capability is unavailable or stale")
 	}
 	pr := observation.PullRequest
@@ -645,6 +693,10 @@ func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, obse
 	if !validPullState || pr.Base != intent.BaseBranch || pr.Head != intent.HeadBranch || pr.HeadRevision == "" || pr.HeadRevision != observation.Branch.Revision {
 		problems = append(problems, "delivery pull request identity does not match the exact branch")
 	}
+	if !pr.Merged && !observation.Branch.Present {
+		problems = append(problems, "open delivery pull request head branch is missing")
+	}
+	problems = append(problems, observation.Rules.Problems...)
 	expectedChecks := slices.Clone(intent.RequiredChecks)
 	observedChecks := slices.Clone(observation.Rules.RequiredChecks)
 	slices.Sort(expectedChecks)
@@ -652,11 +704,19 @@ func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, obse
 	if !slices.Contains(observation.Rules.MergeMethods, intent.MergeMethod) || !slices.Equal(observedChecks, expectedChecks) {
 		problems = append(problems, "effective rules do not match governed delivery intent")
 	}
+	if _, ambiguous := effectiveDeliveryChecks(observation.Checks, observation.PullRequest.HeadRevision); ambiguous {
+		problems = append(problems, "effective delivery check evidence is ambiguous")
+	}
+	if _, ambiguous := effectiveDeliveryReviews(observation.Reviews, observation.PullRequest.HeadRevision); ambiguous {
+		problems = append(problems, "effective delivery review evidence is ambiguous")
+	}
 	return problems
 }
 
 func deliveryDisposition(intent DeliveryIntent, observation DeliveryObservation) DeliveryDisposition {
 	pr := observation.PullRequest
+	effectiveChecks, _ := effectiveDeliveryChecks(observation.Checks, pr.HeadRevision)
+	effectiveReviews, _ := effectiveDeliveryReviews(observation.Reviews, pr.HeadRevision)
 	if observation.Branch.Name == "" {
 		return DeliveryDispositionBranchAbsent
 	}
@@ -673,46 +733,87 @@ func deliveryDisposition(intent DeliveryIntent, observation DeliveryObservation)
 		return DeliveryDispositionClosedUnmerged
 	}
 	for _, required := range intent.RequiredChecks {
-		if slices.ContainsFunc(observation.Checks, func(check DeliveryCheckObservation) bool {
-			return check.Name == required && check.HeadRevision == pr.HeadRevision && check.State == "failed"
-		}) {
+		if effectiveChecks[required].State == "failed" {
 			return DeliveryDispositionChecksFailed
 		}
-		if !slices.ContainsFunc(observation.Checks, func(check DeliveryCheckObservation) bool {
-			return check.Name == required && check.HeadRevision == pr.HeadRevision && check.State == "passed"
-		}) {
+		if effectiveChecks[required].State != "passed" {
 			return DeliveryDispositionChecksPending
 		}
 	}
 	if pr.Draft {
 		return DeliveryDispositionDraft
 	}
-	if slices.ContainsFunc(observation.Reviews, func(review DeliveryReviewObservation) bool {
-		return review.HeadRevision == pr.HeadRevision && review.State == "changes-requested"
-	}) {
-		return DeliveryDispositionChangesRequested
+	for _, review := range effectiveReviews {
+		if review.State == "changes-requested" {
+			return DeliveryDispositionChangesRequested
+		}
 	}
-	if intent.Review.Role != "" && !slices.Contains(pr.RequestedReviewers, intent.Review.Role) && !slices.ContainsFunc(observation.Reviews, func(review DeliveryReviewObservation) bool {
-		return review.Actor == intent.Review.Role
-	}) {
+	if intent.Review.Role != "" && !slices.Contains(pr.RequestedReviewers, intent.Review.Role) && effectiveReviews[intent.Review.Role].Actor == "" {
 		return DeliveryDispositionReviewUnrequested
 	}
-	if intent.Review.Role != "" && !slices.ContainsFunc(observation.Reviews, func(review DeliveryReviewObservation) bool {
-		return review.Actor == intent.Review.Role && review.HeadRevision == pr.HeadRevision && review.State == "approved" && (!intent.Review.DistinctContext || review.DistinctContext) && review.Capable
-	}) {
+	reviewEvidence := effectiveReviews[intent.Review.Role]
+	if intent.Review.Role != "" && (reviewEvidence.State != "approved" || !reviewEvidence.Capable || intent.Review.DistinctContext && !reviewEvidence.DistinctContext || intent.Review.QualifiedIndependent && !reviewEvidence.QualifiedIndependent) {
 		return DeliveryDispositionReviewPending
 	}
-	if intent.ProductApproval.Role != "" && !slices.Contains(pr.RequestedReviewers, intent.ProductApproval.Role) && !slices.ContainsFunc(observation.Approvals, func(approval DeliveryApprovalObservation) bool {
-		return approval.Actor == intent.ProductApproval.Role
-	}) {
+	approvalEvidence := effectiveDeliveryApproval(observation.Approvals, pr.HeadRevision, intent.ProductApproval.Role)
+	if intent.ProductApproval.Role != "" && !slices.Contains(pr.RequestedReviewers, intent.ProductApproval.Role) && approvalEvidence.Actor == "" {
 		return DeliveryDispositionApprovalUnrequested
 	}
-	if intent.ProductApproval.Role != "" && !slices.ContainsFunc(observation.Approvals, func(approval DeliveryApprovalObservation) bool {
-		return approval.Actor == intent.ProductApproval.Role && approval.HeadRevision == pr.HeadRevision && approval.State == "approved" && (!intent.ProductApproval.DistinctContext || approval.DistinctContext) && approval.Capable
-	}) {
+	if intent.ProductApproval.Role != "" && (approvalEvidence.State != "approved" || !approvalEvidence.Capable || intent.ProductApproval.DistinctContext && !approvalEvidence.DistinctContext || intent.ProductApproval.QualifiedIndependent && !approvalEvidence.QualifiedIndependent || approvalEvidence.EvidenceID != "" && approvalEvidence.EvidenceID == reviewEvidence.EvidenceID) {
 		return DeliveryDispositionApprovalPending
 	}
 	return DeliveryDispositionMergeReady
+}
+
+func effectiveDeliveryChecks(checks []DeliveryCheckObservation, head string) (map[string]DeliveryCheckObservation, bool) {
+	result := map[string]DeliveryCheckObservation{}
+	ambiguous := false
+	for _, check := range checks {
+		if check.HeadRevision != head || check.Name == "" {
+			continue
+		}
+		prior, exists := result[check.Name]
+		if !exists || check.ObservedAt.After(prior.ObservedAt) || check.ObservedAt.Equal(prior.ObservedAt) && (check.ObservedAt.IsZero() || check.EvidenceID > prior.EvidenceID) {
+			result[check.Name] = check
+			continue
+		}
+		if check.ObservedAt.Equal(prior.ObservedAt) && !check.ObservedAt.IsZero() && check.State != prior.State {
+			ambiguous = true
+		}
+	}
+	return result, ambiguous
+}
+
+func effectiveDeliveryReviews(reviews []DeliveryReviewObservation, head string) (map[string]DeliveryReviewObservation, bool) {
+	result := map[string]DeliveryReviewObservation{}
+	ambiguous := false
+	for _, review := range reviews {
+		if review.HeadRevision != head || review.Actor == "" {
+			continue
+		}
+		prior, exists := result[review.Actor]
+		if !exists || review.ObservedAt.After(prior.ObservedAt) || review.ObservedAt.Equal(prior.ObservedAt) && (review.ObservedAt.IsZero() || review.EvidenceID > prior.EvidenceID) {
+			result[review.Actor] = review
+			continue
+		}
+		if review.ObservedAt.Equal(prior.ObservedAt) && !review.ObservedAt.IsZero() && review.State != prior.State {
+			ambiguous = true
+		}
+	}
+	return result, ambiguous
+}
+
+func effectiveDeliveryApproval(approvals []DeliveryApprovalObservation, head, actor string) DeliveryApprovalObservation {
+	var result DeliveryApprovalObservation
+	for _, approval := range approvals {
+		if approval.HeadRevision != head || approval.Actor != actor {
+			continue
+		}
+		if result.Actor == "" || approval.ObservedAt.After(result.ObservedAt) || approval.ObservedAt.Equal(result.ObservedAt) && (approval.ObservedAt.IsZero() || approval.EvidenceID > result.EvidenceID) {
+			result = approval
+		}
+	}
+	return result
 }
 
 type InMemoryDeliveryAdapter struct {
@@ -760,7 +861,7 @@ func (adapter *InMemoryDeliveryAdapter) ApplyDelivery(_ context.Context, effect 
 func (adapter *InMemoryDeliveryAdapter) applyObservedEffect(effect DeliveryEffect) (DeliveryEffectResult, error) {
 	switch effect.Kind {
 	case DeliveryEffectCreateBranch:
-		adapter.observation.Branch = DeliveryBranchObservation{Name: effect.Branch, Revision: effect.HeadRevision}
+		adapter.observation.Branch = DeliveryBranchObservation{Name: effect.Branch, Revision: effect.HeadRevision, Present: true}
 		adapter.observation.Revision = digestJSON(adapter.observation)
 		return DeliveryEffectResult{Outcome: "applied", Detail: "created issue-named branch"}, nil
 	case DeliveryEffectCreatePullRequest:
@@ -782,7 +883,7 @@ func (adapter *InMemoryDeliveryAdapter) applyObservedEffect(effect DeliveryEffec
 		adapter.observation.PullRequest.MergeMethod = "squash"
 		adapter.observation.PullRequest.DefaultReachable = true
 		adapter.observation.Revision = digestJSON(adapter.observation)
-		return DeliveryEffectResult{Outcome: "applied", Detail: "squash merged exact head"}, nil
+		return DeliveryEffectResult{Outcome: "applied", Detail: "squash merged exact head", ResourceRevision: adapter.observation.PullRequest.MergeRevision}, nil
 	default:
 		return DeliveryEffectResult{Outcome: "needs-review", Detail: "unsupported delivery effect", Recoverable: true}, errors.New("unsupported delivery effect")
 	}

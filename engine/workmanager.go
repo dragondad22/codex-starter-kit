@@ -283,36 +283,46 @@ type WorkPlan struct {
 	EffectBoundary           WorkEffectBoundary        `json:"effect_boundary,omitempty"`
 }
 
+type WorkExecutionAuthority struct {
+	Actor          string   `json:"actor"`
+	CredentialMode string   `json:"credential_mode"`
+	Account        string   `json:"account,omitempty"`
+	InstallationID string   `json:"installation_id,omitempty"`
+	RepositoryID   string   `json:"repository_id"`
+	Permissions    []string `json:"permissions"`
+}
+
 // WorkExecutionMandate is DEC-0022 authority for a bounded family of external Work Manager effects.
 type WorkExecutionMandate struct {
-	SchemaVersion             int               `json:"schema_version"`
-	ID                        string            `json:"mandate_id"`
-	ApprovedBy                string            `json:"approved_by"`
-	ApprovalID                string            `json:"approval_id"`
-	ApprovedAt                time.Time         `json:"approved_at"`
-	ExpiresAt                 time.Time         `json:"expires_at"`
-	Target                    WorkTarget        `json:"target"`
-	OperationID               string            `json:"operation_id"`
-	SelectedManagedID         string            `json:"selected_managed_id"`
-	Actors                    []string          `json:"actors"`
-	CredentialModes           []string          `json:"credential_modes"`
-	Permissions               []string          `json:"permissions"`
-	OperatingProfileRevisions []string          `json:"operating_profile_revisions"`
-	ContractDigests           []string          `json:"contract_digests"`
-	GovernanceDigests         []string          `json:"governance_digests"`
-	InputDigests              map[string]string `json:"input_digests"`
-	GovernedSourceDigests     map[string]string `json:"governed_source_digests"`
-	SourceRevisions           []string          `json:"source_revisions"`
-	ManagedIDs                []string          `json:"managed_ids"`
-	EffectKinds               []string          `json:"effect_kinds"`
-	Operations                []string          `json:"operations"`
-	ResourceDigests           []string          `json:"resource_digests"`
-	MaxEffects                int               `json:"max_effects"`
-	DataClass                 string            `json:"data_class"`
-	CostCeiling               string            `json:"cost_ceiling"`
-	Destructive               string            `json:"destructive"`
-	Retention                 string            `json:"retention"`
-	RecoveryOwner             string            `json:"recovery_owner"`
+	SchemaVersion             int                      `json:"schema_version"`
+	ID                        string                   `json:"mandate_id"`
+	ApprovedBy                string                   `json:"approved_by"`
+	ApprovalID                string                   `json:"approval_id"`
+	ApprovedAt                time.Time                `json:"approved_at"`
+	ExpiresAt                 time.Time                `json:"expires_at"`
+	Target                    WorkTarget               `json:"target"`
+	OperationID               string                   `json:"operation_id"`
+	SelectedManagedID         string                   `json:"selected_managed_id"`
+	Actors                    []string                 `json:"actors"`
+	CredentialModes           []string                 `json:"credential_modes"`
+	Permissions               []string                 `json:"permissions"`
+	Authorities               []WorkExecutionAuthority `json:"authorities,omitempty"`
+	OperatingProfileRevisions []string                 `json:"operating_profile_revisions"`
+	ContractDigests           []string                 `json:"contract_digests"`
+	GovernanceDigests         []string                 `json:"governance_digests"`
+	InputDigests              map[string]string        `json:"input_digests"`
+	GovernedSourceDigests     map[string]string        `json:"governed_source_digests"`
+	SourceRevisions           []string                 `json:"source_revisions"`
+	ManagedIDs                []string                 `json:"managed_ids"`
+	EffectKinds               []string                 `json:"effect_kinds"`
+	Operations                []string                 `json:"operations"`
+	ResourceDigests           []string                 `json:"resource_digests"`
+	MaxEffects                int                      `json:"max_effects"`
+	DataClass                 string                   `json:"data_class"`
+	CostCeiling               string                   `json:"cost_ceiling"`
+	Destructive               string                   `json:"destructive"`
+	Retention                 string                   `json:"retention"`
+	RecoveryOwner             string                   `json:"recovery_owner"`
 }
 
 // WorkDerivedFacts exposes policy results without adding a second managed item.
@@ -1083,6 +1093,21 @@ func BindWorkExecutionMandate(value WorkExecutionMandate) WorkExecutionMandate {
 		slices.Sort(*values)
 		*values = slices.Compact(*values)
 	}
+	value.Authorities = slices.Clone(value.Authorities)
+	for index := range value.Authorities {
+		value.Authorities[index].Permissions = slices.Clone(value.Authorities[index].Permissions)
+		slices.Sort(value.Authorities[index].Permissions)
+		value.Authorities[index].Permissions = slices.Compact(value.Authorities[index].Permissions)
+	}
+	slices.SortFunc(value.Authorities, func(left, right WorkExecutionAuthority) int {
+		if compared := strings.Compare(left.Actor, right.Actor); compared != 0 {
+			return compared
+		}
+		if compared := strings.Compare(left.CredentialMode, right.CredentialMode); compared != 0 {
+			return compared
+		}
+		return strings.Compare(left.InstallationID, right.InstallationID)
+	})
 	value.ID = digestJSON(workExecutionMandateWithoutID(value))
 	return value
 }
@@ -1108,7 +1133,7 @@ func validateWorkExecutionMandate(mandate WorkExecutionMandate, plan WorkPlan, s
 	actualPermissions := slices.Clone(capability.Permissions)
 	slices.Sort(actualPermissions)
 	boundary := plan.EffectBoundary
-	if !slices.Equal(actualPermissions, mandate.Permissions) || boundary.DataClass == "" || boundary.CostCeiling == "" || boundary.Destructive == "" || boundary.Retention == "" || boundary.RecoveryOwner == "" || mandate.DataClass != boundary.DataClass || mandate.CostCeiling != boundary.CostCeiling || mandate.Destructive != boundary.Destructive || mandate.Retention != boundary.Retention || mandate.RecoveryOwner != boundary.RecoveryOwner {
+	if !workAuthorityMatches(mandate, capability.Actor, capability.Mode, capability.Account, capability.InstallationID, capability.RepositoryID, actualPermissions) || boundary.DataClass == "" || boundary.CostCeiling == "" || boundary.Destructive == "" || boundary.Retention == "" || boundary.RecoveryOwner == "" || mandate.DataClass != boundary.DataClass || mandate.CostCeiling != boundary.CostCeiling || mandate.Destructive != boundary.Destructive || mandate.Retention != boundary.Retention || mandate.RecoveryOwner != boundary.RecoveryOwner {
 		return errors.New("Work Manager authority or operating ceilings are outside the approved execution mandate")
 	}
 	if state.Request.Intent.SchemaVersion == 2 {
@@ -1129,6 +1154,19 @@ func validateWorkExecutionMandate(mandate WorkExecutionMandate, plan WorkPlan, s
 	return nil
 }
 
+func workAuthorityMatches(mandate WorkExecutionMandate, actor, mode, account, installationID, repositoryID string, permissions []string) bool {
+	actual := slices.Clone(permissions)
+	slices.Sort(actual)
+	if len(mandate.Authorities) == 0 {
+		return slices.Equal(actual, mandate.Permissions)
+	}
+	return slices.ContainsFunc(mandate.Authorities, func(authority WorkExecutionAuthority) bool {
+		expected := slices.Clone(authority.Permissions)
+		slices.Sort(expected)
+		return authority.Actor == actor && authority.CredentialMode == mode && (authority.Account == "" || authority.Account == account) && (authority.InstallationID == "" || authority.InstallationID == installationID) && authority.RepositoryID == repositoryID && slices.Equal(expected, actual)
+	})
+}
+
 func validateWorkExecutionMandateInput(mandate WorkExecutionMandate) error {
 	if mandate.SchemaVersion != 1 || mandate.ID == "" || mandate.ID != BindWorkExecutionMandate(mandate).ID || mandate.ApprovedBy == "" || mandate.ApprovalID == "" || mandate.OperationID == "" || mandate.SelectedManagedID == "" || mandate.ApprovedAt.IsZero() || mandate.ExpiresAt.IsZero() || mandate.ExpiresAt.Before(mandate.ApprovedAt) {
 		return errors.New("Work Manager execution mandate input is invalid")
@@ -1142,6 +1180,24 @@ func validateWorkExecutionMandateInput(mandate WorkExecutionMandate) error {
 	}
 	for key, value := range mandate.GovernedSourceDigests {
 		values = append(values, key, value)
+	}
+	seenAuthorities := map[string]bool{}
+	for _, authority := range mandate.Authorities {
+		if authority.Actor == "" || authority.CredentialMode == "" || authority.RepositoryID != mandate.Target.RepositoryID || len(authority.Permissions) == 0 || !slices.Contains(mandate.Actors, authority.Actor) || !slices.Contains(mandate.CredentialModes, authority.CredentialMode) {
+			return errors.New("Work Manager execution mandate contains an invalid actor-scoped authority")
+		}
+		for _, permission := range authority.Permissions {
+			if !slices.Contains(mandate.Permissions, permission) {
+				return errors.New("Work Manager actor-scoped authority exceeds the mandate permission envelope")
+			}
+		}
+		key := digestJSON(authority)
+		if seenAuthorities[key] {
+			return errors.New("Work Manager execution mandate contains a duplicate actor-scoped authority")
+		}
+		seenAuthorities[key] = true
+		values = append(values, authority.Actor, authority.CredentialMode, authority.Account, authority.InstallationID, authority.RepositoryID)
+		values = append(values, authority.Permissions...)
 	}
 	if containsSensitiveText(strings.Join(values, "\n")) {
 		return errors.New("Work Manager execution mandate contains sensitive-looking material")

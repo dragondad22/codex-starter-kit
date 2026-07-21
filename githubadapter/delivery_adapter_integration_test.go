@@ -118,6 +118,44 @@ func TestDeliveryAdapterAppliesOrganicProgressionEffects(t *testing.T) {
 	}
 }
 
+func TestDeliveryAdapterUsesASeparateLeastAuthorityEffectCredential(t *testing.T) {
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer token" {
+			t.Errorf("effect authorization = %q", request.Header.Get("Authorization"))
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/octocat/example/pulls/101":
+			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "head": map[string]any{"sha": "head-1"}})
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/octocat/example/pulls/101/requested_reviewers":
+			json.NewEncoder(writer).Encode(map[string]any{})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	readBase := newUserAdapter(t, server, now)
+	effectConfig := adapterConfig(server, "user-token", "merger", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	effectConfig.RequiredPermissions = []string{"pull-requests:write"}
+	effectBase, err := githubadapter.New(effectConfig, credentialProvider(now, "user-token", "merger", []string{"pull-requests:write"}), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := githubadapter.NewDeliveryAdapter(readBase, nil, effectBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || capability.Actor != "merger" || len(capability.Permissions) != 1 || capability.Permissions[0] != "pull-requests:write" {
+		t.Fatalf("effect capability = %#v, err = %v", capability, err)
+	}
+	result, err := adapter.ApplyDelivery(context.Background(), engine.DeliveryEffect{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+}
+
 func deliveryIntent(claim *engine.WorkDeliveryClaim) engine.DeliveryIntent {
 	if claim == nil {
 		value := engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:75", SourceRevision: "source-1", ContractDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ImplementedSources: []engine.GovernedSourceBinding{{ID: "source", Path: "docs/implementation.md", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
@@ -177,5 +215,63 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	}
 	if len(observation.Problems) != 0 || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || len(observation.Reviews) != 1 || !observation.Reviews[0].Capable || observation.Rules.Revision == "" {
 		t.Fatalf("delivery observation = %#v", observation)
+	}
+}
+
+func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing.T) {
+	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
+	claim := engine.WorkDeliveryClaim{SchemaVersion: 1, ManagedID: "issue:75", SourceRevision: "source-1", ContractDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ImplementedSources: []engine.GovernedSourceBinding{{ID: "source", Path: "docs/implementation.md", Digest: "sha256:c00f126946018c4244ea7766b1087b63bd73085dc482e645981911efec70612a"}}}
+	marker, err := engine.RenderWorkDeliveryClaim(claim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/repos/octocat/example/issues":
+			json.NewEncoder(writer).Encode([]any{map[string]any{"number": 75, "node_id": "I_75", "state": "open", "body": "<!-- starter-kit-managed:issue:75 -->"}})
+		case "/repos/octocat/example/issues/75/timeline":
+			json.NewEncoder(writer).Encode([]any{map[string]any{"event": "cross-referenced", "source": map[string]any{"issue": map[string]any{"number": 101, "repository_url": server.URL + "/repos/octocat/example", "pull_request": map[string]any{}}}}})
+		case "/repos/octocat/example/git/ref/heads/task/75-delivery-squash-completion":
+			http.NotFound(writer, request)
+		case "/repos/octocat/example/pulls/101":
+			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "state": "closed", "merged": true, "merged_at": now, "merge_commit_sha": "merge-1", "body": marker, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
+		case "/repos/octocat/example/pulls/101/files":
+			json.NewEncoder(writer).Encode([]any{map[string]any{"filename": "docs/implementation.md", "status": "modified"}})
+		case "/repos/octocat/example/commits/head-1/check-runs":
+			json.NewEncoder(writer).Encode(map[string]any{"check_runs": []any{}})
+		case "/repos/octocat/example/commits/head-1/status":
+			json.NewEncoder(writer).Encode(map[string]any{"statuses": []any{}})
+		case "/repos/octocat/example/pulls/101/reviews":
+			json.NewEncoder(writer).Encode([]any{})
+		case "/repos/octocat/example/rules/branches/main":
+			json.NewEncoder(writer).Encode([]any{})
+		case "/repos/octocat/example":
+			json.NewEncoder(writer).Encode(map[string]any{"node_id": "R_repo", "default_branch": "main", "allow_squash_merge": true})
+		case "/repos/octocat/example/branches/main":
+			json.NewEncoder(writer).Encode(map[string]any{"commit": map[string]any{"sha": "base-2"}})
+		case "/repos/octocat/example/compare/merge-1...base-2":
+			json.NewEncoder(writer).Encode(map[string]any{"status": "ahead", "merge_base_commit": map[string]any{"sha": "merge-1"}})
+		case "/repos/octocat/example/contents/docs/implementation.md":
+			json.NewEncoder(writer).Encode(map[string]any{"type": "file", "encoding": "base64", "content": "ZGVsaXZlcmVkCg=="})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	adapter, err := githubadapter.NewDeliveryAdapter(newUserAdapter(t, server, now), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := deliveryIntent(&claim)
+	intent.RequiredChecks = nil
+	intent.Review = engine.WorkReviewRequirement{}
+	observation, err := adapter.ObserveDelivery(context.Background(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observation.Problems) != 0 || !observation.PullRequest.Merged || !observation.PullRequest.DefaultReachable || observation.Branch.Revision != "head-1" || observation.PullRequest.MergeMethod != "" {
+		t.Fatalf("merged observation = %#v", observation)
 	}
 }

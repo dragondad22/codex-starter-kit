@@ -151,6 +151,41 @@ func TestDeliveryKeepsPendingDistinctReviewSeparateFromChecks(t *testing.T) {
 	}
 }
 
+func TestDeliveryRequiresQualifiedIndependenceWhenPolicyAddsIt(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.Reviews[0].QualifiedIndependent = false
+		return observation
+	})
+	request.Intent.Review.QualifiedIndependent = true
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionReviewPending {
+		t.Fatalf("disposition = %q, want qualified review pending", inspection.Disposition)
+	}
+}
+
+func TestDeliveryUsesLatestEffectiveReviewForEachActor(t *testing.T) {
+	now := time.Date(2026, 7, 21, 20, 0, 0, 0, time.UTC)
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.Reviews = []engine.DeliveryReviewObservation{
+			{Actor: "reviewer", HeadRevision: "head-1", State: "changes-requested", DistinctContext: true, Capable: true, EvidenceID: "review:1", ObservedAt: now},
+			{Actor: "reviewer", HeadRevision: "head-1", State: "approved", DistinctContext: true, Capable: true, EvidenceID: "review:2", ObservedAt: now.Add(time.Minute)},
+		}
+		return observation
+	})
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionMergeReady {
+		t.Fatalf("disposition = %q, want latest approval", inspection.Disposition)
+	}
+}
+
 func TestDeliveryPlansReviewerRoutingSeparatelyFromApproval(t *testing.T) {
 	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
 		observation.Reviews = nil
@@ -483,6 +518,46 @@ func TestDeliveryKeepsUnresolvedLostResponseAsZeroRetryNonPass(t *testing.T) {
 	}
 }
 
+func TestDeliveryNeverInfersSquashFromAmbiguousConcurrentMerge(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		return observation
+	})
+	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
+	plan, _ := lifecycle.PlanDelivery(context.Background(), inspection)
+	if plan.Effects[0].Kind != engine.DeliveryEffectSquashMerge {
+		t.Fatalf("effect = %#v", plan.Effects[0])
+	}
+	adapter.QueueApplyResult(engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "response lost", Recoverable: true}, true, context.DeadlineExceeded)
+	mandate := deliveryMandate(request, []string{"merger"}, engine.DeliveryEffectSquashMerge)
+
+	result, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate)
+	if err == nil || result.Status != engine.WorkApplyNonPass || result.Receipts[0].MergeRevision != "" {
+		t.Fatalf("ambiguous merge = %#v, err = %v", result, err)
+	}
+}
+
+func TestDeliveryVerificationCannotPassWhenObservationHasProblems(t *testing.T) {
+	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
+	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
+	plan, _ := lifecycle.PlanDelivery(context.Background(), inspection)
+	mandate := deliveryMandate(request, []string{"merger"}, plan.Effects[0].Kind)
+	if _, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate); err != nil {
+		t.Fatal(err)
+	}
+	broken, _ := adapter.ObserveDelivery(context.Background(), request.Intent)
+	broken.Problems = []string{"claim became ambiguous"}
+	broken.Revision = "observation:ambiguous"
+	adapter.SetObservation(broken)
+	verification, err := lifecycle.VerifyDelivery(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verification.OverallState != engine.ControlNeedsReview {
+		t.Fatalf("verification = %#v", verification)
+	}
+}
+
 func TestDeliveryVerificationAndStatusSurviveRestart(t *testing.T) {
 	lifecycle, adapter, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation { return observation })
 	inspection, _ := lifecycle.InspectDelivery(context.Background(), request)
@@ -530,8 +605,10 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	deliveryObservation.PullRequest.MergeRevision = "merge-1"
 	deliveryObservation.PullRequest.MergeMethod = "squash"
 	deliveryObservation.PullRequest.DefaultReachable = true
+	deliveryObservation.Checks[0].EvidenceID = "check-run:75"
+	deliveryObservation.Reviews[0].EvidenceID = "review:75"
 	deliveryObservation.Revision = "observation:qualifying-merge"
-	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", Permissions: []string{"issues:write", "projects:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
+	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", RepositoryID: completion.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
 	lifecycle := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(workAdapter), engine.WithDeliveryAdapter(deliveryAdapter))
 	request := engine.DeliveryRequest{Repository: completion.Repository, CompletionIntent: &completion.Intent, Intent: engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision, Title: completion.Intent.Task.Title,
@@ -578,6 +655,13 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	if replayedInspection.Disposition != engine.DeliveryDispositionComplete {
 		t.Fatalf("replay disposition = %q, want complete", replayedInspection.Disposition)
 	}
+	status, err := lifecycle.DeliveryStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Completion == nil || status.Completion.IntentDigest != engine.DeliveryResourceDigest(request.Intent) || status.Completion.Checks[0].EvidenceID != "check-run:75" || status.Completion.Reviews[0].EvidenceID != "review:75" || len(status.Completion.ReconciliationReceipts) == 0 {
+		t.Fatalf("completion evidence = %#v", status.Completion)
+	}
 	replayedPlan, err := lifecycle.PlanDelivery(context.Background(), replayedInspection)
 	if err != nil {
 		t.Fatal(err)
@@ -592,7 +676,7 @@ func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engin
 	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
 	observation := mutate(readyDraftObservation())
 	adapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{
-		SchemaVersion: 1, Online: true, Fresh: true, Actor: "merger", Mode: "github-app", Permissions: []string{"pull_requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour),
+		SchemaVersion: 1, Online: true, Fresh: true, Actor: "merger", Mode: "github-app", RepositoryID: "R_repo", Permissions: []string{"pull_requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour),
 	}, observation)
 	lifecycle := engine.New(engine.WithClock(deliveryClock{now}), engine.WithDeliveryAdapter(adapter))
 	request := engine.DeliveryRequest{Repository: t.TempDir(), Intent: engine.DeliveryIntent{
@@ -632,6 +716,10 @@ func completionMandate(request engine.DeliveryRequest, completion engine.Managed
 		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-completion", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
 		Target: request.Intent.Target, OperationID: request.Intent.OperationID, SelectedManagedID: request.Intent.ManagedID,
 		Actors: []string{"test:maintainer"}, CredentialModes: []string{"memory"}, Permissions: []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"},
+		Authorities: []engine.WorkExecutionAuthority{
+			{Actor: "test:maintainer", CredentialMode: "memory", RepositoryID: request.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write"}},
+			{Actor: "test:maintainer", CredentialMode: "memory", RepositoryID: request.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"}},
+		},
 		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, ContractDigests: []string{engine.ExecutableIssueContractDigest(completion.Intent.Governance.Issue)},
 		GovernanceDigests: []string{engine.GovernedWorkContractDigest(*completion.Intent.Governance)}, InputDigests: completion.Intent.InputDigests,
 		GovernedSourceDigests: map[string]string{completion.Intent.Governance.Sources[0].ID: completion.Intent.Governance.Sources[0].Digest}, SourceRevisions: []string{request.Intent.SourceRevision}, ManagedIDs: managedIDs,
@@ -646,7 +734,7 @@ func readyDraftObservation() engine.DeliveryObservation {
 		SchemaVersion: 1,
 		Revision:      "observation:draft",
 		Issue:         engine.DeliveryIssueObservation{ManagedID: "issue:75", State: "open"},
-		Branch:        engine.DeliveryBranchObservation{Name: "task/75-delivery-squash-completion", Revision: "head-1"},
+		Branch:        engine.DeliveryBranchObservation{Name: "task/75-delivery-squash-completion", Revision: "head-1", Present: true},
 		PullRequest: engine.DeliveryPullRequestObservation{
 			Number: 101, State: "open", Draft: true, Base: "main", Head: "task/75-delivery-squash-completion", HeadRevision: "head-1",
 		},
