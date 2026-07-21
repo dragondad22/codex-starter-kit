@@ -930,13 +930,20 @@ Each repository has exactly one linked GitHub Project with, at minimum:
 | Horizon | `Now`, `Next`, `Later`, blank — feature roadmap intent |
 | Readiness | `Intake`, `Needs refinement`, `Ready`, `Blocked` — execution readiness |
 
-Required saved views:
+Originally required saved views (superseded by the 2026-07-21 amendment below):
 
 - **Current work:** Status `Next` or `In progress`.
 - **Backlog:** future work not currently authorized for execution.
 - **Roadmap:** open `type:feature` issues grouped by Horizon and manually ranked within
   each group.
 - **Needs refinement:** promoted work that is not yet executable.
+
+**Amended 2026-07-21:** the owner clarified during issue #46 that this original list is a
+set of useful view examples, not universal managed-repository requirements. Project field
+semantics remain governed, while saved views are optional, human-owned presentation that
+individuals and teams may arrange around their own workflow. Automation must preserve
+those choices. [DEC-0005](../decisions/DEC-0005-github-executable-work.md) is the durable
+authority for this amendment; the original wording remains here as source history.
 
 Horizon and Status are deliberately independent. `Horizon: Now` says a feature is part
 of committed product direction; it may remain `Status: Backlog` until scheduled.

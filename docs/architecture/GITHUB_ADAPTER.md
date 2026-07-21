@@ -155,9 +155,10 @@ The #46 Project-configuration route plans the complete Phase field/option catalo
 repository's saved `Phases` view, and feature #1–#9 assignments as immutable resources.
 The saved view is optional presentation rather than a universal Phase resource. Existing
 name/type, option, node, item, layout, visible-field, grouping, sorting, or assignment
-conflicts stop instead of creating duplicates or overwriting human state. A missing view may be created
-through the version-pinned REST route only when that route can express its complete desired
-configuration, and must be re-observed through GraphQL. GitHub's current create-view request
+conflicts stop instead of creating duplicates or overwriting human state. A missing view
+may be created through the version-pinned REST route only when that route can express its
+complete desired configuration, and must be re-observed through GraphQL. GitHub's current
+create-view request
 accepts name, layout, filter, and visible fields but not grouping or sorting, so a missing
 grouped/sorted `Phases` view is `not-configured` without creating a partial view; an existing
 matching human-created view remains observable and replayable. `404`, denial, partial data,

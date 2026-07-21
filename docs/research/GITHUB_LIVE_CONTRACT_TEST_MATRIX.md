@@ -97,16 +97,18 @@ evidence.
 |---|---|
 | Handshake | REST actor, repository, installation/repositories, rate-limit, API-version metadata; GraphQL viewer/rateLimit and repository/Project immutable IDs |
 | Issues | REST labels and issue create/read/update; native sub-issue and dependency create/read/delete endpoints |
-| Projects | Versioned REST Project fields, items, and views for O/P owner routes; GraphQL Project V2 item/field mutations only where the REST inventory lacks the required operation |
+| Projects | Versioned REST Project fields and items for O/P owner routes, plus views only when an explicit team-specific manifest requests them; GraphQL Project V2 item/field mutations only where the REST inventory lacks the required operation |
 | Pull requests and gates | REST/GraphQL read of PR, reviews, review requests, checks, statuses, workflows/runs, branch and merge metadata |
 | Rules | REST repository ruleset read/create/update/delete against fixture branches only |
 | Webhooks | REST repository webhook create/read/delivery/redelivery/delete only when `GH-WEB-02` is separately approved |
 
 The manifest forbids merge, branch protection bypass, repository administration other
 than isolated ruleset operations, repository deletion, member administration, Secrets,
-and Actions variable/secret access. Project views and built-in auto-add/close workflows
-are preprovisioned by the fixture owner because the documented public API surface does
-not establish a complete workflow-configuration contract.
+and Actions variable/secret access. Project views are optional, human-owned presentation;
+the fixture owner may preprovision them for observation, but their presence or layout is
+not a universal qualification requirement. Built-in auto-add/close workflows are
+preprovisioned by the fixture owner because the documented public API surface does not
+establish a complete workflow-configuration contract.
 
 GitHub publishes a per-endpoint App permission table and returns
 `X-Accepted-GitHub-Permissions` for REST troubleshooting. GraphQL permission behavior must
@@ -152,7 +154,7 @@ it is not a claim that the behavior has already been observed.
 | ID | Claim and action | Required evidence | Current result | Negative or stopping condition |
 |---|---|---|---|---|
 | `GH-BOOT-01` | Reconcile the exact managed label vocabulary, create a missing managed label, correct managed color/description drift, and preserve an unrecognized human label | O/P `live`; F `memory` | `not-configured` | No deletion or rewrite of unrecognized labels; collision or permission denial produces no partial bootstrap pass |
-| `GH-BOOT-02` | Inspect exact Project fields/options/views, recreate one isolated field/option, and refresh immutable configuration IDs | O/P `live`; F `memory` | `not-configured` | Missing or duplicate field/view, wrong type, or stale ID invalidates the configuration and any old plan before effects |
+| `GH-BOOT-02` | Inspect exact Project fields/options and optional human-owned views, recreate one isolated field/option, and refresh immutable configuration IDs | O/P `live`; F `memory` | `not-configured` | Missing or duplicate governed field, wrong type, or stale ID invalidates the configuration and any old plan before effects; view variation is informational unless an explicit manifest governs that view |
 | `GH-BOOT-03` | Prove the preprovisioned auto-add filter and close-to-Done workflow with marked and unmarked issues | O/P `live` | `not-configured` | Existing matching items are not assumed to backfill; an unmarked issue must not be added; workflow configuration remains human-owned |
 | `GH-ISSUE-01` | Render and parse the two-layer issue contract: concise human summary plus validated machine details and governed source references | F `memory`; O/P `live` round trip | `not-configured` | Missing summary, invalid/missing details, unknown schema, or unresolved source reference is `fail` and blocks mutation/readiness |
 | `GH-READY-01` | Refresh readiness from current dependencies, governed source, policy facts, and Project state before plan and apply | F `memory`; O/P `live` observations | `not-configured` | Stale/missing source, facts, dependency, Project configuration, or accepted plan returns `Needs refinement`/new plan rather than guessing |
@@ -200,7 +202,7 @@ it is not a claim that the behavior has already been observed.
 | Phase 3 outcome | Contract cases |
 |---|---|
 | Label vocabulary bootstrap | `GH-BOOT-01` |
-| Project fields, options, execution views, and roadmap view | `GH-BOOT-02` |
+| Project fields and options; optional presentation-view inventory | `GH-BOOT-02` |
 | Auto-add and closed-to-Done automation | `GH-BOOT-03`, `GH-WORK-08` |
 | Two-layer issue rendering and schema validation | `GH-ISSUE-01` |
 | Hierarchy, dependencies, and stale-reference readiness refresh | `GH-WORK-03`, `GH-READY-01` |
