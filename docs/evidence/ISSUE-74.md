@@ -71,8 +71,13 @@ git diff --check
   passed
 ```
 
-This is development evidence, not completion evidence. Exact-head review and
-Linux/macOS/Windows CI remain completion gates after the live receipt is recorded.
+Exact implementation commit `7017ae4caac6c76b24b7fa43cd73f50db20d19b5`
+passed the listed local gates. Independent Standards and Spec reviews were both clean;
+the Spec re-review explicitly confirmed the research-record, already-delivered
+resolution, and partial-PR remediations. Native GitHub Actions run
+[`29862634454`](https://github.com/dragondad22/codex-starter-kit/actions/runs/29862634454)
+passed foundation validation on Linux, macOS, and Windows plus Phase 1 semantic
+equivalence and aggregate validation.
 
 ## Approved live sandbox observation
 
@@ -107,7 +112,7 @@ key or installation token.
 
 ## Reconciliation state
 
-The App permission and approved live evidence boundary are complete. Issue #74 remains
-`In progress` until exact-head review and native CI complete. Parent #4 remains
-`In progress`; #75 and #76 remain blocked by their native dependencies. Issue #95 is the
-selected next item after #74, before #75.
+The App permission, approved live evidence, exact implementation review, and native CI
+boundaries are complete. PR #96 is eligible for the normal squash-merge transition that
+closes #74 and promotes its fully unblocked dependents. Parent #4 remains `In progress`;
+Issue #95 is the selected next item after #74, before #75.
