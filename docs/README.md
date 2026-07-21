@@ -126,6 +126,8 @@
 60. `evidence/ISSUE-74.md` — governed issue/source qualification, freshness, subtype,
     Horizon, delivery-claim, mandate, deterministic verification, limitation, and
     downstream handoff evidence.
+61. `evidence/ISSUE-95.md` — singular task-fitness, bounded decomposition, agent-neutral
+    implementation planning, deterministic validation, limitation, and handoff evidence.
 
 ## Document lifecycle
 

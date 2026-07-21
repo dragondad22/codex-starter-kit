@@ -120,6 +120,25 @@ stateDiagram-v2
 Work cannot begin from `Intake` or `NeedsRefinement`. A stale Ready item is refined; the
 assigned human or AI does not invent unresolved decisions.
 
+Implementation refinement follows this order:
+
+1. use a bounded decomposition outline to test whether the proposed task is one singular,
+   actionable, independently completable delivery;
+2. retain multi-deliverable work in a feature or design-first parent and create native
+   child tasks with independent lifecycle and evidence state;
+3. promote only a fit, decision-complete task to Ready;
+4. repeat freshness and task fitness when selected and after material change; and
+5. maintain a structured implementation plan for useful coordination inside that one
+   delivery, or an agent-neutral ordered checklist with exactly one active step when the
+   runtime has no plan surface.
+
+An independently completable plan section is a decomposition signal, not permission to
+continue a hidden subproject. Multiple files, modules, tests, or atomic coordinated steps
+are not by themselves separate deliveries. Neither coordination form expands issue scope
+or authority. One writer owns each mutable boundary; independent reviewers are read-only
+or isolated. A coherent bug may be promoted in place, while independently completable
+remediation outcomes become native child tasks.
+
 Readiness and completion are subtype-specific:
 
 - implementation work has stable governing references, verifiable acceptance, required
@@ -158,8 +177,10 @@ Before a schema-v2 Ready item starts, inspection compares its exact executable c
 governed sources, native relationships, Project configuration, and related delivery
 claims. It records exactly one of `fresh`, `mechanical-drift-repaired`,
 `contained-context-refreshed`, `needs-refinement`, `already-delivered`, or `blocked`.
-Only fresh work plans effects; verified contained repair may then report its past-tense
-result. The validation repeats after a material change, never because time elapsed.
+Fresh work plans implementation effects; exact already-delivered implementation work may
+plan only its governed closure/Done reconciliation. Verified contained repair may then
+report its past-tense result. The validation repeats after a material change, never
+because time elapsed.
 Status, Readiness, feature Horizon, parent-derived Phase, and finite Milestone remain
 independent dimensions.
 
