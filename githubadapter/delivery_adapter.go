@@ -87,7 +87,7 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 		return observation, nil
 	}
 	issue := issues[0]
-	observation.Issue = engine.DeliveryIssueObservation{ManagedID: intent.ManagedID, State: strings.ToLower(issue.State)}
+	observation.Issue = engine.DeliveryIssueObservation{ManagedID: intent.ManagedID, Number: issue.Number, State: strings.ToLower(issue.State)}
 	rules, err := adapter.observeDeliveryRules(ctx, credential, intent.BaseBranch)
 	if err != nil {
 		return engine.DeliveryObservation{}, err
@@ -446,7 +446,10 @@ func (adapter *DeliveryAdapter) ApplyDelivery(ctx context.Context, effect engine
 		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodGet, branchPath, nil, &branch); err != nil || branch.Object.SHA != effect.HeadRevision {
 			return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery branch changed before pull request creation", Recoverable: true}, err
 		}
-		body := map[string]any{"title": effect.Title, "body": marker, "head": effect.Branch, "base": effect.BaseBranch, "draft": true}
+		if effect.IssueNumber <= 0 {
+			return engine.DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery issue number is missing", Recoverable: true}, errors.New("delivery issue number is missing")
+		}
+		body := map[string]any{"title": effect.Title, "body": "Closes #" + strconv.Itoa(effect.IssueNumber) + "\n\n" + marker, "head": effect.Branch, "base": effect.BaseBranch, "draft": true}
 		if _, err := adapter.effectBase.rest(ctx, credential, http.MethodPost, adapter.effectBase.repoPath()+"/pulls", body, nil); err != nil {
 			return engine.DeliveryEffectResult{Outcome: "ambiguous", Detail: "create-pull-request result requires exact re-observation", Recoverable: true}, err
 		}

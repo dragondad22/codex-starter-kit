@@ -608,7 +608,7 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	deliveryObservation.Checks[0].EvidenceID = "check-run:75"
 	deliveryObservation.Reviews[0].EvidenceID = "review:75"
 	deliveryObservation.Revision = "observation:qualifying-merge"
-	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", RepositoryID: completion.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
+	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", RepositoryID: completion.Intent.Target.RepositoryID, Permissions: []string{"contents:write", "issues:write", "projects:write", "pull-requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
 	lifecycle := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(workAdapter), engine.WithDeliveryAdapter(deliveryAdapter))
 	request := engine.DeliveryRequest{Repository: completion.Repository, CompletionIntent: &completion.Intent, Intent: engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision, Title: completion.Intent.Task.Title,
@@ -676,7 +676,7 @@ func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engin
 	now := time.Date(2026, 7, 21, 21, 0, 0, 0, time.UTC)
 	observation := mutate(readyDraftObservation())
 	adapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{
-		SchemaVersion: 1, Online: true, Fresh: true, Actor: "merger", Mode: "github-app", RepositoryID: "R_repo", Permissions: []string{"pull_requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour),
+		SchemaVersion: 1, Online: true, Fresh: true, Actor: "merger", Mode: "github-app", RepositoryID: "R_repo", Permissions: []string{"contents:write", "pull-requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour),
 	}, observation)
 	lifecycle := engine.New(engine.WithClock(deliveryClock{now}), engine.WithDeliveryAdapter(adapter))
 	request := engine.DeliveryRequest{Repository: t.TempDir(), Intent: engine.DeliveryIntent{
@@ -695,7 +695,7 @@ func deliveryMandate(request engine.DeliveryRequest, actors []string, effectKind
 	return engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
 		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-75", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
 		Target: request.Intent.Target, OperationID: request.Intent.OperationID, SelectedManagedID: request.Intent.ManagedID,
-		Actors: actors, CredentialModes: []string{"github-app"}, Permissions: []string{"pull_requests:write"},
+		Actors: actors, CredentialModes: []string{"github-app"}, Permissions: []string{"contents:write", "pull-requests:write"},
 		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, SourceRevisions: []string{request.Intent.SourceRevision}, ManagedIDs: []string{request.Intent.ManagedID},
 		EffectKinds: []string{effectKind}, ResourceDigests: []string{engine.DeliveryResourceDigest(request.Intent)}, MaxEffects: 2,
 		DataClass: request.Intent.EffectBoundary.DataClass, CostCeiling: request.Intent.EffectBoundary.CostCeiling, Destructive: request.Intent.EffectBoundary.Destructive,
@@ -715,9 +715,9 @@ func completionMandate(request engine.DeliveryRequest, completion engine.Managed
 	return engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
 		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-completion", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
 		Target: request.Intent.Target, OperationID: request.Intent.OperationID, SelectedManagedID: request.Intent.ManagedID,
-		Actors: []string{"test:maintainer"}, CredentialModes: []string{"memory"}, Permissions: []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"},
+		Actors: []string{"test:maintainer"}, CredentialModes: []string{"memory"}, Permissions: []string{"contents:read", "contents:write", "issues:write", "projects:write", "pull-requests:write", "pull_requests:read"},
 		Authorities: []engine.WorkExecutionAuthority{
-			{Actor: "test:maintainer", CredentialMode: "memory", RepositoryID: request.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write"}},
+			{Actor: "test:maintainer", CredentialMode: "memory", RepositoryID: request.Intent.Target.RepositoryID, Permissions: []string{"contents:write", "issues:write", "projects:write", "pull-requests:write"}},
 			{Actor: "test:maintainer", CredentialMode: "memory", RepositoryID: request.Intent.Target.RepositoryID, Permissions: []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"}},
 		},
 		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, ContractDigests: []string{engine.ExecutableIssueContractDigest(completion.Intent.Governance.Issue)},
@@ -733,7 +733,7 @@ func readyDraftObservation() engine.DeliveryObservation {
 	return engine.DeliveryObservation{
 		SchemaVersion: 1,
 		Revision:      "observation:draft",
-		Issue:         engine.DeliveryIssueObservation{ManagedID: "issue:75", State: "open"},
+		Issue:         engine.DeliveryIssueObservation{ManagedID: "issue:75", Number: 75, State: "open"},
 		Branch:        engine.DeliveryBranchObservation{Name: "task/75-delivery-squash-completion", Revision: "head-1", Present: true},
 		PullRequest: engine.DeliveryPullRequestObservation{
 			Number: 101, State: "open", Draft: true, Base: "main", Head: "task/75-delivery-squash-completion", HeadRevision: "head-1",

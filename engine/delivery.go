@@ -79,6 +79,7 @@ type DeliveryCapability struct {
 
 type DeliveryIssueObservation struct {
 	ManagedID string `json:"managed_id"`
+	Number    int    `json:"number"`
 	State     string `json:"state"`
 }
 
@@ -176,6 +177,7 @@ type DeliveryEffect struct {
 	Claim         *WorkDeliveryClaim `json:"delivery_claim,omitempty"`
 	Reviewer      string             `json:"reviewer,omitempty"`
 	Title         string             `json:"title,omitempty"`
+	IssueNumber   int                `json:"issue_number,omitempty"`
 }
 
 type DeliveryPlan struct {
@@ -371,6 +373,7 @@ func (e *Engine) PlanDelivery(_ context.Context, inspection DeliveryInspection) 
 		effect.HeadRevision = inspection.Observation.Branch.Revision
 		effect.Claim = inspection.Intent.Claim
 		effect.Title = inspection.Intent.Title
+		effect.IssueNumber = inspection.Observation.Issue.Number
 	} else if inspection.Disposition == DeliveryDispositionReviewUnrequested {
 		kind = DeliveryEffectRequestReview
 		effect.Reviewer = inspection.Intent.Review.Role
@@ -614,7 +617,7 @@ func deliveryEffectObserved(effect DeliveryEffect, observation DeliveryObservati
 	case DeliveryEffectCreateBranch:
 		return observation.Branch.Name == effect.Branch && observation.Branch.Revision == effect.HeadRevision
 	case DeliveryEffectCreatePullRequest:
-		return pull.Number > 0 && pull.State == "open" && pull.Draft && pull.Head == effect.Branch && pull.Base == effect.BaseBranch && pull.HeadRevision == effect.HeadRevision
+		return effect.IssueNumber > 0 && pull.Number > 0 && pull.State == "open" && pull.Draft && pull.Head == effect.Branch && pull.Base == effect.BaseBranch && pull.HeadRevision == effect.HeadRevision
 	case DeliveryEffectRequestReview:
 		return pull.Number == effect.PullRequest && pull.HeadRevision == effect.HeadRevision && (slices.Contains(pull.RequestedReviewers, effect.Reviewer) || slices.ContainsFunc(observation.Reviews, func(review DeliveryReviewObservation) bool {
 			return review.Actor == effect.Reviewer && review.HeadRevision == effect.HeadRevision
@@ -672,9 +675,16 @@ func deliveryProblems(intent DeliveryIntent, capability DeliveryCapability, obse
 	if capability.SchemaVersion != 1 || !capability.Online || !capability.Fresh || capability.Actor == "" || capability.Mode == "" || capability.RepositoryID != intent.Target.RepositoryID || capability.ExpiresAt.IsZero() || !now.Before(capability.ExpiresAt) {
 		problems = append(problems, "delivery capability is unavailable or stale")
 	}
+	requiredPermission := "pull-requests:write"
+	if observation.Branch.Name == "" {
+		requiredPermission = "contents:write"
+	}
+	if !slices.Contains(capability.Permissions, requiredPermission) {
+		problems = append(problems, "delivery capability lacks required permission: "+requiredPermission)
+	}
 	pr := observation.PullRequest
 	validIssueState := observation.Issue.State == "open" || observation.Issue.State == "closed" && pr.Merged
-	if observation.SchemaVersion != 1 || observation.Revision == "" || observation.Issue.ManagedID != intent.ManagedID || !validIssueState || observation.Rules.BaseRevision == "" {
+	if observation.SchemaVersion != 1 || observation.Revision == "" || observation.Issue.ManagedID != intent.ManagedID || observation.Issue.Number <= 0 || !validIssueState || observation.Rules.BaseRevision == "" {
 		problems = append(problems, "delivery linkage is incomplete or ambiguous")
 	}
 	if observation.Branch.Name == "" {

@@ -85,7 +85,7 @@ func TestDeliveryAdapterAppliesOrganicProgressionEffects(t *testing.T) {
 		case request.Method == http.MethodPost && request.URL.Path == "/repos/octocat/example/pulls":
 			body := bytes.Buffer{}
 			body.ReadFrom(request.Body)
-			if !bytes.Contains(body.Bytes(), []byte(`"draft":true`)) || !bytes.Contains(body.Bytes(), []byte("starter-kit-delivery:")) {
+			if !bytes.Contains(body.Bytes(), []byte(`"draft":true`)) || !bytes.Contains(body.Bytes(), []byte("starter-kit-delivery:")) || !bytes.Contains(body.Bytes(), []byte("Closes #75")) {
 				t.Errorf("create pull body = %s", body.String())
 			}
 			json.NewEncoder(writer).Encode(map[string]any{"number": 101})
@@ -104,7 +104,7 @@ func TestDeliveryAdapterAppliesOrganicProgressionEffects(t *testing.T) {
 	}
 	effects := []engine.DeliveryEffect{
 		{Kind: engine.DeliveryEffectCreateBranch, Branch: "task/75-delivery-squash-completion", HeadRevision: "base-1"},
-		{Kind: engine.DeliveryEffectCreatePullRequest, Branch: "task/75-delivery-squash-completion", BaseBranch: "main", HeadRevision: "head-1", Title: "Deliver issue 75", Claim: claim},
+		{Kind: engine.DeliveryEffectCreatePullRequest, Branch: "task/75-delivery-squash-completion", BaseBranch: "main", HeadRevision: "head-1", Title: "Deliver issue 75", IssueNumber: 75, Claim: claim},
 		{Kind: engine.DeliveryEffectRequestReview, PullRequest: 101, HeadRevision: "head-1", Reviewer: "reviewer"},
 	}
 	for _, effect := range effects {
