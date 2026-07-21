@@ -1452,6 +1452,42 @@ func TestSandboxAdapterFixtureIssueObservationEmitsExactIdentityHandoff(t *testi
 	}
 }
 
+func TestSandboxAdapterReconcilesExactGovernedFixtureIssueBody(t *testing.T) {
+	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75:issue:delivery"
+	body := "governed body\n\n" + marker
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_issue", "body": marker, "state": "open"})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			var payload map[string]any
+			json.NewDecoder(request.Body).Decode(&payload)
+			if payload["body"] != body {
+				t.Fatalf("governed body payload = %#v", payload)
+			}
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_issue", "body": body, "state": "open"})
+		default:
+			t.Fatalf("unexpected governed issue request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	resource := engine.SandboxResourceSpec{Key: "fixture:issue:delivery", Kind: engine.SandboxResourceFixtureIssue, Name: "delivery", Marker: marker, Attributes: map[string]string{
+		"title": "delivery", "state": "open", "number": "20", "id": "200", "node_id": "I_issue", "body_sha256": testSandboxSHA256(body), "input:body": body,
+	}}
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: resource})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("governed issue result = %#v, %v", result, err)
+	}
+}
+
 func TestSandboxAdapterExactFixtureCleanupRefusesIdentityAndHeadDrift(t *testing.T) {
 	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
 	marker := "starter-kit-contract:run-75"

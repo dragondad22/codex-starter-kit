@@ -91,6 +91,9 @@ func TestRunEmitsDeterministicCredentialFreeBoundArtifacts(t *testing.T) {
 	if err != nil || engine.ExecutableIssueContractDigest(parsedIssue) != request.Intent.Claim.ContractDigest {
 		t.Fatalf("artifact issue body does not preserve the claimed executable contract: %v", err)
 	}
+	if !strings.Contains(result.ArtifactContract.ExecutableIssueBody, deliveryIssueMarker) {
+		t.Fatal("artifact issue body lacks the marker-owned fixture identity")
+	}
 	lower := strings.ToLower(first.String())
 	for _, forbidden := range []string{"github_pat_", "ghp_", "private key", "access_token"} {
 		if strings.Contains(lower, forbidden) {

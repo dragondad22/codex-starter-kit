@@ -604,7 +604,7 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 			}
 			for _, issue := range issues {
 				if issue.PullRequest == nil && strings.Contains(issue.Body, desired.Marker) {
-					attributes := desiredAttributes(desired, map[string]string{"title": issue.Title, "state": issue.State})
+					attributes := desiredAttributes(desired, map[string]string{"title": issue.Title, "state": issue.State, "body_sha256": sandboxContentDigest(issue.Body)})
 					attributes["number"] = strconv.Itoa(issue.Number)
 					attributes["id"] = strconv.FormatInt(issue.ID, 10)
 					attributes["node_id"] = issue.NodeID
@@ -687,7 +687,11 @@ func (adapter *SandboxAdapter) hasLegacyFixtureCleanup(kind string) bool {
 }
 
 func exactFixtureIssueCleanup(resource engine.SandboxResourceSpec) bool {
-	return resource.DesiredState == engine.SandboxResourceAbsent && resource.Attributes["number"] != "" && resource.Attributes["id"] != "" && resource.Attributes["node_id"] != ""
+	return resource.DesiredState == engine.SandboxResourceAbsent && exactFixtureIssueIdentity(resource)
+}
+
+func exactFixtureIssueIdentity(resource engine.SandboxResourceSpec) bool {
+	return resource.Attributes["number"] != "" && resource.Attributes["id"] != "" && resource.Attributes["node_id"] != ""
 }
 
 func exactFixturePRCleanup(resource engine.SandboxResourceSpec) bool {
@@ -911,6 +915,9 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 			}
 			return adapter.closeFixture(ctx, credential, "issues", effect)
 		}
+		if exactFixtureIssueIdentity(effect.Resource) {
+			return adapter.reconcileExactFixtureIssue(ctx, credential, effect)
+		}
 		body := map[string]any{"title": effect.Resource.Attributes["title"], "body": markerBody(effect.Resource)}
 		if raw := effect.Resource.Attributes["input:labels"]; raw != "" {
 			body["labels"] = strings.Split(raw, ",")
@@ -1065,6 +1072,28 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: response.Content.SHA, Detail: "marked fixture workflow reconciled"}, nil
 	}
 	return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "fixture resource kind is unsupported"}, nil
+}
+
+func (adapter *SandboxAdapter) reconcileExactFixtureIssue(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	issue, found, err := adapter.readFixtureIssue(ctx, credential, effect.Resource.Attributes["number"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if !found || !fixtureIssueIdentityMatches(issue, effect.Resource) || issue.PullRequest != nil || !strings.Contains(issue.Body, effect.Resource.Marker) {
+		return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "fixture issue identity or marker ownership changed"}, nil
+	}
+	body := map[string]any{"title": effect.Resource.Attributes["title"], "body": markerBody(effect.Resource), "state": effect.Resource.Attributes["state"]}
+	if raw := effect.Resource.Attributes["input:labels"]; raw != "" {
+		body["labels"] = strings.Split(raw, ",")
+	}
+	var updated sandboxIssue
+	if _, err := adapter.rest(ctx, credential, http.MethodPatch, adapter.repoPath()+"/issues/"+effect.Resource.Attributes["number"], body, &updated); err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if !fixtureIssueIdentityMatches(updated, effect.Resource) || !strings.Contains(updated.Body, effect.Resource.Marker) || sandboxContentDigest(updated.Body) != effect.Resource.Attributes["body_sha256"] {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: effect.Resource.Attributes["number"], Detail: "governed fixture issue update did not converge"}, nil
+	}
+	return engine.SandboxEffectResult{Outcome: "applied", ResourceID: effect.Resource.Attributes["number"], Detail: "exact marker-owned governed fixture issue reconciled"}, nil
 }
 
 func (adapter *SandboxAdapter) closeExactFixtureIssue(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {

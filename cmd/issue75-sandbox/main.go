@@ -76,6 +76,7 @@ type options struct {
 	parent         issueIdentity
 	delivery       issueIdentity
 	dependent      issueIdentity
+	deliveryInput  string
 	pullNumber     string
 	pullID         string
 	pullNodeID     string
@@ -92,7 +93,7 @@ func main() {
 func run(args []string, now time.Time, output io.Writer) error {
 	flags := flag.NewFlagSet("issue75-sandbox", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	stage := flags.String("stage", "", "issues-setup, project-setup, relationships-setup, file-initial, file-stale, cleanup-relationships, cleanup-file, cleanup-delivery, or cleanup-issues")
+	stage := flags.String("stage", "", "issues-setup, issues-governed, project-setup, relationships-setup, file-initial, file-stale, cleanup-relationships, cleanup-file, cleanup-delivery, or cleanup-issues")
 	repository := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact starter-kit source revision")
 	approvedBy := flags.String("approved-by", "", "approving human identity")
@@ -108,6 +109,7 @@ func run(args []string, now time.Time, output io.Writer) error {
 	dependentNumber := flags.String("dependent-number", "", "exact fixture dependent issue number")
 	dependentID := flags.String("dependent-id", "", "exact fixture dependent database ID")
 	dependentNodeID := flags.String("dependent-node-id", "", "exact fixture dependent node ID")
+	deliveryInput := flags.String("delivery-input-file", "", "exact issue75-delivery artifact used by issues-governed")
 	pullNumber := flags.String("pull-number", "", "exact delivery pull request number")
 	pullID := flags.String("pull-id", "", "exact delivery pull request database ID")
 	pullNodeID := flags.String("pull-node-id", "", "exact delivery pull request node ID")
@@ -122,10 +124,11 @@ func run(args []string, now time.Time, output io.Writer) error {
 	value := options{
 		stage: *stage, repository: *repository, sourceRevision: *source,
 		approvedBy: *approvedBy, approvalID: *approvalID, approvedAt: approvedTime, expiresAt: expiryTime,
-		parent:     issueIdentity{Number: *parentNumber, ID: *parentID, NodeID: *parentNodeID},
-		delivery:   issueIdentity{Number: *deliveryNumber, ID: *deliveryID, NodeID: *deliveryNodeID},
-		dependent:  issueIdentity{Number: *dependentNumber, ID: *dependentID, NodeID: *dependentNodeID},
-		pullNumber: *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, branchHeadSHA: *branchHeadSHA,
+		parent:        issueIdentity{Number: *parentNumber, ID: *parentID, NodeID: *parentNodeID},
+		delivery:      issueIdentity{Number: *deliveryNumber, ID: *deliveryID, NodeID: *deliveryNodeID},
+		dependent:     issueIdentity{Number: *dependentNumber, ID: *dependentID, NodeID: *dependentNodeID},
+		deliveryInput: *deliveryInput,
+		pullNumber:    *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, branchHeadSHA: *branchHeadSHA,
 	}
 	input, err := buildPlanInput(value)
 	if err != nil {
@@ -203,6 +206,12 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 	switch value.stage {
 	case "issues-setup":
 		return githubadapter.SandboxRoleSeeder, fixtureIssues(false, value), nil
+	case "issues-governed":
+		if err := validateIssueIdentities(value.parent, value.delivery, value.dependent); err != nil {
+			return "", nil, err
+		}
+		resources, err := governedIssueResources(value)
+		return githubadapter.SandboxRoleSeeder, resources, err
 	case "project-setup":
 		if err := validateIssueIdentities(value.parent, value.delivery, value.dependent); err != nil {
 			return "", nil, err
@@ -244,12 +253,78 @@ func contractForStage(stage string) stageContract {
 	switch stage {
 	case "issues-setup":
 		contract.IdentityOutputs = issueIdentities
-	case "project-setup", "relationships-setup", "cleanup-relationships", "cleanup-issues":
+	case "issues-governed", "project-setup", "relationships-setup", "cleanup-relationships", "cleanup-issues":
 		contract.IdentityRequirements = issueIdentities
 	case "cleanup-delivery":
 		contract.IdentityRequirements = []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}
 	}
 	return contract
+}
+
+func governedIssueResources(value options) ([]engine.SandboxResourceSpec, error) {
+	if value.deliveryInput == "" {
+		return nil, errors.New("issues-governed requires delivery-input-file")
+	}
+	file, err := os.Open(value.deliveryInput)
+	if err != nil {
+		return nil, errors.New("delivery input is unavailable")
+	}
+	defer file.Close()
+	var artifact struct {
+		Request engine.DeliveryRequest `json:"request"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
+	if err := decoder.Decode(&artifact); err != nil {
+		return nil, errors.New("delivery input is not valid JSON")
+	}
+	request := artifact.Request
+	managedID := "issue:" + value.delivery.Number
+	if request.Intent.SourceRevision != value.sourceRevision || request.Intent.ManagedID != managedID || request.Intent.HeadBranch != deliveryHeadBranch || request.CompletionIntent == nil || request.CompletionIntent.Governance == nil || request.CompletionIntent.Task.ParentManagedID != "issue:"+value.parent.Number || len(request.CompletionIntent.Task.Dependents) != 1 || request.CompletionIntent.Task.Dependents[0].ManagedID != "issue:"+value.dependent.Number {
+		return nil, errors.New("delivery input does not bind the exact governed fixture topology")
+	}
+	deliveryTask := request.CompletionIntent.Task
+	deliveryTask.Status = "in-progress"
+	deliveryTask.Closed = false
+	parentTask := engine.DesiredManagedTask{ManagedID: "issue:" + value.parent.Number, IssueType: "task", Title: "Issue 75 contract fixture: parent", Readiness: "ready", Status: "in-progress", NoPromotionRequired: true}
+	dependentTask := engine.DesiredManagedTask{ManagedID: "issue:" + value.dependent.Number, IssueType: "task", Title: "Issue 75 contract fixture: dependent", Readiness: "blocked", Status: "backlog", Blockers: []engine.WorkDependency{{ManagedID: managedID, Closed: false}}, NoPromotionRequired: true}
+	parentContract := relatedIssueContract("Parent container for the Issue #75 synthetic delivery fixture.", runMarker+":issue:parent")
+	dependentContract := relatedIssueContract("Dependent task promoted when the Issue #75 synthetic delivery fixture completes.", runMarker+":issue:dependent")
+	values := []struct {
+		key, name, marker string
+		identity          issueIdentity
+		task              engine.DesiredManagedTask
+		contract          *engine.ExecutableIssueContract
+	}{
+		{"fixture:issue:parent", "parent", runMarker + ":issue:parent", value.parent, parentTask, &parentContract},
+		{"fixture:issue:delivery", "delivery", runMarker + ":issue:delivery", value.delivery, deliveryTask, &request.CompletionIntent.Governance.Issue},
+		{"fixture:issue:dependent", "dependent", runMarker + ":issue:dependent", value.dependent, dependentTask, &dependentContract},
+	}
+	resources := make([]engine.SandboxResourceSpec, 0, len(values))
+	for _, item := range values {
+		body, err := engine.RenderManagedIssueBody(item.task, item.contract)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, resource(item.key, engine.SandboxResourceFixtureIssue, item.name, item.marker, map[string]string{
+			"title": item.task.Title, "state": "open", "number": item.identity.Number, "id": item.identity.ID, "node_id": item.identity.NodeID,
+			"body_sha256": contentDigest(body), "input:body": body, "input:labels": "contract-run,type:task",
+		}, false))
+	}
+	return resources, nil
+}
+
+func relatedIssueContract(summary, marker string) engine.ExecutableIssueContract {
+	return engine.ExecutableIssueContract{
+		SchemaVersion: 1, HumanSummary: summary, CurrentContext: "This issue is an exact marker-owned public-synthetic Issue #75 sandbox fixture under marker " + marker + ".",
+		GoverningReferences: "- fixture-topology — Issue #75 governed squash delivery qualification", Scope: "Participate only in the approved synthetic delivery topology.", OutOfScope: "Production or unrelated sandbox work.",
+		Acceptance: "- [ ] Native relationship and lifecycle evidence matches the approved fixture.", Verification: "Inspect exact issue, Project, relationship, and cleanup evidence.",
+		ReadinessAssertions: []string{"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.", "An authorized implementer can execute this without the originating conversation."},
+	}
+}
+
+func contentDigest(content string) string {
+	digest := sha256.Sum256([]byte(content))
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func projectResources(value options) []engine.SandboxResourceSpec {

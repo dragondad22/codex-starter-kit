@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -26,6 +27,7 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 		cleanup     bool
 	}{
 		{"issues-setup", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
+		{"issues-governed", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
 		{"project-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceProjectItemField, 6, []string{"metadata:read", "organization-projects:write"}, false},
 		{"relationships-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, false},
 		{"file-initial", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read"}, false},
@@ -73,6 +75,22 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 			}
 			validateManifest(t, input)
 		})
+	}
+}
+
+func TestGovernedIssueStageInstallsManagedBodiesAndExactDeliveryContract(t *testing.T) {
+	resources := mustBuild(t, "issues-governed").Request.Manifest.Resources
+	if len(resources) != 3 {
+		t.Fatalf("governed resources = %#v", resources)
+	}
+	for index, managedID := range []string{"issue:11", "issue:12", "issue:13"} {
+		body := resources[index].Attributes["input:body"]
+		if !strings.Contains(body, "<!-- starter-kit-managed:"+managedID+" -->") || !strings.Contains(body, resources[index].Marker) || resources[index].Attributes["body_sha256"] != contentDigest(body) {
+			t.Fatalf("governed issue %d = %#v", index, resources[index])
+		}
+		if _, err := engine.ParseExecutableIssueContract(body); err != nil {
+			t.Fatalf("governed issue contract %d: %v", index, err)
+		}
 	}
 }
 
@@ -201,6 +219,7 @@ func TestRunRejectsUnapprovedOrAmbiguousInputs(t *testing.T) {
 		{"bad source", replaceFlag(validArgs("issues-setup"), "--source-revision", "main"), fixedNow},
 		{"unknown stage", replaceFlag(validArgs("issues-setup"), "--stage", "cleanup"), fixedNow},
 		{"missing relationship identity", withoutFlag(validArgs("relationships-setup"), "--parent-id"), fixedNow},
+		{"governed delivery input required", validArgs("issues-governed"), fixedNow},
 		{"leading zero identity", replaceFlag(validArgs("relationships-setup"), "--delivery-number", "012"), fixedNow},
 		{"duplicate identity", replaceFlag(validArgs("relationships-setup"), "--dependent-id", "102"), fixedNow},
 		{"cleanup identities required", identitiesOmitted(validArgs("cleanup-issues")), fixedNow},
@@ -222,8 +241,12 @@ func TestRunRejectsUnapprovedOrAmbiguousInputs(t *testing.T) {
 
 func mustBuild(t *testing.T, stage string) planInput {
 	t.Helper()
+	args := validArgs(stage)
+	if stage == "issues-governed" {
+		args = append(args, "--delivery-input-file", governedDeliveryInput(t))
+	}
 	var output bytes.Buffer
-	if err := run(validArgs(stage), fixedNow, &output); err != nil {
+	if err := run(args, fixedNow, &output); err != nil {
 		t.Fatal(err)
 	}
 	var input planInput
@@ -231,6 +254,27 @@ func mustBuild(t *testing.T, stage string) planInput {
 		t.Fatal(err)
 	}
 	return input
+}
+
+func governedDeliveryInput(t *testing.T) string {
+	t.Helper()
+	contract := relatedIssueContract("Exact delivery contract.", runMarker+":issue:delivery")
+	request := engine.DeliveryRequest{
+		Intent: engine.DeliveryIntent{SourceRevision: strings.Repeat("a", 40), ManagedID: "issue:12", HeadBranch: deliveryHeadBranch},
+		CompletionIntent: &engine.WorkDesiredIntent{
+			Task:       engine.DesiredManagedTask{ManagedID: "issue:12", IssueType: "task", Title: "Issue 75 contract fixture: governed delivery", ParentManagedID: "issue:11", Readiness: "ready", Status: "done", Closed: true, Dependents: []engine.WorkDependentContext{{ManagedID: "issue:13"}}},
+			Governance: &engine.GovernedWorkContract{SchemaVersion: 1, Issue: contract},
+		},
+	}
+	path := filepath.Join(t.TempDir(), "delivery.json")
+	content, err := json.Marshal(map[string]any{"request": request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func validArgs(stage string) []string {

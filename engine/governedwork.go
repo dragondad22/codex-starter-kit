@@ -364,6 +364,38 @@ func RenderExecutableIssueContract(contract ExecutableIssueContract) (string, er
 	return body.String(), nil
 }
 
+// RenderManagedIssueBody composes the canonical human contract with the machine-owned
+// managed-task identity and relationship metadata used by native adapters.
+func RenderManagedIssueBody(desired DesiredManagedTask, contract *ExecutableIssueContract) (string, error) {
+	if desired.ManagedID == "" {
+		return "", errors.New("managed issue body requires a managed ID")
+	}
+	metadataDesired := desired
+	metadataDesired.Title = ""
+	metadataDesired.IssueType = ""
+	metadataDesired.Readiness = ""
+	metadataDesired.Status = ""
+	metadataDesired.Horizon = ""
+	metadataDesired.ParentHorizon = ""
+	metadataDesired.Closed = false
+	metadataDesired.ParentContext = nil
+	metadataDesired.Dependents = nil
+	encoded, err := json.Marshal(metadataDesired)
+	if err != nil {
+		return "", fmt.Errorf("encode managed issue metadata: %w", err)
+	}
+	metadata := base64.RawURLEncoding.EncodeToString(encoded)
+	machine := "<!-- starter-kit-managed:" + desired.ManagedID + " -->\n<!-- starter-kit-managed-metadata:" + metadata + " -->"
+	if contract == nil {
+		return machine, nil
+	}
+	human, err := RenderExecutableIssueContract(*contract)
+	if err != nil {
+		return "", err
+	}
+	return human + "\n\n" + machine, nil
+}
+
 // ParseExecutableIssueContract parses the canonical task form without inferring missing fields.
 func ParseExecutableIssueContract(body string) (ExecutableIssueContract, error) {
 	if strings.Count(body, executableIssueSchemaMarker) != 1 {

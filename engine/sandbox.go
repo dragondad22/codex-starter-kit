@@ -662,6 +662,12 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 				return fmt.Errorf("repository file resource %s content digest does not match approved content", resource.Key)
 			}
 		}
+		if resource.Kind == SandboxResourceFixtureIssue && resource.Attributes["body_sha256"] != "" {
+			body := resource.Attributes["input:body"]
+			if body == "" || !strings.Contains(body, resource.Marker) || digestBytes([]byte(body)) != resource.Attributes["body_sha256"] {
+				return fmt.Errorf("fixture issue resource %s body digest or marker ownership is invalid", resource.Key)
+			}
+		}
 		if _, duplicate := seen[resource.Key]; duplicate {
 			return fmt.Errorf("duplicate sandbox resource key: %s", resource.Key)
 		}

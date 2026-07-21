@@ -28,6 +28,7 @@ const (
 	reviewer            = "american-dragon-designs"
 	operatingProfile    = "delegated-v1"
 	operationID         = "issue-75-live-delivery-v1"
+	deliveryIssueMarker = "starter-kit-contract:issue-75-20260721-01:issue:delivery"
 )
 
 var (
@@ -191,7 +192,7 @@ func build(value options) (outputEnvelope, error) {
 		SchemaVersion:       1,
 		Parent:              fmt.Sprintf("#%d", value.parent.Number),
 		HumanSummary:        "Exercise one synthetic task through the governed delivery lifecycle and reconcile completion.",
-		CurrentContext:      "The approved Issue #75 sandbox fixture supplies exact issue, relationship, Project, branch, check, review, and merge evidence.",
+		CurrentContext:      "The approved Issue #75 sandbox fixture supplies exact issue, relationship, Project, branch, check, review, and merge evidence under marker " + deliveryIssueMarker + ".",
 		GoverningReferences: "- fixture-check — exact implemented workflow used by the synthetic required check",
 		Scope:               "Deliver only the marker-owned Issue #75 public-synthetic sandbox fixture.",
 		OutOfScope:          "Production repositories, paid effects, unrelated sandbox resources, and human-implementation verification.",
