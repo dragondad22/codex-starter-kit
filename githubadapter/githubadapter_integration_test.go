@@ -60,9 +60,9 @@ func TestUserTokenHandshakeReturnsBoundCapabilityWithoutExposingCredential(t *te
 		ProjectOwner: "octocat", ProjectOwnerKind: "user", ProjectID: "P_project",
 		FieldIDs:            map[string]string{"readiness": "F_readiness", "status": "F_status"},
 		OptionIDs:           map[string]string{"readiness:ready": "O_ready", "status:next": "O_next"},
-		RequiredPermissions: []string{"issues:write", "projects:write", "pull_requests:read"},
+		RequiredPermissions: allPermissions(),
 	}, githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
-		return githubadapter.Credential{Token: "top-secret-token", Mode: "user-token", Actor: "octocat", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ExpiresAt: now.Add(time.Hour)}, nil
+		return githubadapter.Credential{Token: "top-secret-token", Mode: "user-token", Actor: "octocat", Permissions: allPermissions(), ExpiresAt: now.Add(time.Hour)}, nil
 	}), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +147,12 @@ func TestAppHandshakeFollowsInstallationAndProjectFieldPagination(t *testing.T) 
 
 func TestObserveFollowsRESTAndGraphQLPaginationUsingImmutableIDs(t *testing.T) {
 	t.Parallel()
+	contract := adapterExecutableIssueContract()
+	humanBody, err := engine.RenderExecutableIssueContract(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issueBody := humanBody + "\n\n<!-- starter-kit-managed:task-17 -->"
 	graphqlPage := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
@@ -155,7 +161,7 @@ func TestObserveFollowsRESTAndGraphQLPaginationUsingImmutableIDs(t *testing.T) {
 			writeJSON(t, writer, []any{})
 		case request.URL.Path == "/repos/octocat/example/issues" && request.URL.Query().Get("page") == "2":
 			writeJSON(t, writer, []any{map[string]any{
-				"number": 17, "node_id": "I_issue", "title": "Managed task", "body": "<!-- starter-kit-managed:task-17 -->", "state": "open",
+				"number": 17, "node_id": "I_issue", "title": "Managed task", "body": issueBody, "state": "open",
 				"labels": []any{map[string]any{"name": "type:task"}},
 			}})
 		case request.URL.Path == "/repos/octocat/example/issues/17/parent":
@@ -197,6 +203,26 @@ func TestObserveFollowsRESTAndGraphQLPaginationUsingImmutableIDs(t *testing.T) {
 	}
 	if observation.Task.IssueNodeID != "I_issue" || observation.Task.ProjectItemID != "PVTI_item" || observation.Task.ReadinessOption != "O_ready" || observation.Task.StatusOption != "O_next" {
 		t.Fatalf("observation did not preserve immutable IDs: %#v", observation.Task)
+	}
+	if observation.Task.IssueContract == nil || observation.Task.IssueContractDigest != engine.ExecutableIssueContractDigest(contract) || len(observation.Task.IssueContractProblems) != 0 {
+		t.Fatalf("observation did not normalize the executable issue contract: %#v", observation.Task)
+	}
+}
+
+func adapterExecutableIssueContract() engine.ExecutableIssueContract {
+	return engine.ExecutableIssueContract{
+		SchemaVersion:       1,
+		HumanSummary:        "A maintainer can execute one governed task.\n\n**Done when:** current issue facts are retained.",
+		CurrentContext:      "The GitHub adapter observes the current public issue body.",
+		GoverningReferences: "- DEC-0005 — executable GitHub work.",
+		Scope:               "Normalize one executable issue contract.",
+		OutOfScope:          "Changing human-owned outcome or acceptance prose.",
+		Acceptance:          "- [ ] The canonical body round-trips through GitHub observation.",
+		Verification:        "Exercise the production adapter through its observation seam.",
+		ReadinessAssertions: []string{
+			"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.",
+			"An authorized implementer can execute this without the originating conversation.",
+		},
 	}
 }
 
@@ -378,6 +404,26 @@ func projectItemFixture(itemID, issueID, readiness, status string) map[string]an
 	}}}
 }
 
+func authorizeExternalManagedTask(request *engine.ManagedTaskRequest, now time.Time, actor, mode string, permissions []string) {
+	request.Intent.EffectBoundary = engine.WorkEffectBoundary{
+		DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete",
+		Retention: "repository-evidence", RecoveryOwner: "repository-owner",
+	}
+	request.ExecutionMandate = new(engine.WorkExecutionMandate)
+	*request.ExecutionMandate = engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "repository-owner", ApprovalID: "test-approval", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: request.Intent.Target, OperationID: request.Intent.OperationID, SelectedManagedID: request.Intent.Task.ManagedID, Actors: []string{actor}, CredentialModes: []string{mode}, Permissions: permissions,
+		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, InputDigests: request.Intent.InputDigests,
+		SourceRevisions: []string{request.Intent.SourceRevision}, ManagedIDs: []string{request.Intent.Task.ManagedID},
+		EffectKinds:     []string{"create-task", "reconcile-task"},
+		Operations:      []string{"issue", "project", "readiness", "status", "horizon", "phase", "closure", "context", "promotion-link"},
+		ResourceDigests: []string{engine.ManagedTaskResourceDigest(request.Intent.Task)}, MaxEffects: 8,
+		DataClass: request.Intent.EffectBoundary.DataClass, CostCeiling: request.Intent.EffectBoundary.CostCeiling,
+		Destructive: request.Intent.EffectBoundary.Destructive, Retention: request.Intent.EffectBoundary.Retention,
+		RecoveryOwner: request.Intent.EffectBoundary.RecoveryOwner,
+	})
+}
+
 func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t *testing.T) {
 	t.Parallel()
 	fixture := &lifecycleFixture{fields: map[string]string{}}
@@ -400,6 +446,7 @@ func TestLifecycleCreatesProjectsReconcilesVerifiesAndReplaysWithoutDuplicate(t 
 		Credential:   engine.WorkCredentialExpectation{Mode: "user-token", Actor: "octocat"}, Target: target,
 		Task: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "feature", Title: "Reconcile one managed task", Readiness: "ready", Status: "next", Phase: "Phase 3", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
 	}}
+	authorizeExternalManagedTask(&request, now, "octocat", "user-token", allPermissions())
 	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithWorkAdapter(adapter))
 
 	first, err := lifecycle.ManageTask(context.Background(), request)
@@ -499,6 +546,7 @@ func TestOrganizationAppRunsTheSameManagedTaskLifecycle(t *testing.T) {
 		Credential:   engine.WorkCredentialExpectation{Mode: "app-installation", Actor: "octo-work-manager"}, Target: target,
 		Task: engine.DesiredManagedTask{ManagedID: "task-app", IssueType: "task", Title: "App managed task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
 	}}
+	authorizeExternalManagedTask(&request, now, "octo-work-manager", "app-installation", allPermissions())
 	result, err := engine.New(engine.WithClock(fixedClock{now}), engine.WithWorkAdapter(adapter)).ManageTask(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -647,6 +695,215 @@ func TestReconcilePreservesHumanBodyAndUnmanagedLabels(t *testing.T) {
 	}
 }
 
+func TestReconcileRefreshesOnlyGovernedCurrentContext(t *testing.T) {
+	t.Parallel()
+	expected := adapterExecutableIssueContract()
+	stale := expected
+	stale.CurrentContext = "An older non-semantic adapter description."
+	body, err := engine.RenderExecutableIssueContract(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Managed task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}}
+	body += "\n\n" + managedFixtureBody(t, desired)
+	fixture := &lifecycleFixture{fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", issue: &githubFixtureIssue{
+		Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	result, err := newUserAdapter(t, server, now).Apply(context.Background(), engine.WorkEffect{
+		Kind: "reconcile-task", Operations: []string{"context"}, Attempt: 1, ManagedID: desired.ManagedID,
+		Marker: "starter-kit-managed:" + desired.ManagedID, Desired: desired, IssueContract: &expected,
+	})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("context refresh = %#v, %v", result, err)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	parsed, err := engine.ParseExecutableIssueContract(fixture.issue.Body)
+	if err != nil || engine.ExecutableIssueContractDigest(parsed) != engine.ExecutableIssueContractDigest(expected) {
+		t.Fatalf("context refresh did not converge to the exact contract: %#v, %v", parsed, err)
+	}
+	if fixture.issue.Title != desired.Title || !slices.Equal(fixture.issue.Labels, []string{"type:task"}) || fixture.mutationCount != 1 {
+		t.Fatalf("context refresh broadened the mutation: %#v", fixture.issue)
+	}
+}
+
+func TestObserveGovernedWorkBindsMergedRelatedPRToExactOutcome(t *testing.T) {
+	t.Parallel()
+
+	contract := adapterExecutableIssueContract()
+	body, err := engine.RenderExecutableIssueContract(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Managed task", Readiness: "ready", Status: "next"}
+	body += "\n\n" + managedFixtureBody(t, desired)
+	implemented := []byte("implemented outcome\n")
+	implementedDigest := sha256.Sum256(implemented)
+	claim, err := engine.RenderWorkDeliveryClaim(engine.WorkDeliveryClaim{
+		SchemaVersion: 1, ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+		ImplementedSources: []engine.GovernedSourceBinding{{ID: "implementation", Path: "docs/implementation.md", Digest: fmt.Sprintf("sha256:%x", implementedDigest)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mergedAt := time.Date(2026, 7, 15, 22, 0, 0, 0, time.UTC)
+	fixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: claim, deliveryMergedAt: &mergedAt,
+		deliverySourcePath: "docs/implementation.md", deliverySourceContent: implemented,
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	observation, err := newUserAdapter(t, server, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || observation.Delivery == nil || observation.Delivery.State != "complete" || observation.Delivery.RepositoryRevision != "head-main" || observation.Delivery.ContractDigest != engine.ExecutableIssueContractDigest(contract) || !slices.Equal(observation.Delivery.Evidence, []string{"https://github.example/pull/91"}) {
+		t.Fatalf("exact merged delivery observation = %#v, %v", observation, err)
+	}
+
+	for _, test := range []struct {
+		name      string
+		configure func(*lifecycleFixture)
+	}{
+		{name: "wrong default branch", configure: func(fixture *lifecycleFixture) { fixture.deliveryWrongBase = true }},
+		{name: "merge no longer reachable", configure: func(fixture *lifecycleFixture) { fixture.deliveryUnreachable = true }},
+		{name: "implemented content changed", configure: func(fixture *lifecycleFixture) { fixture.deliverySourceContent = []byte("changed\n") }},
+		{name: "implemented content removed", configure: func(fixture *lifecycleFixture) { fixture.deliverySourcePath = "docs/other.md" }},
+		{name: "claim omits a changed file", configure: func(fixture *lifecycleFixture) { fixture.deliveryExtraFile = true }},
+		{name: "no-op pull request", configure: func(fixture *lifecycleFixture) { fixture.deliveryNoFiles = true }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := &lifecycleFixture{
+				fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: claim, deliveryMergedAt: &mergedAt,
+				deliverySourcePath: "docs/implementation.md", deliverySourceContent: slices.Clone(implemented),
+				issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+			}
+			test.configure(fixture)
+			server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+			defer server.Close()
+			observed, observeErr := newUserAdapter(t, server, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+				ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+			})
+			if observeErr != nil || observed.Delivery == nil || observed.Delivery.State != "partial" || observed.Delivery.RepositoryRevision != "" {
+				t.Fatalf("stale historical delivery passed: %#v, %v", observed, observeErr)
+			}
+		})
+	}
+	otherClaim, err := engine.RenderWorkDeliveryClaim(engine.WorkDeliveryClaim{
+		SchemaVersion: 1, ManagedID: "issue:other", SourceRevision: "source:other", ContractDigest: "sha256:" + strings.Repeat("a", 64),
+		ImplementedSources: []engine.GovernedSourceBinding{{ID: "other", Path: "docs/other.md", Digest: "sha256:" + strings.Repeat("b", 64)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partialFixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: otherClaim,
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	partialServer := httptest.NewServer(http.HandlerFunc(partialFixture.serveHTTP))
+	defer partialServer.Close()
+	partialObservation, err := newUserAdapter(t, partialServer, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || partialObservation.Delivery == nil || partialObservation.Delivery.State != "partial" || len(partialObservation.Delivery.Evidence) != 1 {
+		t.Fatalf("another governed PR was not retained as possible partial implementation: %#v, %v", partialObservation, err)
+	}
+
+	unclaimedFixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: "ordinary cross-reference",
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	unclaimedServer := httptest.NewServer(http.HandlerFunc(unclaimedFixture.serveHTTP))
+	defer unclaimedServer.Close()
+	unclaimedObservation, err := newUserAdapter(t, unclaimedServer, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || unclaimedObservation.Delivery == nil || unclaimedObservation.Delivery.State != "none" || len(unclaimedObservation.Delivery.Evidence) != 0 {
+		t.Fatalf("ordinary cross-reference was treated as delivery evidence: %#v, %v", unclaimedObservation, err)
+	}
+	oldClaim, err := engine.RenderWorkDeliveryClaim(engine.WorkDeliveryClaim{
+		SchemaVersion: 1, ManagedID: desired.ManagedID, SourceRevision: "source:v1", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+		ImplementedSources: []engine.GovernedSourceBinding{{ID: "implementation", Path: "docs/implementation.md", Digest: fmt.Sprintf("sha256:%x", implementedDigest)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldFixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: oldClaim, deliveryMergedAt: &mergedAt,
+		deliverySourcePath: "docs/implementation.md", deliverySourceContent: implemented,
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	oldServer := httptest.NewServer(http.HandlerFunc(oldFixture.serveHTTP))
+	defer oldServer.Close()
+	oldObservation, err := newUserAdapter(t, oldServer, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || oldObservation.Delivery == nil || oldObservation.Delivery.State != "none" || len(oldObservation.Delivery.Evidence) != 0 {
+		t.Fatalf("historical delivery poisoned current revision: %#v, %v", oldObservation, err)
+	}
+}
+
+func TestObserveGovernedWorkRejectsAmbiguousTypeLabels(t *testing.T) {
+	t.Parallel()
+
+	contract := adapterExecutableIssueContract()
+	body, err := engine.RenderExecutableIssueContract(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Managed task", Readiness: "ready", Status: "next"}
+	body += "\n\n" + managedFixtureBody(t, desired)
+	fixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item",
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task", "type:bug"}},
+	}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	observation, err := newUserAdapter(t, server, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || observation.Task == nil || len(observation.Task.IssueContractProblems) == 0 {
+		t.Fatalf("ambiguous type labels were not retained as a non-pass fact: %#v, %v", observation, err)
+	}
+}
+
+func TestQuestionCompletionPostsAndReobservesExactPromotionBacklink(t *testing.T) {
+	t.Parallel()
+
+	desired := engine.DesiredManagedTask{
+		ManagedID: "question-16", IssueType: "question", Title: "Resolved question", Readiness: "ready", Status: "done", Closed: true,
+		PromotionRecord: "docs/decisions/DEC-0013-question-and-research-work.md",
+	}
+	fixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item",
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "closed", Body: managedFixtureBody(t, desired), Labels: []string{"type:question"}},
+	}
+	server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+	defer server.Close()
+	now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+	result, err := newUserAdapter(t, server, now).Apply(context.Background(), engine.WorkEffect{
+		Kind: "reconcile-task", Operations: []string{"promotion-link"}, Attempt: 1, ManagedID: desired.ManagedID,
+		Marker: "starter-kit-managed:" + desired.ManagedID, Desired: desired,
+	})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("promotion backlink effect = %#v, %v", result, err)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if len(fixture.comments) != 1 {
+		t.Fatalf("promotion comments = %#v", fixture.comments)
+	}
+	link, err := engine.ParseWorkPromotionComment(fixture.comments[0])
+	if err != nil || link.ManagedID != desired.ManagedID || link.Path != desired.PromotionRecord {
+		t.Fatalf("promotion backlink = %#v, %v", link, err)
+	}
+}
+
 func TestReconcileClearsDuplicatedPhaseFromOrdinaryChild(t *testing.T) {
 	t.Parallel()
 	desired := engine.DesiredManagedTask{
@@ -671,6 +928,47 @@ func TestReconcileClearsDuplicatedPhaseFromOrdinaryChild(t *testing.T) {
 	defer fixture.mu.Unlock()
 	if _, exists := fixture.fields["F_phase"]; exists {
 		t.Fatalf("ordinary child retained a duplicate direct Phase: %v", fixture.fields)
+	}
+}
+
+func TestReconcileSetsFeatureHorizonAndClearsCopiedChildHorizon(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		desired engine.DesiredManagedTask
+		start   string
+		want    string
+	}{
+		{name: "feature", desired: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "feature", Title: "Feature", Readiness: "ready", Status: "next", Horizon: "now"}, want: "O_horizon_now"},
+		{name: "child", desired: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Child", Readiness: "ready", Status: "next", ParentManagedID: "feature-4", ParentHorizon: "next"}, start: "O_horizon_next"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fields := map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}
+			if test.start != "" {
+				fields["F_horizon"] = test.start
+			}
+			fixture := &lifecycleFixture{fields: fields, projectItemID: "PVTI_item", issue: &githubFixtureIssue{
+				Number: 17, NodeID: "I_issue", Title: test.desired.Title, State: "open", Body: managedFixtureBody(t, test.desired), Labels: []string{"type:" + test.desired.IssueType},
+			}}
+			server := httptest.NewServer(http.HandlerFunc(fixture.serveHTTP))
+			defer server.Close()
+			now := time.Date(2026, 7, 15, 23, 0, 0, 0, time.UTC)
+			result, err := newHorizonUserAdapter(t, server, now).Apply(context.Background(), engine.WorkEffect{
+				Kind: "reconcile-task", Operations: []string{"horizon"}, Attempt: 1,
+				ManagedID: test.desired.ManagedID, Marker: "starter-kit-managed:" + test.desired.ManagedID, Desired: test.desired,
+			})
+			if err != nil || result.Outcome != "applied" {
+				t.Fatalf("Horizon reconciliation = %#v, %v", result, err)
+			}
+			fixture.mu.Lock()
+			defer fixture.mu.Unlock()
+			if fixture.fields["F_horizon"] != test.want {
+				t.Fatalf("Horizon result = %q, want %q", fixture.fields["F_horizon"], test.want)
+			}
+		})
 	}
 }
 
@@ -747,6 +1045,7 @@ func TestPartialProjectResultPlansOnlyRemainingSemanticOperations(t *testing.T) 
 		Credential:   engine.WorkCredentialExpectation{Mode: "user-token", Actor: "octocat"}, Target: managedTarget(),
 		Task: engine.DesiredManagedTask{ManagedID: "task-72", IssueType: "task", Title: "Partial task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "reviewer", DistinctContext: true}}},
 	}}
+	authorizeExternalManagedTask(&request, now, "octocat", "user-token", allPermissions())
 	lifecycle := engine.New(engine.WithClock(fixedClock{now}), engine.WithWorkAdapter(adapter))
 	first, err := lifecycle.ManageTask(context.Background(), request)
 	if err != nil || first.Apply.Status != engine.WorkApplyNonPass {
@@ -924,7 +1223,7 @@ func TestIdentityModesPermissionExpiryAndUnsupportedCombinationsRemainDistinct(t
 }
 
 func allPermissions() []string {
-	return []string{"issues:write", "projects:write", "pull_requests:read"}
+	return []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"}
 }
 
 func credentialProvider(now time.Time, mode, actor string, permissions []string) githubadapter.CredentialProviderFunc {
@@ -985,24 +1284,33 @@ func managedTarget() engine.WorkTarget {
 }
 
 type lifecycleFixture struct {
-	mu                  sync.Mutex
-	issue               *githubFixtureIssue
-	parent              *githubFixtureIssue
-	projectItemID       string
-	parentProjectItemID string
-	fields              map[string]string
-	parentFields        map[string]string
-	projectFields       map[string]any
-	createCount         int
-	mutationCount       int
-	loseCreateResponse  bool
-	failProjectAdd      bool
-	app                 bool
-	actor               string
-	repositoryOwner     string
-	repositoryID        string
-	projectOwner        string
-	projectID           string
+	mu                    sync.Mutex
+	issue                 *githubFixtureIssue
+	parent                *githubFixtureIssue
+	projectItemID         string
+	parentProjectItemID   string
+	fields                map[string]string
+	parentFields          map[string]string
+	projectFields         map[string]any
+	createCount           int
+	mutationCount         int
+	loseCreateResponse    bool
+	failProjectAdd        bool
+	app                   bool
+	actor                 string
+	repositoryOwner       string
+	repositoryID          string
+	projectOwner          string
+	projectID             string
+	deliveryClaim         string
+	deliveryMergedAt      *time.Time
+	deliverySourcePath    string
+	deliverySourceContent []byte
+	deliveryWrongBase     bool
+	deliveryUnreachable   bool
+	deliveryExtraFile     bool
+	deliveryNoFiles       bool
+	comments              []string
 }
 
 type githubFixtureIssue struct {
@@ -1051,11 +1359,65 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 	case request.Method == http.MethodGet && request.URL.Path == "/installation/repositories" && fixture.app:
 		writeFixtureJSON(writer, map[string]any{"repositories": []any{map[string]any{"node_id": repositoryID}}})
 	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example":
-		writeFixtureJSON(writer, map[string]any{"node_id": repositoryID, "owner": map[string]any{"login": repositoryOwner}})
+		writeFixtureJSON(writer, map[string]any{"node_id": repositoryID, "owner": map[string]any{"login": repositoryOwner}, "default_branch": "main"})
+	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example/branches/main":
+		writeFixtureJSON(writer, map[string]any{"commit": map[string]any{"sha": "head-main"}})
+	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example/compare/merge-91...head-main":
+		status := "ahead"
+		mergeBase := "merge-91"
+		if fixture.deliveryUnreachable {
+			status = "diverged"
+			mergeBase = "other"
+		}
+		writeFixtureJSON(writer, map[string]any{"status": status, "merge_base_commit": map[string]any{"sha": mergeBase}})
+	case request.Method == http.MethodGet && fixture.deliverySourcePath != "" && request.URL.Path == "/repos/"+repositoryOwner+"/example/contents/"+fixture.deliverySourcePath:
+		writeFixtureJSON(writer, map[string]any{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString(fixture.deliverySourceContent)})
 	case request.Method == http.MethodGet && fixture.issue != nil && fixture.parent == nil && request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/parent":
 		http.NotFound(writer, request)
 	case request.Method == http.MethodGet && fixture.issue != nil && (request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/dependencies/blocked_by" || request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/dependencies/blocking"):
 		writeFixtureJSON(writer, []any{})
+	case request.Method == http.MethodGet && fixture.issue != nil && request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/timeline":
+		if fixture.deliveryClaim == "" {
+			writeFixtureJSON(writer, []any{})
+			return
+		}
+		writeFixtureJSON(writer, []any{
+			map[string]any{
+				"event": "cross-referenced",
+				"source": map[string]any{"issue": map[string]any{
+					"number": 91, "repository_url": "http://" + request.Host + "/repos/" + repositoryOwner + "/example", "pull_request": map[string]any{},
+				}},
+			},
+		})
+	case request.Method == http.MethodGet && fixture.issue != nil && request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/comments":
+		comments := make([]any, 0, len(fixture.comments))
+		for _, body := range fixture.comments {
+			comments = append(comments, map[string]any{"body": body})
+		}
+		writeFixtureJSON(writer, comments)
+	case request.Method == http.MethodPost && fixture.issue != nil && request.URL.Path == issuesPath+"/"+strconv.Itoa(fixture.issue.Number)+"/comments":
+		var input struct {
+			Body string `json:"body"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&input)
+		fixture.comments = append(fixture.comments, input.Body)
+		fixture.mutationCount++
+		writeFixtureJSON(writer, map[string]any{"id": 1, "body": input.Body})
+	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example/pulls/91":
+		base := "main"
+		if fixture.deliveryWrongBase {
+			base = "release"
+		}
+		writeFixtureJSON(writer, map[string]any{"number": 91, "body": fixture.deliveryClaim, "html_url": "https://github.example/pull/91", "merged": fixture.deliveryMergedAt != nil, "merged_at": fixture.deliveryMergedAt, "merge_commit_sha": "merge-91", "base": map[string]any{"ref": base, "repo": map[string]any{"node_id": repositoryID}}})
+	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example/pulls/91/files":
+		files := []any{}
+		if !fixture.deliveryNoFiles {
+			files = append(files, map[string]any{"filename": "docs/implementation.md", "status": "modified"})
+		}
+		if fixture.deliveryExtraFile {
+			files = append(files, map[string]any{"filename": "engine/omitted.go", "status": "modified"})
+		}
+		writeFixtureJSON(writer, files)
 	case request.Method == http.MethodGet && request.URL.Path == issuesPath:
 		issues := []any{}
 		if fixture.issue != nil {
@@ -1103,14 +1465,20 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 		writer.WriteHeader(http.StatusCreated)
 		writeFixtureJSON(writer, map[string]any{"number": 17, "node_id": "I_issue", "title": input.Title, "body": input.Body, "state": "open"})
 	case request.Method == http.MethodPatch && request.URL.Path == issuesPath+"/17":
-		var input struct {
-			Title  string   `json:"title"`
-			Body   string   `json:"body"`
-			State  string   `json:"state"`
-			Labels []string `json:"labels"`
-		}
+		var input map[string]json.RawMessage
 		_ = json.NewDecoder(request.Body).Decode(&input)
-		fixture.issue.Title, fixture.issue.Body, fixture.issue.State, fixture.issue.Labels = input.Title, input.Body, input.State, input.Labels
+		if value, ok := input["title"]; ok {
+			_ = json.Unmarshal(value, &fixture.issue.Title)
+		}
+		if value, ok := input["body"]; ok {
+			_ = json.Unmarshal(value, &fixture.issue.Body)
+		}
+		if value, ok := input["state"]; ok {
+			_ = json.Unmarshal(value, &fixture.issue.State)
+		}
+		if value, ok := input["labels"]; ok {
+			_ = json.Unmarshal(value, &fixture.issue.Labels)
+		}
 		fixture.mutationCount++
 		writeFixtureJSON(writer, map[string]any{"number": 17, "node_id": "I_issue"})
 	case request.Method == http.MethodPost && request.URL.Path == "/graphql":
@@ -1210,9 +1578,9 @@ func newUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *githu
 		ProjectOwner: "octocat", ProjectOwnerKind: "user", ProjectID: "P_project",
 		FieldIDs:            map[string]string{"readiness": "F_readiness", "status": "F_status"},
 		OptionIDs:           map[string]string{"readiness:ready": "O_ready", "status:next": "O_next"},
-		RequiredPermissions: []string{"issues:write", "projects:write", "pull_requests:read"},
+		RequiredPermissions: allPermissions(),
 	}, githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
-		return githubadapter.Credential{Token: "top-secret-token", Mode: "user-token", Actor: "octocat", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ExpiresAt: now.Add(time.Hour)}, nil
+		return githubadapter.Credential{Token: "top-secret-token", Mode: "user-token", Actor: "octocat", Permissions: allPermissions(), ExpiresAt: now.Add(time.Hour)}, nil
 	}), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
@@ -1231,6 +1599,20 @@ func newPhaseUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *
 		OptionIDs:           map[string]string{"readiness:ready": "O_ready", "status:next": "O_next", "phase:Phase 0": "O_phase_0", "phase:Phase 1": "O_phase_1", "phase:Phase 2": "O_phase_2", "phase:Phase 3": "O_phase_3", "phase:Phase 4": "O_phase_4", "phase:Phase 5": "O_phase_5", "phase:Phase 6": "O_phase_6", "phase:Phase 7": "O_phase_7", "phase:Phase 8": "O_phase_8"},
 		RequiredPermissions: []string{"issues:write", "projects:write", "pull_requests:read"},
 	}
+	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return adapter
+}
+
+func newHorizonUserAdapter(t *testing.T, server *httptest.Server, now time.Time) *githubadapter.Adapter {
+	t.Helper()
+	config := adapterConfig(server, "user-token", "octocat", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	config.FieldIDs["horizon"] = "F_horizon"
+	config.OptionIDs["horizon:now"] = "O_horizon_now"
+	config.OptionIDs["horizon:next"] = "O_horizon_next"
+	config.OptionIDs["horizon:later"] = "O_horizon_later"
 	adapter, err := githubadapter.New(config, credentialProvider(now, "user-token", "octocat", allPermissions()), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)

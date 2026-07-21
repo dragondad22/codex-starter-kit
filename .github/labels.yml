@@ -4,6 +4,8 @@
     {"name": "type:feature", "color": "A2EEEF", "description": "User or stakeholder-visible capability"},
     {"name": "type:task", "color": "0075CA", "description": "Independently executable implementation work"},
     {"name": "type:bug", "color": "D73A4A", "description": "Verified defect or quality finding"},
+    {"name": "type:question", "color": "D4C5F9", "description": "Consequential uncertainty requiring durable resolution"},
+    {"name": "type:research", "color": "C5DEF5", "description": "Bounded evidence-producing work with a durable output"},
     {"name": "area:product", "color": "BFD4F2", "description": "Product requirements, personas, and domain"},
     {"name": "area:engine", "color": "BFD4F2", "description": "Lifecycle engine and repository contract"},
     {"name": "area:plugin", "color": "BFD4F2", "description": "Codex plugin and skills"},

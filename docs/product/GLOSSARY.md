@@ -195,6 +195,13 @@ A repository with a valid local contract for pinned state, policy, provenance, r
 human records, evidence, and GitHub synchronization. It does not imply every control
 passes.
 
+### Managed-work qualification
+
+A content-addressed pre-work provenance record binding an executable issue contract,
+governed sources, operating profile, current observation, Project configuration, and
+immutable target. It does not authorize external effects; a DEC-0022 execution mandate is
+separate.
+
 ### Milestone
 
 The single finite GitHub manifest for one named release. It identifies approved release
@@ -236,6 +243,13 @@ routing metadata, and migrations.
 A human-owned product document explaining the problem, intended users and outcomes,
 requirements, boundaries, success measures, and product-level testing decisions. It says
 what the product must achieve, not every implementation detail.
+
+### Pre-work freshness disposition
+
+The single result of checking a Ready item against current authoritative facts at
+selection/start or after material change: `fresh`, `mechanical-drift-repaired`,
+`contained-context-refreshed`, `needs-refinement`, `already-delivered`, or `blocked`.
+Age alone is not freshness.
 
 ### Product assurance
 

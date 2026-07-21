@@ -96,9 +96,11 @@ reserved names, and platform-native path behavior.
 
 ### Work Manager
 
-Renders and validates executable issues, readiness, hierarchy, labels, Project fields,
-Horizon roadmap, and completion memory. It owns desired state; the GitHub adapter owns
-transport. The implemented one-task slice uses versioned desired intent, adapter
+Renders and validates versioned executable issues, governed source bindings, pre-work
+freshness, readiness, hierarchy, labels, Project fields, subtype promotion, Horizon
+roadmap, and completion memory. Its content-addressed managed-work qualification is
+provenance rather than external-effect authority. It owns desired state; the GitHub adapter owns
+transport. The implemented bounded slice uses versioned desired intent, adapter
 capability/observation, immutable plans, effect receipts, and self-digested durable state
 behind the lifecycle-engine seam; see [the Work Manager contract](WORK_MANAGER.md).
 

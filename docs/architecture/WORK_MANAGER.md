@@ -2,7 +2,7 @@
 
 **Status:** Implemented credential-free lifecycle and deterministic GitHub transport
 
-**Issues:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71), [#46](https://github.com/dragondad22/codex-starter-kit/issues/46)
+**Issues:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71), [#46](https://github.com/dragondad22/codex-starter-kit/issues/46), [#74](https://github.com/dragondad22/codex-starter-kit/issues/74)
 
 **GitHub adapter:** [#72 contract](GITHUB_ADAPTER.md); live sandbox deferred to #73/#76
 
@@ -13,15 +13,18 @@ The engine exposes `InspectManagedTask`, `PlanManagedTask`, `ApplyManagedTask`,
 into one request and returns the complete journey. The CLI exposes that composite route as:
 
 ```text
-starter-kit manage-task --input <managed-task-v1.json>
+starter-kit manage-task --input <managed-task.json>
 ```
 
 The input is one strict JSON document with `request`, `capability`, and `observation`.
 Unknown fields and trailing JSON are rejected. `request.intent` contains no credential;
-it records only the expected mode and actor. The in-memory adapter performs no network,
+it records only the expected mode and actor. An external composite request may also carry
+its non-secret bounded execution mandate outside desired intent. The in-memory adapter performs no network,
 credential lookup, installation, or external effect.
 
-Every boundary is schema version 1:
+The outer lifecycle evidence remains schema version 1 with additive fields. Desired intent
+schema v1 remains readable as historical one-task evidence. Desired intent schema v2 is
+the governed executable-work route:
 
 - `WorkDesiredIntent` binds one stable managed ID to the governed source revision,
   operating-profile revision, input digests, expected actor, immutable target IDs,
@@ -36,7 +39,7 @@ Every boundary is schema version 1:
   profile, observation, configuration, actor expectation, target IDs, expiry, impact,
   recovery, and ordered semantic effects.
 - `WorkEffectReceipt` preserves each applied or non-pass effect with plan, operation,
-  actor, authority, source, observation, target, attempt, retry, recovery, and time facts.
+  actor, authority, source, observation, target, attempt, retry, recovery, mandate, and time facts.
 
 Capability, observation, plan, and effect-result schemas validate required identities,
 timestamps, permissions, revisions, outcomes, attempts, and bounded retry ranges. All
@@ -45,6 +48,66 @@ secret-shaped adapter diagnostics are redacted before receipts.
 
 Go type names are implementation labels, not compatibility authority. Compatibility is
 the emitted JSON plus black-box behavior through the CLI and engine seam.
+
+## Governed executable-work qualification
+
+Schema-v2 intent carries a canonical `ExecutableIssueContract`, exact governed-source
+bindings, and any question/research subtype contract. The visible issue uses one versioned
+schema marker and exact sections for summary, current context, governing references,
+scope/exclusions, acceptance, verification, task-specific authority, and the two Ready
+assertions. Governing-reference IDs correspond exactly to safe repository paths and
+SHA-256 digests. The adapter parses the visible body; hidden metadata retains only stable
+machine projection facts and cannot substitute for missing human sections.
+
+Inspection produces a content-addressed `ManagedWorkQualification` bound to the issue,
+source, operating profile, observation, configuration, and immutable target. It is
+provenance, not effect authority. One deterministic pre-work disposition is retained:
+`fresh`, `mechanical-drift-repaired`, `contained-context-refreshed`,
+`needs-refinement`, `already-delivered`, or `blocked`. Normal implementation planning
+proceeds only from `fresh`. Exact `already-delivered` implementation work admits only a
+resolution plan that closes the issue, sets Status `done`, and reconciles its bounded
+parent/dependent slice; it cannot plan implementation effects. External resolution still
+requires its exact DEC-0022 mandate. The two past-tense repair dispositions are reported
+only after apply and verify receipts prove convergence. Source, acceptance, authority, risk, title/type, or
+human-owned context changes yield `needs-refinement`. A current-context refresh is
+available only when the task contract names the exact stale context-fragment digest as
+refreshable and all other semantic sections remain unchanged.
+When facts conflict, deterministic precedence is `already-delivered`, then `blocked`, then
+`needs-refinement`: exact current delivery prevents duplicate work, a live block prevents
+execution, and refinement governs the remaining semantic conflicts.
+
+The check runs at selection/start and after material change. No timestamp participates in
+qualification, so age alone cannot make Ready work stale. A matching old qualification is
+not a permanent certificate: changed observation or source identity invalidates its plan.
+No GitHub comment or standalone pass artifact is required for unchanged fresh work.
+
+Related delivery is not a caller-supplied boolean. The governed GitHub observation reads
+bounded issue-timeline cross-references, re-reads same-repository pull requests, and
+accepts `already-delivered` only for a merged PR containing one exact, versioned delivery
+claim bound to managed ID, source revision, executable-contract digest, and implemented
+repository paths and digests. The PR must target the current default branch, its merge
+commit must remain reachable from one immutable default-branch head, and every claimed
+file digest must still match at that head. The claimed path set must exactly equal the
+PR's bounded changed-file manifest; deletion-bearing or empty PRs cannot prove complete
+delivery. Historical claims for other governed revisions are ignored. A valid
+cross-referenced claim owned by another managed item is retained as possible partial
+implementation and requires explicit residual-scope refinement; ordinary cross-references
+without a delivery claim remain non-evidence. Open, reverted, removed, current-claim
+contract mismatch, or otherwise partial claimed delivery returns to refinement.
+Issue #75 emits the same delivery claim during branch/PR delivery.
+
+Question and research subtype fields round-trip through the same visible issue contract.
+Question relationship and answer authority are explicit. Research objective, intended
+use, scope/exclusions, provenance, effort, authority, stopping, output, freshness, and
+review are required. Closing promotion must match the governed destination, bind its
+exact repository digest, and contain the reciprocal managed issue identity, immutable
+repository ID, and exact observed issue URL. Question
+completion also posts and re-observes one canonical issue comment linking that promoted
+record; the promoted record carries a structured, collision-safe backlink to the exact
+issue. A no-promotion exception requires a visible closing resolution in the executable
+contract rather than a machine-only boolean. A closed research output must also contain
+nonempty `Method`, `Sources`, `Findings`, `Conflicting evidence`, `Uncertainty`,
+`Limitations`, and `Freshness` sections; a backlink-only file cannot complete research.
 
 ## Policy and adapter ownership
 
@@ -67,6 +130,14 @@ and requires a durable reason. A child cannot duplicate its parent's value direc
 Unsupported values, missing/stale identities, or an unjustified direct assignment stop
 before durable state. Reconciliation sets a justified direct option and clears a copied
 option from ordinary child work.
+
+Horizon uses the independent `Now`, `Next`, and `Later` catalog. A Ready feature requires
+one direct Horizon when that capability is configured. Ordinary children keep their own
+field blank and derive parent context from the native parent observation. Work Manager
+sets or clears Horizon by immutable ID without changing Status or Readiness. Derived facts
+report both Horizon and Phase capability as `configured` or `not-configured`; saved views
+remain optional human-owned presentation, and Milestone remains a separate finite-release
+dimension.
 
 For the selected task, the immutable plan derives and applies a bounded reconciliation
 slice containing the selected item, its one parent, and its direct dependents. A closed
@@ -113,6 +184,26 @@ retry schedule, and disposition are atomically replaced at
 fails closed if altered. It stores neither credentials nor raw transport requests.
 Apply first acquires the repository lifecycle lease, so create/verify/work operations and
 concurrent work applies cannot race effects or overwrite receipts.
+
+Every prospective external effect, including a schema-v1 compatibility request, requires
+`ApplyManagedTaskWithMandate` and a content-addressed DEC-0022
+`WorkExecutionMandate`. It binds owner/approval, immutable target, actor and
+credential mode, the selected operation and root managed item, exact permissions,
+operating profile, input and governed-source digests, the full governance digest including
+refreshable-context authority, source revisions, desired-resource digests, managed IDs,
+semantic effect/operation classes,
+data/cost/destructive ceilings, cumulative effect count, expiry, retention, and recovery
+owner. Mandate usage is retained independently of the singleton active operation so
+switching work and returning cannot reset its ceiling. The integrity-protected mandate
+ledger is also stored outside the replaceable active-work directory, so removing that
+directory cannot recreate first-use authority. Each usage slot is durably reserved before
+the adapter call, so a crash or lost response cannot restore spent authority. Memory
+effects and effect-free plans need
+no external mandate. Historical schema-v1 evidence remains readable but cannot authorize
+a new unmandated effect.
+Once the Work Manager evidence directory exists, a missing, corrupt, or integrity-invalid
+state file fails closed; only a genuinely uninitialized directory may create an empty
+mandate-usage ledger.
 
 An unchanged refreshed observation produces an effect-free no-change plan while retaining
 prior receipts. Apply re-observes capability and task state immediately before effects.

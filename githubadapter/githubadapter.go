@@ -205,7 +205,14 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		}
 		return adapter.failedObservation(target, managedID, &credential, err), nil
 	}
-	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target)
+	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target, adapter.issueWebURL(issue.Number))
+	if observation.Task.IssueType == "question" && observation.Task.PromotionRecord != "" {
+		backlink, backlinkErr := adapter.observePromotionBacklink(ctx, credential, issue.Number, managedID, observation.Task.PromotionRecord)
+		if backlinkErr != nil {
+			return adapter.failedObservation(target, managedID, &credential, backlinkErr), nil
+		}
+		observation.Task.PromotionBacklink = backlink
+	}
 	seenRequested := map[string]bool{}
 	for _, relatedManagedID := range relatedManagedIDs {
 		if relatedManagedID == "" || relatedManagedID == managedID || seenRequested[relatedManagedID] {
@@ -226,6 +233,7 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 			for _, relatedTask := range related {
 				if relatedTask.ManagedID == relationships.ParentManagedID {
 					observation.Task.NativeParentManagedID = relationships.ParentManagedID
+					observation.Task.ParentHorizonOption = relatedTask.HorizonOption
 					observation.Task.ParentPhaseOption = relatedTask.PhaseOption
 					break
 				}
@@ -240,6 +248,246 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		Problems      []string
 	}{observation.Task, observation.RelatedTasks, observation.Relationships, observation.Disposition, observation.Problems})
 	return observation, nil
+}
+
+// ObserveGovernedWork adds bounded related-PR delivery evidence to the normal observation.
+func (adapter *Adapter) ObserveGovernedWork(ctx context.Context, target engine.WorkTarget, request engine.GovernedWorkObservationRequest) (engine.WorkObservation, error) {
+	observation, err := adapter.Observe(ctx, target, request.ManagedID, request.RelatedManagedIDs...)
+	if err != nil || observation.Task == nil || observation.Disposition != "observed" {
+		return observation, err
+	}
+	credential, err := adapter.credential(ctx)
+	if err != nil {
+		return adapter.failedObservation(target, request.ManagedID, nil, err), nil
+	}
+	issues, err := adapter.findManagedIssues(ctx, credential, request.ManagedID)
+	if err != nil || len(issues) != 1 {
+		if err == nil {
+			err = errors.New("governed delivery observation lost the selected issue identity")
+		}
+		return adapter.failedObservation(target, request.ManagedID, &credential, err), nil
+	}
+	delivery, err := adapter.observeRelatedDelivery(ctx, credential, issues[0], request)
+	if err != nil {
+		return adapter.failedObservation(target, request.ManagedID, &credential, err), nil
+	}
+	observation.Delivery = &delivery
+	observation.Revision = digest(struct {
+		Base     string
+		Delivery engine.WorkDeliveryObservation
+	}{observation.Revision, delivery})
+	return observation, nil
+}
+
+func (adapter *Adapter) observeRelatedDelivery(ctx context.Context, credential Credential, selected githubIssue, request engine.GovernedWorkObservationRequest) (engine.WorkDeliveryObservation, error) {
+	path := adapter.issuePath() + "/" + strconv.Itoa(selected.Number) + "/timeline?per_page=100"
+	events := []githubTimelineEvent{}
+	for page := 0; page < adapter.config.MaxPages && path != ""; page++ {
+		var pageEvents []githubTimelineEvent
+		response, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &pageEvents)
+		if err != nil {
+			return engine.WorkDeliveryObservation{}, err
+		}
+		events = append(events, pageEvents...)
+		path, err = adapter.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return engine.WorkDeliveryObservation{}, err
+		}
+	}
+	if path != "" {
+		return engine.WorkDeliveryObservation{}, errors.New("GitHub delivery timeline pagination exceeded the configured bound")
+	}
+	delivery := engine.WorkDeliveryObservation{State: "none", Evidence: []string{}}
+	exact := false
+	for _, event := range events {
+		source := event.Source.Issue
+		if event.Event != "cross-referenced" || source.PullRequest == nil || !adapter.sameRepositoryURL(source.RepositoryURL) {
+			continue
+		}
+		var pull githubPullRequest
+		pullPath := "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName) + "/pulls/" + strconv.Itoa(source.Number)
+		_, err := adapter.rest(ctx, credential, http.MethodGet, pullPath, nil, &pull)
+		if err != nil {
+			return engine.WorkDeliveryObservation{}, err
+		}
+		claim, claimErr := engine.ParseWorkDeliveryClaim(pull.Body)
+		evidence := pull.HTMLURL
+		if evidence == "" {
+			evidence = "pull-request:" + strconv.Itoa(pull.Number)
+		}
+		if claimErr != nil {
+			if !strings.Contains(pull.Body, "<!-- starter-kit-delivery:") {
+				continue
+			}
+			delivery.Evidence = append(delivery.Evidence, evidence)
+			delivery.ResidualScope = "a cross-referenced pull request has malformed delivery provenance and requires explicit residual-scope refinement"
+			continue
+		}
+		if claim.ManagedID != request.ManagedID {
+			delivery.Evidence = append(delivery.Evidence, evidence)
+			delivery.ResidualScope = "a cross-referenced pull request claims another governed item and may partially implement this outcome; explicit residual-scope refinement is required"
+			continue
+		}
+		// A prior exact claim for this managed item is historical evidence, not a
+		// current partial implementation signal.
+		if claim.SourceRevision != request.SourceRevision || claim.ContractDigest != request.ContractDigest {
+			continue
+		}
+		delivery.Evidence = append(delivery.Evidence, evidence)
+		if pull.Merged && pull.MergedAt != nil {
+			current, repositoryRevision, currentErr := adapter.verifyCurrentDelivery(ctx, credential, pull, claim)
+			if currentErr != nil {
+				return engine.WorkDeliveryObservation{}, currentErr
+			}
+			if current {
+				exact = true
+				delivery.SourceRevision = claim.SourceRevision
+				delivery.ContractDigest = claim.ContractDigest
+				delivery.RepositoryRevision = repositoryRevision
+			} else {
+				delivery.ResidualScope = "a matching delivery is no longer implemented on the authoritative default branch"
+			}
+		} else {
+			delivery.ResidualScope = "a related pull request is open, partial, or belongs to another governed revision"
+		}
+	}
+	slices.Sort(delivery.Evidence)
+	delivery.Evidence = slices.Compact(delivery.Evidence)
+	if exact {
+		delivery.State = "complete"
+	} else if len(delivery.Evidence) != 0 {
+		delivery.State = "partial"
+	}
+	return delivery, nil
+}
+
+func (adapter *Adapter) verifyCurrentDelivery(ctx context.Context, credential Credential, pull githubPullRequest, claim engine.WorkDeliveryClaim) (bool, string, error) {
+	filesMatch, filesErr := adapter.deliveryClaimMatchesPullFiles(ctx, credential, pull.Number, claim.ImplementedSources)
+	if filesErr != nil || !filesMatch {
+		return false, "", filesErr
+	}
+	var repository struct {
+		NodeID        string `json:"node_id"`
+		DefaultBranch string `json:"default_branch"`
+	}
+	repositoryPath := "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName)
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, repositoryPath, nil, &repository); err != nil {
+		return false, "", err
+	}
+	if repository.NodeID != adapter.config.RepositoryID || repository.DefaultBranch == "" || pull.Base.Ref != repository.DefaultBranch || pull.Base.Repository.NodeID != repository.NodeID || pull.MergeCommitSHA == "" {
+		return false, "", nil
+	}
+	var branch struct {
+		Commit struct {
+			SHA string `json:"sha"`
+		} `json:"commit"`
+	}
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, repositoryPath+"/branches/"+url.PathEscape(repository.DefaultBranch), nil, &branch); err != nil {
+		return false, "", err
+	}
+	if branch.Commit.SHA == "" {
+		return false, "", nil
+	}
+	var comparison struct {
+		Status          string `json:"status"`
+		MergeBaseCommit struct {
+			SHA string `json:"sha"`
+		} `json:"merge_base_commit"`
+	}
+	comparePath := repositoryPath + "/compare/" + url.PathEscape(pull.MergeCommitSHA) + "..." + url.PathEscape(branch.Commit.SHA)
+	if _, err := adapter.rest(ctx, credential, http.MethodGet, comparePath, nil, &comparison); err != nil {
+		if restStatus(err, http.StatusNotFound) {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+	if !slices.Contains([]string{"ahead", "identical"}, comparison.Status) || comparison.MergeBaseCommit.SHA != pull.MergeCommitSHA {
+		return false, "", nil
+	}
+	for _, source := range claim.ImplementedSources {
+		var content struct {
+			Type     string `json:"type"`
+			Encoding string `json:"encoding"`
+			Content  string `json:"content"`
+		}
+		contentPath := repositoryPath + "/contents/" + escapeRepositoryPath(source.Path) + "?ref=" + url.QueryEscape(branch.Commit.SHA)
+		if _, err := adapter.rest(ctx, credential, http.MethodGet, contentPath, nil, &content); err != nil {
+			if restStatus(err, http.StatusNotFound) {
+				return false, "", nil
+			}
+			return false, "", err
+		}
+		if content.Type != "file" || content.Encoding != "base64" {
+			return false, "", nil
+		}
+		decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(content.Content, "\n", ""))
+		digest := sha256.Sum256(decoded)
+		if err != nil || "sha256:"+hex.EncodeToString(digest[:]) != source.Digest {
+			return false, "", nil
+		}
+	}
+	return true, branch.Commit.SHA, nil
+}
+
+type githubPullFile struct {
+	Filename string `json:"filename"`
+	Status   string `json:"status"`
+}
+
+func (adapter *Adapter) deliveryClaimMatchesPullFiles(ctx context.Context, credential Credential, pullNumber int, sources []engine.GovernedSourceBinding) (bool, error) {
+	next := "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName) + "/pulls/" + strconv.Itoa(pullNumber) + "/files?per_page=100"
+	paths := []string{}
+	for page := 0; page < adapter.config.MaxPages && next != ""; page++ {
+		files := []githubPullFile{}
+		response, err := adapter.rest(ctx, credential, http.MethodGet, next, nil, &files)
+		if err != nil {
+			return false, err
+		}
+		for _, file := range files {
+			if file.Filename == "" || !slices.Contains([]string{"added", "modified", "renamed", "changed"}, file.Status) {
+				return false, nil
+			}
+			paths = append(paths, file.Filename)
+		}
+		next, err = adapter.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return false, err
+		}
+	}
+	if next != "" || len(paths) == 0 {
+		return false, nil
+	}
+	slices.Sort(paths)
+	paths = slices.Compact(paths)
+	claimed := make([]string, 0, len(sources))
+	for _, source := range sources {
+		claimed = append(claimed, source.Path)
+	}
+	slices.Sort(claimed)
+	return slices.Equal(paths, claimed), nil
+}
+
+func escapeRepositoryPath(path string) string {
+	segments := strings.Split(path, "/")
+	for index := range segments {
+		segments[index] = url.PathEscape(segments[index])
+	}
+	return strings.Join(segments, "/")
+}
+
+func restStatus(err error, status int) bool {
+	var failure *responseError
+	return errors.As(err, &failure) && failure.StatusCode == status
+}
+
+func (adapter *Adapter) sameRepositoryURL(repositoryURL string) bool {
+	parsed, err := url.Parse(repositoryURL)
+	base, baseErr := url.Parse(adapter.config.RESTBaseURL)
+	if err != nil || baseErr != nil || parsed.Scheme != base.Scheme || parsed.Host != base.Host {
+		return false
+	}
+	want := "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName)
+	return parsed.Path == want
 }
 
 func (adapter *Adapter) observeNativeRelationships(ctx context.Context, credential Credential, selected githubIssue, target engine.WorkTarget) (engine.WorkRelationshipObservation, []engine.WorkObservedTask, error) {
@@ -287,7 +535,7 @@ func (adapter *Adapter) observeNativeRelationships(ctx context.Context, credenti
 			if childItem == nil {
 				return relationships, nil, errors.New("native sibling is missing its managed Project item")
 			}
-			childObserved := normalizeObservedTask(child, childItem, childManagedID, target)
+			childObserved := normalizeObservedTask(child, childItem, childManagedID, target, adapter.issueWebURL(child.Number))
 			status := semanticOption(target, "status", childObserved.StatusOption)
 			if status == "" {
 				return relationships, nil, errors.New("native sibling is missing a recognized Project Status")
@@ -353,7 +601,7 @@ func (adapter *Adapter) normalizeRelatedIssue(ctx context.Context, credential Cr
 	if item == nil {
 		return engine.WorkObservedTask{}, errors.New("native related issue is missing its managed Project item")
 	}
-	return *normalizeObservedTask(issue, item, managedID, target), nil
+	return *normalizeObservedTask(issue, item, managedID, target, adapter.issueWebURL(issue.Number)), nil
 }
 
 func (adapter *Adapter) listRelationshipIssues(ctx context.Context, credential Credential, initialPath string) ([]githubIssue, error) {
@@ -408,15 +656,21 @@ func semanticOption(target engine.WorkTarget, field, optionID string) string {
 	return ""
 }
 
-func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget) *engine.WorkObservedTask {
-	issueType := "task"
+func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget, issueURL string) *engine.WorkObservedTask {
+	issueType := ""
+	typeLabels := []string{}
 	for _, label := range issue.Labels {
 		if strings.HasPrefix(label.Name, "type:") {
-			issueType = strings.TrimPrefix(label.Name, "type:")
-			break
+			typeLabels = append(typeLabels, strings.TrimPrefix(label.Name, "type:"))
 		}
 	}
-	observed := &engine.WorkObservedTask{ManagedID: managedID, IssueNodeID: issue.NodeID, Title: issue.Title, IssueType: issueType, Closed: strings.EqualFold(issue.State, "closed")}
+	if len(typeLabels) == 1 {
+		issueType = typeLabels[0]
+	}
+	observed := &engine.WorkObservedTask{ManagedID: managedID, IssueNodeID: issue.NodeID, IssueURL: issueURL, Title: issue.Title, IssueType: issueType, Closed: strings.EqualFold(issue.State, "closed")}
+	if len(typeLabels) != 1 || !slices.Contains([]string{"task", "bug", "feature", "question", "research"}, issueType) {
+		observed.IssueContractProblems = append(observed.IssueContractProblems, "issue requires exactly one supported type label")
+	}
 	if item != nil {
 		observed.ProjectItemID = item.ID
 		for _, field := range item.FieldValues.Nodes {
@@ -425,13 +679,17 @@ func normalizeObservedTask(issue githubIssue, item *projectItem, managedID strin
 				observed.ReadinessOption = field.OptionID
 			case target.FieldIDs["status"]:
 				observed.StatusOption = field.OptionID
+			case target.FieldIDs["horizon"]:
+				observed.HorizonOption = field.OptionID
 			case target.FieldIDs["phase"]:
 				observed.PhaseOption = field.OptionID
 			}
 		}
 	}
 	if metadata, ok := parseManagedMetadata(issue.Body); ok && metadata.ManagedID == managedID {
-		observed.IssueType = metadata.IssueType
+		if metadata.IssueType != "" && observed.IssueType != "" && observed.IssueType != metadata.IssueType {
+			observed.IssueContractProblems = append(observed.IssueContractProblems, "issue type label conflicts with managed metadata")
+		}
 		observed.ParentManagedID = metadata.ParentManagedID
 		observed.BlockedBy = make([]string, 0, len(metadata.Blockers))
 		for _, blocker := range metadata.Blockers {
@@ -441,6 +699,13 @@ func normalizeObservedTask(issue githubIssue, item *projectItem, managedID strin
 		observed.PhaseAssignmentReason = metadata.PhaseAssignmentReason
 		observed.PromotionRecord = metadata.PromotionRecord
 		observed.Review = slices.Clone(metadata.Review)
+	}
+	contract, contractErr := engine.ParseExecutableIssueContract(issue.Body)
+	if contractErr == nil {
+		observed.IssueContract = &contract
+		observed.IssueContractDigest = engine.ExecutableIssueContractDigest(contract)
+	} else {
+		observed.IssueContractProblems = []string{"executable issue contract is missing or invalid"}
 	}
 	return observed
 }
@@ -492,6 +757,11 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 	if effect.ManagedID == "" || effect.Marker != "starter-kit-managed:"+effect.ManagedID || effect.Desired.ManagedID != effect.ManagedID {
 		return engine.WorkEffectResult{Outcome: "failed", Attempt: attempt, Detail: "effect identity is outside the managed marker contract"}, errors.New("invalid GitHub managed-task effect")
 	}
+	if effect.IssueContract != nil {
+		if _, contractErr := engine.RenderExecutableIssueContract(*effect.IssueContract); contractErr != nil {
+			return engine.WorkEffectResult{Outcome: "validation-failed", Attempt: attempt, Detail: "executable issue contract is invalid"}, contractErr
+		}
+	}
 	issues, err := adapter.findManagedIssues(ctx, credential, effect.ManagedID)
 	if err != nil {
 		return adapter.transportResult(err, nil, attempt)
@@ -506,7 +776,7 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		var created githubIssue
 		response, createErr := adapter.mutateREST(ctx, credential, http.MethodPost, adapter.issuePath(), map[string]any{
 			"title":  effect.Desired.Title,
-			"body":   managedBody(effect.Desired),
+			"body":   managedBody(effect.Desired, effect.IssueContract),
 			"labels": []string{"type:" + effect.Desired.IssueType},
 		}, &created)
 		if createErr != nil {
@@ -532,9 +802,34 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 	}
 	operations := slices.Clone(effect.Operations)
 	if len(operations) == 0 {
-		operations = []string{"issue", "project", "readiness", "status", "phase"}
+		operations = []string{"issue", "project", "readiness", "status", "horizon", "phase"}
 	}
 	issue := issues[0]
+	if slices.Contains(operations, "context") {
+		if effect.IssueContract == nil {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "contained context refresh lacks a governed executable contract", Recoverable: true}, nil
+		}
+		body, refreshErr := engine.RefreshExecutableIssueContext(issue.Body, *effect.IssueContract)
+		if refreshErr != nil {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "human-owned issue context cannot be refreshed without semantic change", Recoverable: true}, nil
+		}
+		response, updateErr := adapter.mutateREST(ctx, credential, http.MethodPatch, adapter.issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{"body": body}, &struct{}{})
+		if updateErr != nil {
+			return adapter.transportResult(updateErr, response, attempt)
+		}
+		observed, observeErr := adapter.findManagedIssues(ctx, credential, effect.ManagedID)
+		if observeErr != nil {
+			return adapter.transportResult(observeErr, nil, attempt)
+		}
+		if len(observed) != 1 {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "issue context refresh is not uniquely observable", Recoverable: true}, nil
+		}
+		contract, parseErr := engine.ParseExecutableIssueContract(observed[0].Body)
+		if parseErr != nil || engine.ExecutableIssueContractDigest(contract) != engine.ExecutableIssueContractDigest(*effect.IssueContract) {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "issue context refresh postcondition did not converge", Recoverable: true}, nil
+		}
+		issue = observed[0]
+	}
 	if slices.Contains(operations, "closure") && strings.EqualFold(issue.State, "closed") != effect.Desired.Closed {
 		state := "open"
 		if effect.Desired.Closed {
@@ -553,13 +848,13 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		}
 		issue = observed[0]
 	}
-	if slices.Contains(operations, "issue") && !issueMatchesDesired(issue, effect.Desired) {
+	if slices.Contains(operations, "issue") && !issueMatchesDesired(issue, effect.Desired, effect.IssueContract) {
 		state := "open"
 		if effect.Desired.Closed {
 			state = "closed"
 		}
 		response, updateErr := adapter.mutateREST(ctx, credential, http.MethodPatch, adapter.issuePath()+"/"+strconv.Itoa(issue.Number), map[string]any{
-			"title": effect.Desired.Title, "body": mergeManagedBody(issue.Body, effect.Desired), "state": state, "labels": mergeManagedLabels(issue.Labels, effect.Desired.IssueType),
+			"title": effect.Desired.Title, "body": mergeManagedBody(issue.Body, effect.Desired, effect.IssueContract), "state": state, "labels": mergeManagedLabels(issue.Labels, effect.Desired.IssueType),
 		}, &struct{}{})
 		if updateErr != nil {
 			return adapter.transportResult(updateErr, response, attempt)
@@ -568,10 +863,33 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		if observeErr != nil {
 			return adapter.transportResult(observeErr, nil, attempt)
 		}
-		if len(observed) != 1 || !issueMatchesDesired(observed[0], effect.Desired) {
+		if len(observed) != 1 || !issueMatchesDesired(observed[0], effect.Desired, effect.IssueContract) {
 			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "issue update postcondition did not converge", Recoverable: true}, nil
 		}
 		issue = observed[0]
+	}
+	if slices.Contains(operations, "promotion-link") {
+		comment, commentErr := engine.RenderWorkPromotionComment(engine.WorkPromotionLink{SchemaVersion: 1, ManagedID: effect.ManagedID, Path: effect.Desired.PromotionRecord})
+		if commentErr != nil {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "question promotion backlink is invalid", Recoverable: true}, nil
+		}
+		backlink, observeErr := adapter.observePromotionBacklink(ctx, credential, issue.Number, effect.ManagedID, effect.Desired.PromotionRecord)
+		if observeErr != nil {
+			return adapter.transportResult(observeErr, nil, attempt)
+		}
+		if !backlink {
+			response, updateErr := adapter.mutateREST(ctx, credential, http.MethodPost, adapter.issuePath()+"/"+strconv.Itoa(issue.Number)+"/comments", map[string]any{"body": comment}, &struct{}{})
+			if updateErr != nil {
+				return adapter.transportResult(updateErr, response, attempt)
+			}
+			backlink, observeErr = adapter.observePromotionBacklink(ctx, credential, issue.Number, effect.ManagedID, effect.Desired.PromotionRecord)
+			if observeErr != nil {
+				return adapter.transportResult(observeErr, nil, attempt)
+			}
+		}
+		if !backlink {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "question promotion backlink postcondition did not converge", Recoverable: true}, nil
+		}
 	}
 	target := engine.WorkTarget{Host: adapter.config.Host, RepositoryID: adapter.config.RepositoryID, ProjectID: adapter.config.ProjectID, FieldIDs: cloneMap(adapter.config.FieldIDs), OptionIDs: cloneMap(adapter.config.OptionIDs)}
 	// The immutable field and option IDs are fixed by the adapter target manifest, not chosen by transport.
@@ -610,7 +928,7 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		}
 		itemID = item.ID
 	}
-	if itemID == "" && (slices.Contains(operations, "readiness") || slices.Contains(operations, "status") || slices.Contains(operations, "phase")) {
+	if itemID == "" && (slices.Contains(operations, "readiness") || slices.Contains(operations, "status") || slices.Contains(operations, "horizon") || slices.Contains(operations, "phase")) {
 		return engine.WorkEffectResult{Outcome: "failed", Attempt: attempt, Detail: "Project item is absent for lifecycle field reconciliation", Recoverable: true}, nil
 	}
 	for _, field := range []struct {
@@ -620,12 +938,13 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 	}{
 		{"readiness", adapter.configFieldID("readiness"), adapter.configOptionID("readiness", effect.Desired.Readiness)},
 		{"status", adapter.configFieldID("status"), adapter.configOptionID("status", effect.Desired.Status)},
+		{"horizon", adapter.configFieldID("horizon"), adapter.configOptionID("horizon", effect.Desired.Horizon)},
 		{"phase", adapter.configFieldID("phase"), adapter.configOptionID("phase", effect.Desired.Phase)},
 	} {
 		if !slices.Contains(operations, field.Operation) || projectFieldMatches(item, field.Field, field.Option) {
 			continue
 		}
-		if field.Field == "" || field.Operation != "phase" && field.Option == "" {
+		if field.Field == "" || field.Operation != "phase" && field.Operation != "horizon" && field.Option == "" {
 			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "immutable Project field or option identity is unavailable", Recoverable: true}, nil
 		}
 		var updated struct {
@@ -640,8 +959,8 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		}
 		query := `mutation UpdateManagedTaskField($project: ID!, $item: ID!, $field: ID!, $option: String!) { update: updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`
 		variables := map[string]any{"project": adapter.config.ProjectID, "item": itemID, "field": field.Field, "option": field.Option}
-		if field.Operation == "phase" && field.Option == "" {
-			query = `mutation ClearManagedTaskPhase($project: ID!, $item: ID!, $field: ID!) { update: clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) { projectV2Item { id } } }`
+		if (field.Operation == "phase" || field.Operation == "horizon") && field.Option == "" {
+			query = `mutation ClearManagedTaskField($project: ID!, $item: ID!, $field: ID!) { update: clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) { projectV2Item { id } } }`
 			delete(variables, "option")
 		}
 		if graphErr := adapter.mutateGraphQL(ctx, credential, query, variables, &updated); graphErr != nil {
@@ -660,14 +979,67 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 }
 
 type githubIssue struct {
-	Number int    `json:"number"`
-	NodeID string `json:"node_id"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
-	Labels []struct {
+	Number        int       `json:"number"`
+	NodeID        string    `json:"node_id"`
+	Title         string    `json:"title"`
+	Body          string    `json:"body"`
+	State         string    `json:"state"`
+	RepositoryURL string    `json:"repository_url"`
+	PullRequest   *struct{} `json:"pull_request,omitempty"`
+	Labels        []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
+}
+
+type githubTimelineEvent struct {
+	Event  string `json:"event"`
+	Source struct {
+		Issue githubIssue `json:"issue"`
+	} `json:"source"`
+}
+
+type githubComment struct {
+	Body string `json:"body"`
+}
+
+func (adapter *Adapter) observePromotionBacklink(ctx context.Context, credential Credential, issueNumber int, managedID, path string) (bool, error) {
+	next := adapter.issuePath() + "/" + strconv.Itoa(issueNumber) + "/comments?per_page=100"
+	for page := 0; page < adapter.config.MaxPages && next != ""; page++ {
+		comments := []githubComment{}
+		response, err := adapter.rest(ctx, credential, http.MethodGet, next, nil, &comments)
+		if err != nil {
+			return false, err
+		}
+		for _, comment := range comments {
+			link, parseErr := engine.ParseWorkPromotionComment(comment.Body)
+			if parseErr == nil && link.ManagedID == managedID && link.Path == path {
+				return true, nil
+			}
+		}
+		next, err = adapter.nextRESTPath(response.Header.Get("Link"))
+		if err != nil {
+			return false, err
+		}
+	}
+	if next != "" {
+		return false, errors.New("GitHub promotion-comment pagination exceeded the configured bound")
+	}
+	return false, nil
+}
+
+type githubPullRequest struct {
+	Number         int        `json:"number"`
+	Body           string     `json:"body"`
+	HTMLURL        string     `json:"html_url"`
+	Merged         bool       `json:"merged"`
+	MergedAt       *time.Time `json:"merged_at"`
+	MergeCommitSHA string     `json:"merge_commit_sha"`
+	Base           struct {
+		Ref        string `json:"ref"`
+		Repository struct {
+			NodeID string `json:"node_id"`
+		} `json:"repo"`
+	} `json:"base"`
 }
 
 func (adapter *Adapter) findManagedIssues(ctx context.Context, credential Credential, managedID string) ([]githubIssue, error) {
@@ -767,6 +1139,8 @@ func (adapter *Adapter) credential(ctx context.Context) (Credential, error) {
 }
 
 func (adapter *Adapter) configurationRevision(permissions []string) string {
+	permissions = slices.Clone(permissions)
+	slices.Sort(permissions)
 	return digest(struct {
 		Config      Config
 		Permissions []string
@@ -832,10 +1206,32 @@ func (adapter *Adapter) issuePath() string {
 	return "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName) + "/issues"
 }
 
-func managedBody(desired engine.DesiredManagedTask) string {
-	encoded, _ := json.Marshal(desired)
+func (adapter *Adapter) issueWebURL(number int) string {
+	return "https://" + adapter.config.Host + "/" + adapter.config.RepositoryOwner + "/" + adapter.config.RepositoryName + "/issues/" + strconv.Itoa(number)
+}
+
+func managedBody(desired engine.DesiredManagedTask, contract *engine.ExecutableIssueContract) string {
+	metadataDesired := desired
+	metadataDesired.Title = ""
+	metadataDesired.IssueType = ""
+	metadataDesired.Readiness = ""
+	metadataDesired.Status = ""
+	metadataDesired.Horizon = ""
+	metadataDesired.ParentHorizon = ""
+	metadataDesired.Closed = false
+	metadataDesired.ParentContext = nil
+	metadataDesired.Dependents = nil
+	encoded, _ := json.Marshal(metadataDesired)
 	metadata := base64.RawURLEncoding.EncodeToString(encoded)
-	return "<!-- starter-kit-managed:" + desired.ManagedID + " -->\n<!-- starter-kit-managed-metadata:" + metadata + " -->"
+	machine := "<!-- starter-kit-managed:" + desired.ManagedID + " -->\n<!-- starter-kit-managed-metadata:" + metadata + " -->"
+	if contract == nil {
+		return machine
+	}
+	human, err := engine.RenderExecutableIssueContract(*contract)
+	if err != nil {
+		return machine
+	}
+	return human + "\n\n" + machine
 }
 
 func parseManagedMetadata(body string) (engine.DesiredManagedTask, bool) {
@@ -879,7 +1275,7 @@ func managedIDFromIssue(issue githubIssue) (string, bool) {
 	return managedID, true
 }
 
-func issueMatchesDesired(issue githubIssue, desired engine.DesiredManagedTask) bool {
+func issueMatchesDesired(issue githubIssue, desired engine.DesiredManagedTask, contract *engine.ExecutableIssueContract) bool {
 	if issue.Title != desired.Title || strings.EqualFold(issue.State, "closed") != desired.Closed {
 		return false
 	}
@@ -895,10 +1291,17 @@ func issueMatchesDesired(issue githubIssue, desired engine.DesiredManagedTask) b
 	if !ok {
 		return false
 	}
-	return metadata.ManagedID == desired.ManagedID && metadata.IssueType == desired.IssueType && metadata.ParentManagedID == desired.ParentManagedID && slices.Equal(metadata.Blockers, desired.Blockers) && metadata.Phase == desired.Phase && metadata.PhaseAssignmentReason == desired.PhaseAssignmentReason && metadata.PromotionRecord == desired.PromotionRecord && slices.Equal(metadata.Review, desired.Review)
+	if metadata.ManagedID != desired.ManagedID || metadata.ParentManagedID != desired.ParentManagedID || !slices.Equal(metadata.Blockers, desired.Blockers) || metadata.Phase != desired.Phase || metadata.PhaseAssignmentReason != desired.PhaseAssignmentReason || metadata.PromotionRecord != desired.PromotionRecord || !slices.Equal(metadata.Review, desired.Review) {
+		return false
+	}
+	if contract == nil {
+		return true
+	}
+	observed, err := engine.ParseExecutableIssueContract(issue.Body)
+	return err == nil && engine.ExecutableIssueContractDigest(observed) == engine.ExecutableIssueContractDigest(*contract)
 }
 
-func mergeManagedBody(existing string, desired engine.DesiredManagedTask) string {
+func mergeManagedBody(existing string, desired engine.DesiredManagedTask, contract *engine.ExecutableIssueContract) string {
 	lines := []string{}
 	for _, line := range strings.Split(existing, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -909,9 +1312,9 @@ func mergeManagedBody(existing string, desired engine.DesiredManagedTask) string
 	}
 	human := strings.TrimSpace(strings.Join(lines, "\n"))
 	if human == "" {
-		return managedBody(desired)
+		return managedBody(desired, contract)
 	}
-	return human + "\n\n" + managedBody(desired)
+	return human + "\n\n" + managedBody(desired, nil)
 }
 
 func mergeManagedLabels(existing []struct {
@@ -1212,6 +1615,8 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 	observedOptions := map[string]bool{}
 	phaseFieldCount := 0
 	phaseCatalogMatches := true
+	horizonFieldCount := 0
+	horizonCatalogMatches := true
 	cursor := any(nil)
 	for page := 0; page < adapter.config.MaxPages; page++ {
 		var response projectHandshakeResponse
@@ -1242,6 +1647,19 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 					phaseCatalogMatches = phaseCatalogMatches && seenNames[name]
 				}
 			}
+			if field.Name == "Horizon" {
+				horizonFieldCount++
+				horizonCatalogMatches = horizonCatalogMatches && field.ID == adapter.config.FieldIDs["horizon"] && field.DataType == "SINGLE_SELECT" && len(field.Options) == len(engine.RoadmapHorizons())
+				seenNames := map[string]bool{}
+				for _, option := range field.Options {
+					name := strings.ToLower(option.Name)
+					horizonCatalogMatches = horizonCatalogMatches && !seenNames[name] && adapter.config.OptionIDs["horizon:"+name] == option.ID
+					seenNames[name] = true
+				}
+				for _, name := range engine.RoadmapHorizons() {
+					horizonCatalogMatches = horizonCatalogMatches && seenNames[name]
+				}
+			}
 		}
 		if !response.Data.Node.Fields.PageInfo.HasNextPage {
 			break
@@ -1263,6 +1681,9 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 	}
 	if adapter.config.FieldIDs["phase"] != "" {
 		configurationMatches = configurationMatches && phaseFieldCount == 1 && phaseCatalogMatches
+	}
+	if adapter.config.FieldIDs["horizon"] != "" {
+		configurationMatches = configurationMatches && horizonFieldCount == 1 && horizonCatalogMatches
 	}
 	if !configurationMatches {
 		capability.Disposition = "needs-review"
@@ -1453,7 +1874,7 @@ func permissionsFromOAuthScopes(header string) []string {
 		scope := strings.TrimSpace(raw)
 		switch scope {
 		case "repo", "public_repo":
-			permissions = append(permissions, "issues:write", "pull_requests:read")
+			permissions = append(permissions, "contents:read", "issues:write", "pull_requests:read")
 		case "project":
 			permissions = append(permissions, "projects:write")
 		}

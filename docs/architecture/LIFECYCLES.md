@@ -154,6 +154,15 @@ handshake. Partial, ambiguous, denied, rate-limited, exhausted, and stale result
 before/after receipts and recovery rather than advancing the lifecycle. See
 [the managed-task lifecycle contract](WORK_MANAGER.md).
 
+Before a schema-v2 Ready item starts, inspection compares its exact executable contract,
+governed sources, native relationships, Project configuration, and related delivery
+claims. It records exactly one of `fresh`, `mechanical-drift-repaired`,
+`contained-context-refreshed`, `needs-refinement`, `already-delivered`, or `blocked`.
+Only fresh work plans effects; verified contained repair may then report its past-tense
+result. The validation repeats after a material change, never because time elapsed.
+Status, Readiness, feature Horizon, parent-derived Phase, and finite Milestone remain
+independent dimensions.
+
 The production GitHub adapter performs the same sequence through a fixed target manifest
 and ephemeral credential provider. Its handshake binds API actor, credential mode,
 installation/account where applicable, repository and Project owner/IDs, pinned API
@@ -202,8 +211,11 @@ execution mandate, sensitive-data uncertainty,
 failed or stale evidence, unsafe recovery, or a material change to the approved outcome,
 plan, assumptions, cost, or compatibility.
 
-An approved execution mandate binds targets, actors, semantic effect classes, data, cost,
-compatibility, destructive limits, expiry, and recovery. Exact plans remain immutable
+An approved execution mandate binds targets, actors, the selected operation and root
+managed item, exact input and governed-source digests, the full governance/refresh
+authority digest, desired-resource digests, semantic effect classes, data, cost, compatibility,
+destructive limits, retention, expiry, and recovery. Effect counts are cumulative across
+the repository's mandate-usage ledger even when the active work item changes. Exact plans remain immutable
 evidence. Re-observation, partial completion, retry, and cleanup may regenerate a digest
 without another checkpoint when the engine proves the semantic delta remains contained.
 Containment failure, not digest change alone, is the interrupt.

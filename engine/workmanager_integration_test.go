@@ -3,6 +3,7 @@ package engine_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +28,7 @@ func TestManagedTaskLifecycleConvergesThroughInMemoryAdapter(t *testing.T) {
 		Fresh:                 true,
 		Mode:                  "memory",
 		Actor:                 "test:maintainer",
-		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read"},
+		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"},
 		ConfigurationRevision: "project-config:v1",
 		ObservedAt:            now,
 		ExpiresAt:             now.Add(time.Hour),
@@ -174,7 +175,7 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	adapter := engine.NewInMemoryWorkAdapter(engine.WorkCapability{
 		SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer",
-		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read"},
+		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"},
 		ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour),
 	}, engine.WorkObservation{
 		SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1",
@@ -619,7 +620,7 @@ func TestManagedTaskOfflineIntentRequiresFreshReconnectHandshake(t *testing.T) {
 	lifecycle, adapter, request, now := newManagedTaskFixture(t)
 	offline := engine.WorkCapability{
 		SchemaVersion: 1, Online: false, Fresh: false, Mode: "memory", Actor: "test:maintainer",
-		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read"},
+		Permissions:           []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"},
 		ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour),
 	}
 	adapter.SetCapability(offline)
@@ -775,7 +776,7 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 	request.Intent.Task.Closed = true
 	request.Intent.Task.PromotionRecord = "docs/decisions/DEC-0013-question-and-research-work.md"
 	observation := adapter.Observation()
-	observation.RelatedTasks = []engine.WorkObservedTask{{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", StatusOption: "option:in-progress"}}
+	observation.RelatedTasks = []engine.WorkObservedTask{{ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", StatusOption: "option:in-progress", PhaseOption: "option:phase-3"}}
 	observation.Revision = "observation:parent-context"
 	observeIntentRelationships(&observation, request.Intent.Task)
 	adapter.SetObservation(observation)
@@ -1360,6 +1361,12 @@ func TestManagedTaskRejectsInvalidDuplicatedAndStalePhaseInputs(t *testing.T) {
 		{name: "stale option identity", prepare: func(request *engine.ManagedTaskRequest) {
 			delete(request.Intent.Target.OptionIDs, "phase:Phase 3")
 		}, want: "immutable Phase field or option identity"},
+		{name: "duplicate field identity", prepare: func(request *engine.ManagedTaskRequest) {
+			request.Intent.Target.FieldIDs["phase"] = request.Intent.Target.FieldIDs["status"]
+		}, want: "duplicate immutable field or option identities"},
+		{name: "duplicate option identity", prepare: func(request *engine.ManagedTaskRequest) {
+			request.Intent.Target.OptionIDs["phase:Phase 0"] = request.Intent.Target.OptionIDs["phase:Phase 1"]
+		}, want: "duplicate immutable field or option identities"},
 	}
 	for _, test := range tests {
 		test := test
@@ -1391,7 +1398,7 @@ func TestManagedTaskBindsInheritedPhaseToNativeParentObservation(t *testing.T) {
 	}
 	observation.RelatedTasks = []engine.WorkObservedTask{{
 		ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4",
-		ReadinessOption: "option:ready", StatusOption: "option:backlog", PhaseOption: "option:phase-3",
+		ReadinessOption: "option:ready", StatusOption: "option:backlog",
 	}}
 	observation.Relationships = engine.WorkRelationshipObservation{Observed: true, ParentManagedID: "issue:4", OtherChildren: []engine.WorkRelatedTask{}}
 	observation.Revision = "observation:unbound-parent-phase"
@@ -1406,8 +1413,7 @@ func TestManagedTaskBindsInheritedPhaseToNativeParentObservation(t *testing.T) {
 		t.Fatalf("caller-supplied parent Phase must not bypass native observation: %#v", inspection)
 	}
 
-	observation.Task.NativeParentManagedID = "issue:4"
-	observation.Task.ParentPhaseOption = "option:phase-3"
+	observation.RelatedTasks[0].PhaseOption = "option:phase-3"
 	observation.Revision = "observation:bound-parent-phase"
 	adapter.SetObservation(observation)
 	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
@@ -1449,6 +1455,11 @@ func TestManagedQuestionCompletionRequiresPromotionResolution(t *testing.T) {
 		t.Fatal("closed question without promotion resolution must be rejected")
 	}
 	request.Intent.Task.PromotionRecord = "docs/decisions/DEC-0013-question-and-research-work.md"
+	request.Intent.Task.NoPromotionRequired = true
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+		t.Fatal("question cannot claim both promotion and no-promotion resolution")
+	}
+	request.Intent.Task.NoPromotionRequired = false
 	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -1459,6 +1470,20 @@ func TestManagedQuestionCompletionRequiresPromotionResolution(t *testing.T) {
 	}
 	if plan.DerivedFacts.Completion != "complete" || plan.DerivedFacts.PromotionRecord != request.Intent.Task.PromotionRecord {
 		t.Fatalf("question completion must retain its distinct promotion route: %#v", plan.DerivedFacts)
+	}
+	foundBacklink := false
+	for _, effect := range plan.Effects {
+		foundBacklink = foundBacklink || slices.Contains(effect.Operations, "promotion-link")
+	}
+	if !foundBacklink {
+		t.Fatal("question completion omitted its issue-side promotion backlink")
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("question promotion backlink did not verify: %#v, %v", verification, err)
 	}
 }
 
@@ -1481,16 +1506,1038 @@ func TestManagedTaskInspectionRejectsDifferentObservedManagedIdentity(t *testing
 	}
 }
 
+func TestManagedTaskInitializedStateDeletionOrCorruptionFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(string) error
+	}{
+		{name: "deleted", mutate: os.Remove},
+		{name: "corrupt", mutate: func(path string) error { return os.WriteFile(path, []byte("corrupt\n"), 0o600) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, _, request, _ := newManagedTaskFixture(t)
+			if _, err := lifecycle.InspectManagedTask(context.Background(), request); err != nil {
+				t.Fatal(err)
+			}
+			statePath := filepath.Join(request.Repository, ".starter-kit", "work-manager", "state.json")
+			if err := test.mutate(statePath); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+				t.Fatal("initialized evidence loss reset managed-task authority state")
+			}
+		})
+	}
+}
+
 func TestManagedTaskRejectsUnsupportedIntentSchemaWithoutState(t *testing.T) {
 	t.Parallel()
 
 	lifecycle, _, request, _ := newManagedTaskFixture(t)
-	request.Intent.SchemaVersion = 2
+	request.Intent.SchemaVersion = 3
 	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
 		t.Fatal("expected unsupported intent schema rejection")
 	}
 	if _, err := os.Stat(filepath.Join(request.Repository, ".starter-kit", "work-manager", "state.json")); !os.IsNotExist(err) {
 		t.Fatalf("rejected input must not create state, got %v", err)
+	}
+}
+
+func TestGovernedManagedTaskQualifiesFreshContractAndBindsPlan(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != "inspected" || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessFresh || inspection.Qualification.ID == "" {
+		t.Fatalf("expected fresh governed-work qualification, got %#v", inspection)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.QualificationID != inspection.Qualification.ID || plan.DerivedFacts.Freshness != engine.WorkFreshnessFresh || len(plan.Effects) == 0 {
+		t.Fatalf("plan did not bind governed-work qualification: %#v", plan)
+	}
+	for _, effect := range plan.Effects {
+		if effect.QualificationID != plan.QualificationID {
+			t.Fatalf("effect did not bind governed-work qualification: %#v", effect)
+		}
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("governed work did not verify: %#v, %v", verification, err)
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil || status.QualificationID != plan.QualificationID || status.Freshness != engine.WorkFreshnessFresh {
+		t.Fatalf("status lost governed-work qualification: %#v, %v", status, err)
+	}
+}
+
+func TestGovernedManagedTaskExternalEffectsRequireContainedMandate(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	capability, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability.Mode = "user-token"
+	capability.Actor = "owner"
+	adapter.SetCapability(capability)
+	request.Intent.Credential = engine.WorkCredentialExpectation{Mode: "user-token", Actor: "owner"}
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("external effects applied without a DEC-0022 mandate")
+	}
+	mandate := engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-74-owner-approval", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: plan.Target, OperationID: plan.OperationID, SelectedManagedID: request.Intent.Task.ManagedID, Actors: []string{"owner"}, CredentialModes: []string{"user-token"}, Permissions: capability.Permissions,
+		OperatingProfileRevisions: []string{plan.OperatingProfileRevision}, ContractDigests: []string{engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue)},
+		GovernanceDigests: []string{engine.GovernedWorkContractDigest(*request.Intent.Governance)},
+		InputDigests:      plan.InputDigests, GovernedSourceDigests: inspection.Qualification.Assessment.SourceDigests,
+		SourceRevisions: []string{plan.SourceRevision}, ManagedIDs: []string{request.Intent.Task.ManagedID}, EffectKinds: []string{"create-task", "reconcile-task"},
+		Operations: []string{"issue", "project", "readiness", "status", "phase"}, ResourceDigests: []string{engine.ManagedTaskResourceDigest(request.Intent.Task)}, MaxEffects: len(plan.Effects), DataClass: "public-project-metadata",
+		CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "repository-evidence", RecoveryOwner: "owner",
+	})
+	wrongResource := mandate
+	wrongResource.ID = ""
+	wrongResource.ResourceDigests = []string{"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	wrongResource = engine.BindWorkExecutionMandate(wrongResource)
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, wrongResource); err == nil {
+		t.Fatal("external effects applied under a mandate for different desired resources")
+	}
+	wrongGovernance := mandate
+	wrongGovernance.ID = ""
+	wrongGovernance.GovernanceDigests = []string{"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	wrongGovernance = engine.BindWorkExecutionMandate(wrongGovernance)
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, wrongGovernance); err == nil {
+		t.Fatal("external effects applied under a mandate for different context-refresh authority")
+	}
+	wrongOperation := mandate
+	wrongOperation.ID = ""
+	wrongOperation.OperationID = "different-operation"
+	wrongOperation = engine.BindWorkExecutionMandate(wrongOperation)
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, wrongOperation); err == nil {
+		t.Fatal("external effects applied under a mandate for a different selected operation")
+	}
+	result, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, mandate)
+	if err != nil || result.Status != engine.WorkApplyApplied {
+		t.Fatalf("contained external effects did not apply: %#v, %v", result, err)
+	}
+	for _, receipt := range result.Receipts {
+		if receipt.MandateID != mandate.ID {
+			t.Fatalf("effect receipt lost mandate identity: %#v", receipt)
+		}
+	}
+	if err := os.RemoveAll(filepath.Join(request.Repository, ".starter-kit", "work-manager")); err != nil {
+		t.Fatal(err)
+	}
+	observation := adapter.Observation()
+	observation.Task.StatusOption = "option:backlog"
+	observation.Revision = "observation:new-drift-after-mandate-limit"
+	adapter.SetObservation(observation)
+	other := request
+	other.Intent.OperationID = "intervening-operation"
+	other.Intent.Task.ManagedID = "issue:intervening"
+	other.ExecutionMandate = nil
+	if _, err := lifecycle.InspectManagedTask(context.Background(), other); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err = lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, mandate); err == nil {
+		t.Fatal("reused mandate exceeded its cumulative effect ceiling")
+	}
+}
+
+func TestGovernedManagedTaskEditedAcceptanceNeedsRefinementWithoutPlan(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	journey, err := lifecycle.ManageTask(context.Background(), request)
+	if err != nil || journey.Verification.OverallState != engine.ControlPass {
+		t.Fatalf("seed governed work: %#v, %v", journey, err)
+	}
+	observation := adapter.Observation()
+	edited := *observation.Task.IssueContract
+	edited.Acceptance = "- [ ] A materially different outcome is delivered."
+	observation.Task.IssueContract = &edited
+	observation.Task.IssueContractDigest = engine.ExecutableIssueContractDigest(edited)
+	observation.Revision = "observation:edited-acceptance"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != string(engine.WorkFreshnessNeedsRefinement) || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessNeedsRefinement {
+		t.Fatalf("edited acceptance was not returned to refinement: %#v", inspection)
+	}
+	if _, err := lifecycle.PlanManagedTask(context.Background(), inspection); err == nil {
+		t.Fatal("edited acceptance produced a plan")
+	}
+}
+
+func TestGovernedManagedTaskRefreshesOnlyContainedCurrentContext(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	if _, err := lifecycle.ManageTask(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	observation := adapter.Observation()
+	stale := *observation.Task.IssueContract
+	stale.CurrentContext = "An older non-semantic fixture description."
+	request.Intent.Governance.RefreshableContextDigests = []string{engine.ExecutableIssueContextDigest(stale.CurrentContext)}
+	observation.Task.IssueContract = &stale
+	observation.Task.IssueContractDigest = engine.ExecutableIssueContractDigest(stale)
+	observation.Revision = "observation:stale-context"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != "inspected" || inspection.Qualification == nil || !slices.Contains(inspection.Qualification.Assessment.Repairs, "context") {
+		t.Fatalf("contained context drift did not produce a bounded repair: %#v", inspection)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || !slices.Equal(plan.Effects[0].Operations, []string{"context"}) {
+		t.Fatalf("context refresh broadened its effect: %#v", plan.Effects)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository); err != nil {
+		t.Fatal(err)
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil || status.Freshness != engine.WorkFreshnessContainedContextRefreshed {
+		t.Fatalf("contained context refresh lacks a truthful final disposition: %#v, %v", status, err)
+	}
+}
+
+func TestGovernedManagedTaskDoesNotOverwriteHumanOwnedContext(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	if _, err := lifecycle.ManageTask(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	observation := adapter.Observation()
+	edited := *observation.Task.IssueContract
+	edited.CurrentContext = "A human recorded a changed authority or risk fact."
+	observation.Task.IssueContract = &edited
+	observation.Task.IssueContractDigest = engine.ExecutableIssueContractDigest(edited)
+	observation.Revision = "observation:human-context"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessNeedsRefinement {
+		t.Fatalf("human-owned context was not protected: %#v, %v", inspection, err)
+	}
+	if _, err := lifecycle.PlanManagedTask(context.Background(), inspection); err == nil {
+		t.Fatal("human-owned context change produced an overwrite plan")
+	}
+}
+
+func TestGovernedManagedTaskReportsVerifiedMechanicalDriftRepair(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	if _, err := lifecycle.ManageTask(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	observation := adapter.Observation()
+	observation.Task.StatusOption = "option:backlog"
+	observation.Revision = "observation:mechanical-status-drift"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil || inspection.Disposition != "inspected" {
+		t.Fatalf("mechanical drift did not remain repairable: %#v, %v", inspection, err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil || len(plan.Effects) != 1 || !slices.Contains(plan.Effects[0].Operations, "status") {
+		t.Fatalf("mechanical status drift was not planned: %#v, %v", plan, err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository); err != nil {
+		t.Fatal(err)
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil || status.Freshness != engine.WorkFreshnessMechanicalDriftRepaired {
+		t.Fatalf("mechanical repair lacks a truthful final disposition: %#v, %v", status, err)
+	}
+}
+
+func TestGovernedManagedTaskMissingExecutableSchemaNeedsRefinement(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready", StatusOption: "option:next",
+		Phase: "Phase 3", PhaseOption: "option:phase-3", PhaseAssignmentReason: request.Intent.Task.PhaseAssignmentReason,
+		Review: request.Intent.Task.Review, IssueContractProblems: []string{"executable issue contract is missing or invalid"},
+	}
+	observation.Revision = "observation:missing-contract"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != string(engine.WorkFreshnessNeedsRefinement) {
+		t.Fatalf("missing executable schema did not stop at refinement: %#v", inspection)
+	}
+	if _, err := lifecycle.PlanManagedTask(context.Background(), inspection); err == nil {
+		t.Fatal("missing executable schema produced a plan")
+	}
+}
+
+func TestGovernedManagedTaskAlreadyDeliveredClosesInsteadOfReimplementing(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	capability, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability.Mode = "user-token"
+	capability.Actor = "owner"
+	adapter.SetCapability(capability)
+	request.Intent.Credential = engine.WorkCredentialExpectation{Mode: "user-token", Actor: "owner"}
+	observation := adapter.Observation()
+	observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+	observation.Delivery = &engine.WorkDeliveryObservation{
+		State: "complete", SourceRevision: request.Intent.SourceRevision,
+		ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
+	}
+	observation.Revision = "observation:already-delivered"
+	adapter.SetObservation(observation)
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessAlreadyDelivered || inspection.Disposition != string(engine.WorkFreshnessAlreadyDelivered) || len(inspection.Problems) != 0 {
+		t.Fatalf("already-delivered inspection = %#v, %v", inspection, err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil || len(plan.Effects) != 1 || !slices.Contains(plan.Effects[0].Operations, "closure") || !slices.Contains(plan.Effects[0].Operations, "status") || !plan.Effects[0].Desired.Closed || plan.Effects[0].Desired.Status != "done" {
+		t.Fatalf("already-delivered resolution plan = %#v, %v", plan, err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("already-delivered external resolution applied without a DEC-0022 mandate")
+	}
+	mandate := engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-74-delivery-resolution", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: plan.Target, OperationID: plan.OperationID, SelectedManagedID: request.Intent.Task.ManagedID, Actors: []string{"owner"}, CredentialModes: []string{"user-token"}, Permissions: capability.Permissions,
+		OperatingProfileRevisions: []string{plan.OperatingProfileRevision}, ContractDigests: []string{engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue)}, GovernanceDigests: []string{engine.GovernedWorkContractDigest(*request.Intent.Governance)},
+		InputDigests: plan.InputDigests, GovernedSourceDigests: inspection.Qualification.Assessment.SourceDigests, SourceRevisions: []string{plan.SourceRevision},
+		ManagedIDs: []string{plan.Effects[0].ManagedID}, EffectKinds: []string{plan.Effects[0].Kind}, Operations: slices.Clone(plan.Effects[0].Operations), ResourceDigests: []string{engine.ManagedTaskResourceDigest(plan.Effects[0].Desired)}, MaxEffects: len(plan.Effects),
+		DataClass: plan.EffectBoundary.DataClass, CostCeiling: plan.EffectBoundary.CostCeiling, Destructive: plan.EffectBoundary.Destructive, Retention: plan.EffectBoundary.Retention, RecoveryOwner: plan.EffectBoundary.RecoveryOwner,
+	})
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, mandate); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("already-delivered resolution did not verify: %#v, %v", verification, err)
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil || status.Disposition != "converged" || status.Freshness != engine.WorkFreshnessAlreadyDelivered {
+		t.Fatalf("already-delivered status = %#v, %v", status, err)
+	}
+	replayedInspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayedPlan, err := lifecycle.PlanManagedTask(context.Background(), replayedInspection)
+	if err != nil || !replayedPlan.NoChange || len(replayedPlan.Effects) != 0 {
+		t.Fatalf("closed already-delivered work did not replay as no-change: %#v, %v", replayedPlan, err)
+	}
+}
+
+func TestAlreadyDeliveredResolutionFailsClosedWhenDeliveryEvidenceChanges(t *testing.T) {
+	t.Parallel()
+
+	for _, afterApply := range []bool{false, true} {
+		afterApply := afterApply
+		t.Run(fmt.Sprintf("after-apply-%t", afterApply), func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			configureGovernedWorkFixture(t, &request)
+			observation := adapter.Observation()
+			observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+			observation.Delivery = &engine.WorkDeliveryObservation{
+				State: "complete", SourceRevision: request.Intent.SourceRevision,
+				ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
+			}
+			observation.Revision = "observation:already-delivered"
+			adapter.SetObservation(observation)
+			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if afterApply {
+				if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+					t.Fatal(err)
+				}
+				changed := adapter.Observation()
+				changed.Delivery = nil
+				changed.Revision = "observation:delivery-removed-after-apply"
+				adapter.SetObservation(changed)
+				verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+				if err != nil || verification.OverallState == engine.ControlPass {
+					t.Fatalf("removed delivery evidence passed verification: %#v, %v", verification, err)
+				}
+				return
+			}
+			changed := adapter.Observation()
+			changed.Delivery = nil
+			changed.Revision = "observation:delivery-removed-before-apply"
+			adapter.SetObservation(changed)
+			if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+				t.Fatal("changed delivery evidence applied from a stale resolution plan")
+			}
+		})
+	}
+}
+
+func TestGovernedManagedTaskStopsForBlockedAndStaleSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		configure func(*testing.T, *engine.InMemoryWorkAdapter, *engine.ManagedTaskRequest)
+		want      engine.WorkFreshnessDisposition
+	}{
+		{
+			name: "new native blocker",
+			configure: func(_ *testing.T, adapter *engine.InMemoryWorkAdapter, _ *engine.ManagedTaskRequest) {
+				observation := adapter.Observation()
+				observation.Relationships.Blockers = []engine.WorkDependency{{ManagedID: "issue:blocker", Closed: false}}
+				observation.Revision = "observation:new-blocker"
+				adapter.SetObservation(observation)
+			},
+			want: engine.WorkFreshnessBlocked,
+		},
+		{
+			name: "control or human action block",
+			configure: func(_ *testing.T, adapter *engine.InMemoryWorkAdapter, request *engine.ManagedTaskRequest) {
+				request.Intent.Task.Blockers = []engine.WorkDependency{{ManagedID: "issue:closed", Closed: true}}
+				observation := adapter.Observation()
+				observation.Task = observedGovernedTask(request, "option:blocked")
+				observation.Relationships.Blockers = slices.Clone(request.Intent.Task.Blockers)
+				observation.Revision = "observation:control-blocked"
+				adapter.SetObservation(observation)
+			},
+			want: engine.WorkFreshnessBlocked,
+		},
+		{
+			name: "stale governed source",
+			configure: func(t *testing.T, _ *engine.InMemoryWorkAdapter, request *engine.ManagedTaskRequest) {
+				if err := os.WriteFile(filepath.Join(request.Repository, "docs", "authority.md"), []byte("changed authority\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: engine.WorkFreshnessNeedsRefinement,
+		},
+		{
+			name: "partial delivery",
+			configure: func(_ *testing.T, adapter *engine.InMemoryWorkAdapter, _ *engine.ManagedTaskRequest) {
+				observation := adapter.Observation()
+				observation.Delivery = &engine.WorkDeliveryObservation{State: "partial", ResidualScope: "Acceptance remains incomplete.", Evidence: []string{"pr:partial"}}
+				observation.Revision = "observation:partial-delivery"
+				adapter.SetObservation(observation)
+			},
+			want: engine.WorkFreshnessNeedsRefinement,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			configureGovernedWorkFixture(t, &request)
+			test.configure(t, adapter, &request)
+			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != test.want || inspection.Disposition != string(test.want) {
+				t.Fatalf("freshness disposition = %#v, want %q", inspection, test.want)
+			}
+			if _, err := lifecycle.PlanManagedTask(context.Background(), inspection); err == nil {
+				t.Fatalf("%s qualification produced a plan", test.want)
+			}
+		})
+	}
+}
+
+func TestGovernedFreshnessDispositionPrecedenceIsExplicit(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		delivered bool
+		blocked   bool
+		stale     bool
+		want      engine.WorkFreshnessDisposition
+	}{
+		{name: "exact delivery outranks semantic conflict", delivered: true, stale: true, want: engine.WorkFreshnessAlreadyDelivered},
+		{name: "blocking outranks semantic conflict", blocked: true, stale: true, want: engine.WorkFreshnessBlocked},
+		{name: "exact delivery outranks an obsolete block", delivered: true, blocked: true, want: engine.WorkFreshnessAlreadyDelivered},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			configureGovernedWorkFixture(t, &request)
+			observation := adapter.Observation()
+			if test.delivered {
+				observation.Delivery = &engine.WorkDeliveryObservation{
+					State: "complete", SourceRevision: request.Intent.SourceRevision,
+					ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
+				}
+			}
+			if test.blocked {
+				observation.Task = observedGovernedTask(&request, "option:blocked")
+			}
+			observation.Revision = "observation:combined-precedence"
+			adapter.SetObservation(observation)
+			if test.stale {
+				if err := os.WriteFile(filepath.Join(request.Repository, "docs", "authority.md"), []byte("changed authority\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+			if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != test.want {
+				t.Fatalf("combined disposition = %#v, %v; want %q", inspection, err, test.want)
+			}
+		})
+	}
+}
+
+func TestExecutableIssueContractCanonicalRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	contracts := []engine.ExecutableIssueContract{governedIssueContractFixture()}
+	question := governedIssueContractFixture()
+	question.Subtype = &engine.WorkSubtypeContract{Question: &engine.QuestionWorkContract{
+		Question: "Which owner approves?", Impact: "Delivery depends on it.", Relationship: "blocking", AnswerAuthority: "product owner",
+		EvidenceNeeds: "An owner record.", ResolutionCriteria: "One authoritative answer.", PromotionDestination: "docs/decisions/DEC-TEST.md",
+	}}
+	contracts = append(contracts, question)
+	research := governedIssueContractFixture()
+	research.Subtype = &engine.WorkSubtypeContract{Research: &engine.ResearchWorkContract{
+		Objective: "Compare routes.", IntendedUse: "Select a route.", Scope: "Supported routes.", Exclusions: "Unrelated providers.",
+		Provenance: "Primary sources.", DepthOrEffort: "Two hours.", Authority: "Read-only research.", StoppingConditions: "Routes are distinguishable.",
+		Output: "docs/research/RESULT.md", Freshness: "Checked at execution.", ReviewNeeds: "Maintainer review.",
+	}}
+	contracts = append(contracts, research)
+	for _, contract := range contracts {
+		body, err := engine.RenderExecutableIssueContract(contract)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := engine.ParseExecutableIssueContract(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if engine.ExecutableIssueContractDigest(parsed) != engine.ExecutableIssueContractDigest(contract) {
+			t.Fatalf("canonical contract changed across render/parse: %#v", parsed)
+		}
+	}
+	body, err := engine.RenderExecutableIssueContract(governedIssueContractFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.ParseExecutableIssueContract("changed visible preamble\n" + body); err == nil {
+		t.Fatal("unexpected visible preamble was ignored")
+	}
+	formBody := strings.ReplaceAll(body, "\n## ", "\n### ")
+	parsedForm, err := engine.ParseExecutableIssueContract(formBody)
+	if err != nil || engine.ExecutableIssueContractDigest(parsedForm) != engine.ExecutableIssueContractDigest(governedIssueContractFixture()) {
+		t.Fatalf("GitHub issue-form H3 body did not round-trip: %#v, %v", parsedForm, err)
+	}
+	questionBody, err := engine.RenderExecutableIssueContract(question)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questionFormBody := strings.ReplaceAll(questionBody, "\n## ", "\n### ") + "\n\n### No-promotion resolution\n\n_No response_"
+	parsedQuestionForm, err := engine.ParseExecutableIssueContract(questionFormBody)
+	if err != nil || engine.ExecutableIssueContractDigest(parsedQuestionForm) != engine.ExecutableIssueContractDigest(question) {
+		t.Fatalf("optional GitHub question-form response changed the contract: %#v, %v", parsedQuestionForm, err)
+	}
+}
+
+func TestWorkDeliveryClaimRejectsUnboundedOrAmbiguousImplementedSources(t *testing.T) {
+	t.Parallel()
+
+	base := engine.WorkDeliveryClaim{
+		SchemaVersion: 1, ManagedID: "issue:74", SourceRevision: "source:v1",
+		ContractDigest:     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ImplementedSources: []engine.GovernedSourceBinding{{ID: "engine", Path: "engine/workmanager.go", Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+	}
+	if marker, err := engine.RenderWorkDeliveryClaim(base); err != nil {
+		t.Fatal(err)
+	} else if parsed, err := engine.ParseWorkDeliveryClaim(marker); err != nil || !slices.Equal(parsed.ImplementedSources, base.ImplementedSources) {
+		t.Fatalf("delivery claim round trip = %#v, %v", parsed, err)
+	}
+	for _, mutate := range []func(*engine.WorkDeliveryClaim){
+		func(claim *engine.WorkDeliveryClaim) { claim.ImplementedSources = nil },
+		func(claim *engine.WorkDeliveryClaim) { claim.ImplementedSources[0].Path = "../escape" },
+		func(claim *engine.WorkDeliveryClaim) {
+			claim.ImplementedSources = append(claim.ImplementedSources, claim.ImplementedSources[0])
+		},
+		func(claim *engine.WorkDeliveryClaim) { claim.ImplementedSources[0].Digest = "not-a-digest" },
+	} {
+		claim := base
+		claim.ImplementedSources = slices.Clone(base.ImplementedSources)
+		mutate(&claim)
+		if _, err := engine.RenderWorkDeliveryClaim(claim); err == nil {
+			t.Fatalf("invalid implemented-source claim passed: %#v", claim)
+		}
+	}
+}
+
+func TestPromotedRecordBacklinkDoesNotAcceptManagedIDSubstringCollisions(t *testing.T) {
+	t.Parallel()
+
+	body, err := engine.RenderWorkPromotedRecordBacklink(engine.WorkPromotedRecordBacklink{
+		SchemaVersion: 1, ManagedID: "issue:74", RepositoryID: "repository:fixture", IssueURL: "https://github.com/example/repository/issues/74",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "issue:7") {
+		t.Fatal("fixture no longer exercises the substring collision")
+	}
+	parsed, err := engine.ParseWorkPromotedRecordBacklink(body)
+	if err != nil || parsed.ManagedID == "issue:7" || parsed.ManagedID != "issue:74" {
+		t.Fatalf("promoted backlink identity = %#v, %v", parsed, err)
+	}
+	for _, invalid := range []engine.WorkPromotedRecordBacklink{
+		{SchemaVersion: 1, ManagedID: "issue:74", RepositoryID: "repository:fixture", IssueURL: "https://github.com/%zz/issues/74"},
+		{SchemaVersion: 1, ManagedID: "issue:74", IssueURL: "https://github.com/example/repository/issues/74"},
+	} {
+		if _, err := engine.RenderWorkPromotedRecordBacklink(invalid); err == nil {
+			t.Fatalf("invalid promoted backlink passed: %#v", invalid)
+		}
+	}
+}
+
+func TestGovernedManagedTaskRequiresReferenceSourceCorrespondence(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	request.Intent.Governance.Issue.GoverningReferences = "- DEC-OTHER — unrelated authority."
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+		t.Fatal("unbound visible governing reference was accepted")
+	}
+}
+
+func TestGovernedQuestionAndResearchSubtypeContracts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		configure       func(*engine.ManagedTaskRequest)
+		wantError       bool
+		wantDisposition engine.WorkFreshnessDisposition
+	}{
+		{
+			name: "question ready",
+			configure: func(request *engine.ManagedTaskRequest) {
+				request.Intent.Task.IssueType = "question"
+				request.Intent.Task.Review = nil
+				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Question: &engine.QuestionWorkContract{
+					Question: "Which owner approves the outcome?", Impact: "The answer controls delivery.", Relationship: "blocking",
+					AnswerAuthority: "product owner", EvidenceNeeds: "an owner record", ResolutionCriteria: "one authoritative answer",
+					PromotionDestination: "docs/decisions/DEC-TEST.md",
+				}}
+			},
+		},
+		{
+			name: "question missing authority",
+			configure: func(request *engine.ManagedTaskRequest) {
+				request.Intent.Task.IssueType = "question"
+				request.Intent.Task.Review = nil
+				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Question: &engine.QuestionWorkContract{
+					Question: "Which owner approves the outcome?", Impact: "The answer controls delivery.", Relationship: "blocking",
+					EvidenceNeeds: "an owner record", ResolutionCriteria: "one authoritative answer", PromotionDestination: "docs/decisions/DEC-TEST.md",
+				}}
+			},
+			wantError: true,
+		},
+		{
+			name: "closed question visible no-promotion resolution",
+			configure: func(request *engine.ManagedTaskRequest) {
+				request.Intent.Task.IssueType = "question"
+				request.Intent.Task.Review = nil
+				request.Intent.Task.Closed = true
+				request.Intent.Task.Status = "done"
+				request.Intent.Task.NoPromotionRequired = true
+				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Question: &engine.QuestionWorkContract{
+					Question: "Does this answer require promotion?", Impact: "The issue must close truthfully.", Relationship: "related",
+					AnswerAuthority: "product owner", EvidenceNeeds: "an owner resolution", ResolutionCriteria: "one explicit answer",
+					PromotionDestination: "docs/decisions/DEC-TEST.md", NoPromotionResolution: "The answer only confirms that the governed destination is unchanged.",
+				}}
+			},
+		},
+		{
+			name: "closed question hidden no-promotion resolution",
+			configure: func(request *engine.ManagedTaskRequest) {
+				request.Intent.Task.IssueType = "question"
+				request.Intent.Task.Review = nil
+				request.Intent.Task.Closed = true
+				request.Intent.Task.Status = "done"
+				request.Intent.Task.NoPromotionRequired = true
+				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Question: &engine.QuestionWorkContract{
+					Question: "Does this answer require promotion?", Impact: "The issue must close truthfully.", Relationship: "related",
+					AnswerAuthority: "product owner", EvidenceNeeds: "an owner resolution", ResolutionCriteria: "one explicit answer",
+					PromotionDestination: "docs/decisions/DEC-TEST.md",
+				}}
+			},
+			wantError: true,
+		},
+		{
+			name: "closed research output",
+			configure: func(request *engine.ManagedTaskRequest) {
+				configureClosedResearch(t, request)
+			},
+		},
+		{
+			name: "closed research incomplete durable record",
+			configure: func(request *engine.ManagedTaskRequest) {
+				configureClosedResearch(t, request)
+				writePromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md", "https://"+request.Intent.Target.Host+"/example/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), false)
+			},
+			wantDisposition: engine.WorkFreshnessNeedsRefinement,
+		},
+		{
+			name: "closed research wrong repository backlink",
+			configure: func(request *engine.ManagedTaskRequest) {
+				configureClosedResearch(t, request)
+				writePromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md", "https://"+request.Intent.Target.Host+"/wrong/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), true)
+			},
+			wantDisposition: engine.WorkFreshnessNeedsRefinement,
+		},
+		{
+			name: "closed research wrong output",
+			configure: func(request *engine.ManagedTaskRequest) {
+				request.Intent.Task.IssueType = "research"
+				request.Intent.Task.Review = nil
+				request.Intent.Task.Closed = true
+				request.Intent.Task.PromotionRecord = "docs/research/OTHER.md"
+				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Research: &engine.ResearchWorkContract{
+					Objective: "Compare supported routes.", IntendedUse: "Select one route.", Scope: "Public GitHub.", Exclusions: "Paid features.",
+					Provenance: "Official documentation.", DepthOrEffort: "Two hours.", Authority: "read-only web research.",
+					StoppingConditions: "The routes are distinguishable.", Output: "docs/research/RESULT.md", Freshness: "Checked at execution.", ReviewNeeds: "Maintainer review.",
+				}}
+			},
+			wantError: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			configureGovernedWorkFixture(t, &request)
+			test.configure(&request)
+			if request.Intent.Task.Closed && request.Intent.Task.PromotionRecord != "" {
+				observation := adapter.Observation()
+				observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+				adapter.SetObservation(observation)
+			}
+			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+			if test.wantError {
+				if err == nil {
+					t.Fatalf("invalid subtype contract was accepted: %#v", inspection)
+				}
+				return
+			}
+			if test.wantDisposition != "" {
+				if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != test.wantDisposition {
+					t.Fatalf("subtype completion disposition = %#v, %v; want %q", inspection, err, test.wantDisposition)
+				}
+				return
+			}
+			if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessFresh {
+				t.Fatalf("valid subtype contract did not qualify: %#v, %v", inspection, err)
+			}
+		})
+	}
+}
+
+func TestGovernedFeatureHorizonIsIndependentAndCopiedChildValueIsCleared(t *testing.T) {
+	t.Parallel()
+
+	t.Run("feature direct Horizon", func(t *testing.T) {
+		t.Parallel()
+		lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+		configureGovernedWorkFixture(t, &request)
+		configureHorizonTarget(adapter, &request)
+		request.Intent.Task.IssueType = "feature"
+		request.Intent.Task.Horizon = "now"
+		journey, err := lifecycle.ManageTask(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if journey.Plan.DerivedFacts.Horizon != "now" || journey.Plan.DerivedFacts.HorizonSource != "direct" || journey.Plan.DerivedFacts.Status != "next" {
+			t.Fatalf("Horizon was conflated with execution state: %#v", journey.Plan.DerivedFacts)
+		}
+	})
+
+	t.Run("ordinary child direct Horizon rejected", func(t *testing.T) {
+		t.Parallel()
+		lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+		configureGovernedWorkFixture(t, &request)
+		configureHorizonTarget(adapter, &request)
+		request.Intent.Task.Horizon = "now"
+		if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+			t.Fatal("ordinary child received a copied direct Horizon")
+		}
+	})
+
+	t.Run("Ready feature requires configured Horizon", func(t *testing.T) {
+		t.Parallel()
+		lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+		configureGovernedWorkFixture(t, &request)
+		configureHorizonTarget(adapter, &request)
+		request.Intent.Task.IssueType = "feature"
+		if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil {
+			t.Fatal("Ready feature omitted configured Horizon")
+		}
+	})
+
+	t.Run("absent Horizon capability remains explicit", func(t *testing.T) {
+		t.Parallel()
+		lifecycle, _, request, _ := newManagedTaskFixture(t)
+		configureGovernedWorkFixture(t, &request)
+		journey, err := lifecycle.ManageTask(context.Background(), request)
+		if err != nil || journey.Plan.DerivedFacts.HorizonCapability != "not-configured" || journey.Plan.DerivedFacts.PhaseCapability != "configured" {
+			t.Fatalf("optional roadmap capability state was not explicit: %#v, %v", journey.Plan.DerivedFacts, err)
+		}
+	})
+
+	t.Run("copied child Horizon cleared", func(t *testing.T) {
+		t.Parallel()
+		lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+		configureGovernedWorkFixture(t, &request)
+		configureHorizonTarget(adapter, &request)
+		if _, err := lifecycle.ManageTask(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		observation := adapter.Observation()
+		observation.Task.HorizonOption = "option:horizon-now"
+		observation.Revision = "observation:copied-horizon"
+		adapter.SetObservation(observation)
+		inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+		if err != nil || len(plan.Effects) != 1 || !slices.Contains(plan.Effects[0].Operations, "horizon") {
+			t.Fatalf("copied child Horizon was not planned for clearing: %#v, %v", plan, err)
+		}
+		if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository); err != nil {
+			t.Fatal(err)
+		}
+		if adapter.Observation().Task.HorizonOption != "" {
+			t.Fatalf("copied child Horizon remained assigned: %#v", adapter.Observation().Task)
+		}
+	})
+}
+
+func TestGovernedChildDerivesHorizonFromNativeParent(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	configureHorizonTarget(adapter, &request)
+	contract := request.Intent.Governance.Issue
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{ManagedID: "issue:4", Status: "backlog"}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: request.Intent.Task.ManagedID, IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: request.Intent.Task.IssueType, ParentManagedID: "issue:4", NativeParentManagedID: "issue:4",
+		ReadinessOption: "option:ready", StatusOption: "option:next", ParentHorizonOption: "option:horizon-next",
+		Phase: "Phase 3", PhaseOption: "option:phase-3", PhaseAssignmentReason: request.Intent.Task.PhaseAssignmentReason,
+		Review: request.Intent.Task.Review, IssueContract: &contract, IssueContractDigest: engine.ExecutableIssueContractDigest(contract),
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{{
+		ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4", Title: "Parent feature", IssueType: "feature",
+		ReadinessOption: "option:ready", StatusOption: "option:backlog", HorizonOption: "option:horizon-next",
+	}}
+	observation.Relationships = engine.WorkRelationshipObservation{Observed: true, ParentManagedID: "issue:4"}
+	observation.Revision = "observation:native-parent-horizon"
+	adapter.SetObservation(observation)
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied := false
+	for _, effect := range plan.Effects {
+		copied = copied || slices.Contains(effect.Operations, "horizon")
+	}
+	if plan.DerivedFacts.Horizon != "next" || plan.DerivedFacts.HorizonSource != "parent" || copied {
+		t.Fatalf("child did not derive parent Horizon without copying it: %#v", plan)
+	}
+}
+
+func configureGovernedWorkFixture(t *testing.T, request *engine.ManagedTaskRequest) {
+	t.Helper()
+	content := []byte("# Governed authority\n\nStable source for the fixture.\n")
+	path := filepath.Join(request.Repository, "docs", "authority.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	request.Intent.SchemaVersion = 2
+	request.Intent.EffectBoundary = engine.WorkEffectBoundary{DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "repository-evidence", RecoveryOwner: "owner"}
+	request.Intent.Governance = &engine.GovernedWorkContract{
+		SchemaVersion: 1,
+		Issue:         governedIssueContractFixture(),
+		Sources: []engine.GovernedSourceBinding{{
+			ID: "DEC-TEST", Path: "docs/authority.md", Digest: fmt.Sprintf("sha256:%x", digest),
+		}},
+	}
+}
+
+func observedGovernedTask(request *engine.ManagedTaskRequest, readinessOption string) *engine.WorkObservedTask {
+	contract := request.Intent.Governance.Issue
+	return &engine.WorkObservedTask{
+		ManagedID: request.Intent.Task.ManagedID, IssueNodeID: "memory:" + request.Intent.Task.ManagedID, IssueURL: "https://" + request.Intent.Target.Host + "/example/repository/issues/" + strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), ProjectItemID: "memory:item:" + request.Intent.Task.ManagedID,
+		Title: request.Intent.Task.Title, IssueType: request.Intent.Task.IssueType, ReadinessOption: readinessOption,
+		StatusOption: request.Intent.Target.OptionIDs["status:"+request.Intent.Task.Status], Phase: request.Intent.Task.Phase,
+		PhaseOption: request.Intent.Target.OptionIDs["phase:"+request.Intent.Task.Phase], PhaseAssignmentReason: request.Intent.Task.PhaseAssignmentReason,
+		Review: request.Intent.Task.Review, IssueContract: &contract, IssueContractDigest: engine.ExecutableIssueContractDigest(contract),
+	}
+}
+
+func bindPromotionOutput(t *testing.T, request *engine.ManagedTaskRequest, id, slashPath string) {
+	t.Helper()
+	writePromotionOutput(t, request, id, slashPath, "https://"+request.Intent.Target.Host+"/example/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), request.Intent.Task.IssueType == "research")
+}
+
+func writePromotionOutput(t *testing.T, request *engine.ManagedTaskRequest, id, slashPath, issueURL string, includeResearchSections bool) {
+	t.Helper()
+	backlink, err := engine.RenderWorkPromotedRecordBacklink(engine.WorkPromotedRecordBacklink{SchemaVersion: 1, ManagedID: request.Intent.Task.ManagedID, RepositoryID: request.Intent.Target.RepositoryID, IssueURL: issueURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "# Promoted result\n\n" + backlink + "\n"
+	if includeResearchSections {
+		body += "\n## Method\n\nCompared the bounded routes.\n\n## Sources\n\nOfficial source records.\n\n## Findings\n\nThe routes differ.\n\n## Conflicting evidence\n\nNo conflicts were found.\n\n## Uncertainty\n\nProvider behavior can change.\n\n## Limitations\n\nPaid features were excluded.\n\n## Freshness\n\nChecked during execution.\n"
+	}
+	content := []byte(body)
+	path := filepath.Join(request.Repository, filepath.FromSlash(slashPath))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	found := false
+	for index := range request.Intent.Governance.Sources {
+		if request.Intent.Governance.Sources[index].Path == slashPath {
+			request.Intent.Governance.Sources[index].Digest = fmt.Sprintf("sha256:%x", digest)
+			found = true
+		}
+	}
+	if !found {
+		request.Intent.Governance.Sources = append(request.Intent.Governance.Sources, engine.GovernedSourceBinding{ID: id, Path: slashPath, Digest: fmt.Sprintf("sha256:%x", digest)})
+		request.Intent.Governance.Issue.GoverningReferences += "\n- " + id + " — promoted output with reciprocal provenance."
+	}
+}
+
+func configureClosedResearch(t *testing.T, request *engine.ManagedTaskRequest) {
+	t.Helper()
+	request.Intent.Task.IssueType = "research"
+	request.Intent.Task.Review = nil
+	request.Intent.Task.Closed = true
+	request.Intent.Task.PromotionRecord = "docs/research/RESULT.md"
+	request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Research: &engine.ResearchWorkContract{
+		Objective: "Compare supported routes.", IntendedUse: "Select one route.", Scope: "Public GitHub.", Exclusions: "Paid features.",
+		Provenance: "Official documentation.", DepthOrEffort: "Two hours.", Authority: "read-only web research.",
+		StoppingConditions: "The routes are distinguishable.", Output: "docs/research/RESULT.md", Freshness: "Checked at execution.", ReviewNeeds: "Maintainer review.",
+	}}
+	bindPromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md")
+}
+
+func configureHorizonTarget(adapter *engine.InMemoryWorkAdapter, request *engine.ManagedTaskRequest) {
+	observation := adapter.Observation()
+	observation.Target.FieldIDs["horizon"] = "field:horizon"
+	observation.Target.OptionIDs["horizon:now"] = "option:horizon-now"
+	observation.Target.OptionIDs["horizon:next"] = "option:horizon-next"
+	observation.Target.OptionIDs["horizon:later"] = "option:horizon-later"
+	adapter.SetObservation(observation)
+	request.Intent.Target = observation.Target
+}
+
+func governedIssueContractFixture() engine.ExecutableIssueContract {
+	return engine.ExecutableIssueContract{
+		SchemaVersion:       1,
+		Parent:              "#4",
+		HumanSummary:        "A maintainer can execute one governed task.\n\n**Done when:** the lifecycle binds current issue and source facts.",
+		CurrentContext:      "The deterministic fixture supplies current normalized facts.",
+		GoverningReferences: "- DEC-TEST — fixture authority.",
+		Scope:               "Qualify one Ready managed task.",
+		OutOfScope:          "External effects and release publication.",
+		Acceptance:          "- [ ] A fresh issue produces a source-bound qualification.\n- [ ] Changed acceptance returns to refinement.",
+		Verification:        "Exercise inspect, plan, apply, verify, and status through Work Manager.",
+		Dependencies:        "No unresolved native blocker.",
+		ReadinessAssertions: []string{
+			"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.",
+			"An authorized implementer can execute this without the originating conversation.",
+		},
 	}
 }
 
