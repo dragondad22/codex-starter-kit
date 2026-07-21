@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "issue-74-govern-executable-work",
-  "summary": "Govern executable work with source-bound freshness, subtype completion, independent Horizon projection, exact delivery evidence, and mandated external effects.",
+  "summary": "Govern executable work with source-bound freshness, subtype completion, independent Horizon projection, exact delivery evidence, mandated external effects, and read-only live source qualification.",
   "category": "added",
   "audiences": ["users", "operators", "developers", "stakeholders"],
   "components": ["engine", "github", "github-workflow"],

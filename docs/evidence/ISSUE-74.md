@@ -68,15 +68,33 @@ git diff --check
   passed
 ```
 
-This is development evidence, not completion evidence. The exact reviewed commit, race,
-vet, change-record checks, diff check, Linux/macOS/Windows CI results, and approved live
-sandbox receipt are added only after they exist.
+This is development evidence, not completion evidence. Exact-head review and
+Linux/macOS/Windows CI remain completion gates after the live receipt is recorded.
+
+## Approved live sandbox observation
+
+Read-only qualification run
+[`29861694892`](https://github.com/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/29861694892)
+passed against Starter Kit commit `8c6b9dc1842f3f226a5422a422fa8cd4204ff4e2`.
+The protected `contract-reconciler` environment minted an installation token for
+`codex-starter-kit-labs-reconciler` installation `147093185`; the token response and
+installation metadata agreed on permission revision
+`972f4aa57f95fbf11bec751cf0a827be14e9f859ee5163c426552d81d44dc0e1` and included
+`contents:read` plus the previously qualified reconciler permissions.
+
+The App token read `README.md` from the isolated public sandbox at immutable commit
+`e73da2428eb61242b6c128b6d69b61c77d2e5fc5`. Its decoded bytes matched approved digest
+`sha256:5e24803c1e7aa208dc29c7f23d9f4d4c5559b20d7b32ad0e168614dd17a385ef`.
+The redacted schema-v1 receipt has `evidence_mode: live` and `outcome: pass`; the workflow
+artifact is retained for 30 days. The temporary qualification branch was removed after
+the run. The versioned driver rejects mutable revisions, unsafe paths, missing
+`contents:read`, non-file responses, and digest mismatches, and never serializes the App
+key or installation token.
 
 ## Explicit limitations and handoff
 
-- Deterministic GitHub transport receipts are simulated. No live #74 mutation is claimed.
-- Approved live observation is blocked until the existing reconciler GitHub App receives
-  repository `Contents: read`; no new account or actor is required.
+- Deterministic full-journey GitHub transport receipts remain simulated. The approved
+  read-only #74 source observation is live; no live #74 mutation is claimed.
 - General GitHub setup and team-specific Project/view choices remain future optional
   GitHub App work. Saved-view presence or layout is not a #74 conformance gate.
 - Issue #75 owns branch, PR, checks, distinct review, and merge delivery. It emits the
@@ -86,7 +104,7 @@ sandbox receipt are added only after they exist.
 
 ## Reconciliation state
 
-Issue #74 remains `In progress` and Readiness `Blocked` until the App permission, exact-head
-review, native CI, and approved live evidence boundary complete. Parent #4 remains
+The App permission and approved live evidence boundary are complete. Issue #74 remains
+`In progress` until exact-head review and native CI complete. Parent #4 remains
 `In progress`; #75 and #76 remain blocked by their native dependencies. Issue #95 is the
 selected next item after #74, before #75.
