@@ -85,6 +85,12 @@ The shared external-resource transport retries only bounded idempotent REST read
 eligible provider-transient responses; effects remain single-attempt and exhausted reads
 remain explicit non-pass evidence.
 
+Issue #74 adds schema-v2 governed issue/source qualification, sparse question/research
+forms and completion checks, independent Horizon projection, exact merged-PR delivery
+claims, and DEC-0022-gated external Work Manager effects. In-memory and native HTTP
+fixtures are supported deterministic behavior. They do not qualify a live repository,
+GitHub service behavior, or aggregate workflow; #76 retains that live boundary.
+
 ## Native proof contract
 
 Every native matrix job runs the same commands and then retains a self-digested JSON

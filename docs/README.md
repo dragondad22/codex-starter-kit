@@ -123,6 +123,9 @@
 59. `evidence/ISSUE-46.md` — Phase field/option identities, feature mapping, deterministic
     projection evidence, live Project qualification, and repository-specific optional
     saved-view evidence.
+60. `evidence/ISSUE-74.md` — governed issue/source qualification, freshness, subtype,
+    Horizon, delivery-claim, mandate, deterministic verification, limitation, and
+    downstream handoff evidence.
 
 ## Document lifecycle
 

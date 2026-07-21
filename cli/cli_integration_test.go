@@ -2,8 +2,10 @@ package cli_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +46,28 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("initialize managed-task Git repository: %v: %s", err, output)
 	}
+	authority := []byte("# CLI governed authority\n")
+	if err := os.MkdirAll(filepath.Join(repository, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "docs", "authority.md"), authority, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	authorityDigest := sha256.Sum256(authority)
+	contract := engine.ExecutableIssueContract{
+		SchemaVersion:       1,
+		HumanSummary:        "A maintainer can execute one governed CLI task.\n\n**Done when:** the complete lifecycle is emitted.",
+		CurrentContext:      "The in-memory CLI adapter supplies current normalized facts.",
+		GoverningReferences: "- DEC-CLI — fixture authority.",
+		Scope:               "Exercise schema-v2 managed work through the existing command.",
+		OutOfScope:          "External GitHub effects.",
+		Acceptance:          "- [ ] The journey binds a fresh governed-work qualification.",
+		Verification:        "Decode strict JSON and exercise the complete lifecycle.",
+		ReadinessAssertions: []string{
+			"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.",
+			"An authorized implementer can execute this without the originating conversation.",
+		},
+	}
 	now := time.Now().UTC()
 	target := engine.WorkTarget{
 		Host: "memory.local", RepositoryID: "repository:fixture", ProjectID: "project:fixture",
@@ -56,11 +80,13 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 		Observation engine.WorkObservation    `json:"observation"`
 	}{
 		Request: engine.ManagedTaskRequest{Repository: repository, Intent: engine.WorkDesiredIntent{
-			SchemaVersion: 1, OperationID: "operation:issue-71", SourceRevision: "issue-71:v1", OperatingProfileRevision: "operating-profile:v1",
+			SchemaVersion: 2, OperationID: "operation:issue-71", SourceRevision: "issue-71:v2", OperatingProfileRevision: "operating-profile:v1",
 			InputDigests: map[string]string{"issue": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, Credential: engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"}, Target: target,
-			Task: engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}}},
+			Task:           engine.DesiredManagedTask{ManagedID: "issue:71", IssueType: "task", Title: "Manage one task", Readiness: "ready", Status: "next", Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}}},
+			Governance:     &engine.GovernedWorkContract{SchemaVersion: 1, Issue: contract, Sources: []engine.GovernedSourceBinding{{ID: "DEC-CLI", Path: "docs/authority.md", Digest: "sha256:" + fmt.Sprintf("%x", authorityDigest)}}},
+			EffectBoundary: engine.WorkEffectBoundary{DataClass: "public-project-metadata", CostCeiling: "zero-dollar", Destructive: "no-delete", Retention: "repository-evidence", RecoveryOwner: "owner"},
 		}},
-		Capability:  engine.WorkCapability{SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer", Permissions: []string{"issues:write", "projects:write", "pull_requests:read"}, ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		Capability:  engine.WorkCapability{SchemaVersion: 1, Online: true, Fresh: true, Mode: "memory", Actor: "test:maintainer", Permissions: []string{"issues:write", "projects:write", "pull_requests:read", "contents:read"}, ConfigurationRevision: "project-config:v1", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
 		Observation: engine.WorkObservation{SchemaVersion: 1, Revision: "observation:v1", ConfigurationRevision: "project-config:v1", Target: target, Relationships: engine.WorkRelationshipObservation{Observed: true}},
 	}
 	content, err := json.Marshal(input)
@@ -81,7 +107,7 @@ func TestManageTaskCommandEmitsCompleteLanguageNeutralJourney(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &journey); err != nil {
 		t.Fatalf("decode lifecycle journey: %v: %s", err, stdout.String())
 	}
-	if journey.Plan.ID == "" || journey.Apply.Status != engine.WorkApplyApplied || journey.Verification.OverallState != engine.ControlPass || journey.Status.Disposition != "converged" {
+	if journey.Plan.ID == "" || journey.Plan.QualificationID == "" || journey.Plan.DerivedFacts.Freshness != engine.WorkFreshnessFresh || journey.Apply.Status != engine.WorkApplyApplied || journey.Verification.OverallState != engine.ControlPass || journey.Status.Disposition != "converged" {
 		t.Fatalf("unexpected managed-task journey: %#v", journey)
 	}
 }

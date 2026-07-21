@@ -255,7 +255,7 @@ class FoundationManifestValidationTests(unittest.TestCase):
                 {"name": "needs-triage", "color": "D4C5F9", "description": "Triage"},
             ]
         )
-        self.write_form("task.yml", ["type:task", "needs-triage"], ["summary"])
+        self.write_form("bug.yml", ["type:task", "needs-triage"], ["summary"])
 
         self.assertEqual(validate_label_manifest(self.root), [])
         self.assertEqual(validate_issue_templates(self.root), [])
@@ -284,12 +284,39 @@ class FoundationManifestValidationTests(unittest.TestCase):
         self.write_labels(
             [{"name": "type:task", "color": "0075CA", "description": "Task"}]
         )
-        self.write_form("task.yml", ["type:task", "missing"], ["summary", "summary"])
+        self.write_form("bug.yml", ["type:task", "missing"], ["summary", "summary"])
 
         failures = validate_issue_templates(self.root)
 
         self.assertTrue(any("unknown label: missing" in failure for failure in failures))
         self.assertTrue(any("duplicate body id: summary" in failure for failure in failures))
+
+    def test_rejects_task_form_without_governed_executable_contract(self) -> None:
+        self.write_labels(
+            [
+                {"name": "type:task", "color": "0075CA", "description": "Task"},
+                {"name": "needs-triage", "color": "D4C5F9", "description": "Triage"},
+            ]
+        )
+        self.write_form("task.yml", ["type:task", "needs-triage"], ["summary"])
+
+        failures = validate_issue_templates(self.root)
+
+        self.assertTrue(any("executable contract body ids/order" in failure for failure in failures))
+        self.assertTrue(any("lacks the executable schema marker" in failure for failure in failures))
+
+    def test_rejects_question_form_without_subtype_contract(self) -> None:
+        self.write_labels(
+            [
+                {"name": "type:question", "color": "0075CA", "description": "Question"},
+                {"name": "needs-triage", "color": "D4C5F9", "description": "Triage"},
+            ]
+        )
+        self.write_form("question.yml", ["type:question", "needs-triage"], ["summary"])
+
+        failures = validate_issue_templates(self.root)
+
+        self.assertTrue(any("executable contract body ids/order" in failure for failure in failures))
 
     def test_accepts_native_three_os_workflow_with_pinned_action(self) -> None:
         (self.root / ".github/workflows/documentation.yml").write_text(

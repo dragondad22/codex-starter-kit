@@ -9,7 +9,8 @@
       "id": "human-summary",
       "attributes": {
         "label": "Human summary",
-        "description": "What, why now, impact, and an observable Done when statement."
+        "description": "What, why now, impact, and an observable Done when statement. Keep the hidden schema marker in place.",
+        "value": "<!-- starter-kit-executable-schema:v1 -->"
       },
       "validations": {"required": true}
     },

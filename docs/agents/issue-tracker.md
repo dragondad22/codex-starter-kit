@@ -133,6 +133,21 @@ executability. Use the smallest template that preserves the work honestly:
 - Question, research, and bug records use their subtype contracts and are promoted or
   decomposed rather than padded into task-shaped prose.
 
+Ready task, question, and research forms retain
+`<!-- starter-kit-executable-schema:v1 -->` and the exact canonical headings. The marker
+is version identity, not authority. Every visible governing-reference line uses
+`- STABLE-ID — relevance`; schema-v2 execution binds those IDs one-for-one to safe
+repository paths and exact digests. Question/research forms add their sparse subtype
+sections to the same parseable contract.
+
+At selection/start, and again only after material change, refresh the current issue,
+governing sources, native relationships, Project configuration, and related delivery
+claims. The result is exactly one of `fresh`, `mechanical-drift-repaired`,
+`contained-context-refreshed`, `needs-refinement`, `already-delivered`, or `blocked`.
+Elapsed age never invalidates Ready work. Ordinary fresh work needs no pass comment.
+Automation may replace Current context only when the task explicitly delegates that
+narrow refresh and no other semantic section changed; otherwise return it to refinement.
+
 Templates prescribe information shape, not conclusions. Do not invent architecture,
 scope, tests, or decisions to fill a form. A design-first parent may carry feature-level
 acceptance while deferring implementation tests to its eventual Ready sub-issues.

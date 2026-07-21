@@ -33,6 +33,8 @@ REQUIRED = (
     ".github/ISSUE_TEMPLATE/feature.yml",
     ".github/ISSUE_TEMPLATE/bug.yml",
     ".github/ISSUE_TEMPLATE/task.yml",
+    ".github/ISSUE_TEMPLATE/question.yml",
+    ".github/ISSUE_TEMPLATE/research.yml",
     ".github/labels.yml",
     ".github/workflows/documentation.yml",
     "changes/README.md",
@@ -203,6 +205,69 @@ def validate_issue_templates(root: Path) -> list[str]:
                 failures.append(f"{relative}: duplicate body id: {field_id}")
             else:
                 seen_ids.add(field_id)
+        if path.name in {"task.yml", "question.yml", "research.yml"}:
+            common_ids = [
+                "human-summary",
+                "context",
+                "references",
+                "scope",
+                "out-of-scope",
+                "acceptance",
+                "verification",
+                "dependencies",
+            ]
+            subtype_ids = {
+                "task.yml": [],
+                "question.yml": [
+                    "question", "question-impact", "question-relationship",
+                    "answer-authority", "evidence-needs", "resolution-criteria",
+                    "promotion-destination", "no-promotion-resolution",
+                ],
+                "research.yml": [
+                    "research-objective", "intended-use", "research-scope",
+                    "research-exclusions", "provenance", "depth-effort",
+                    "research-authority", "stopping-conditions", "durable-output",
+                    "freshness", "review-needs",
+                ],
+            }[path.name]
+            expected_ids = common_ids + subtype_ids + ["readiness"]
+            actual_ids = [
+                field.get("id")
+                for field in body
+                if isinstance(field, dict) and field.get("id") is not None
+            ]
+            if actual_ids != expected_ids:
+                failures.append(
+                    f"{relative}: executable contract body ids/order differ from {expected_ids}"
+                )
+            by_id = {
+                field.get("id"): field
+                for field in body
+                if isinstance(field, dict) and isinstance(field.get("id"), str)
+            }
+            optional_ids = {"no-promotion-resolution"}
+            required_ids = common_ids[:-1] + [field_id for field_id in subtype_ids if field_id not in optional_ids]
+            for field_id in required_ids:
+                field = by_id.get(field_id, {})
+                validations = field.get("validations", {})
+                if not isinstance(validations, dict) or validations.get("required") is not True:
+                    failures.append(f"{relative}: {field_id} must be required")
+            summary = by_id.get("human-summary", {}).get("attributes", {})
+            if not isinstance(summary, dict) or summary.get("value") != "<!-- starter-kit-executable-schema:v1 -->":
+                failures.append(f"{relative}: human-summary lacks the executable schema marker")
+            readiness = by_id.get("readiness", {})
+            options = readiness.get("attributes", {}).get("options", []) if isinstance(readiness, dict) else []
+            expected_assertions = [
+                "No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.",
+                "An authorized implementer can execute this without the originating conversation.",
+            ]
+            if (
+                readiness.get("type") != "checkboxes"
+                or not isinstance(options, list)
+                or [option.get("label") for option in options if isinstance(option, dict)] != expected_assertions
+                or any(not isinstance(option, dict) or option.get("required") is not True for option in options)
+            ):
+                failures.append(f"{relative}: readiness assertions differ from the governed Ready contract")
     return failures
 
 

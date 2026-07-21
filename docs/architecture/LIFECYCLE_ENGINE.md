@@ -186,13 +186,15 @@ than trusted as an automatically resumable artifact.
 
 ## Current limits
 
-The Phase 3 one-task Work Manager slice now adds credential-free
+The Phase 3 Work Manager foundation now adds credential-free
 `InspectManagedTask`, `PlanManagedTask`, `ApplyManagedTask`, `VerifyManagedTask`, and
 `ManagedTaskStatus` operations plus one composite `ManageTask` request. Its strict JSON
 CLI route, versioned values, self-digested state, replay, freshness, partial-effect,
 offline, retry, and explicit non-pass contract are documented in
-[WORK_MANAGER.md](WORK_MANAGER.md). This is in-memory evidence only; the production GitHub
-adapter and live qualification remain #72–#76.
+[WORK_MANAGER.md](WORK_MANAGER.md). Issue #74 extends the same seam with schema-v2
+executable issue/source qualification, subtype contracts, Horizon projection, exact
+related-PR delivery observation, and DEC-0022-gated external effects. Deterministic
+production-adapter evidence is simulated; aggregate live qualification remains #76.
 
 - Create accepts only an empty Git working tree apart from `.git`; retrofit is deferred.
 - Phase 1 uses the Go standard library and the structured `git`

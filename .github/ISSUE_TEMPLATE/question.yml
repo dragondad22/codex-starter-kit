@@ -1,0 +1,25 @@
+{
+  "name": "Consequential question",
+  "description": "Capture an uncertainty whose answer must survive this conversation.",
+  "title": "",
+  "labels": ["type:question", "needs-triage"],
+  "body": [
+    {"type":"textarea","id":"human-summary","attributes":{"label":"Human summary","description":"Explain why this question needs durable resolution. Keep the hidden schema marker in place.","value":"<!-- starter-kit-executable-schema:v1 -->"},"validations":{"required":true}},
+    {"type":"textarea","id":"context","attributes":{"label":"Current context"},"validations":{"required":true}},
+    {"type":"textarea","id":"references","attributes":{"label":"Governing decisions, personas, policy, and specifications"},"validations":{"required":true}},
+    {"type":"textarea","id":"scope","attributes":{"label":"Scope"},"validations":{"required":true}},
+    {"type":"textarea","id":"out-of-scope","attributes":{"label":"Out of scope"},"validations":{"required":true}},
+    {"type":"textarea","id":"acceptance","attributes":{"label":"Acceptance criteria and negative paths"},"validations":{"required":true}},
+    {"type":"textarea","id":"verification","attributes":{"label":"Tests, evidence, documentation, and communication required"},"validations":{"required":true}},
+    {"type":"textarea","id":"dependencies","attributes":{"label":"Dependencies, sequencing, and task-specific authority"}},
+    {"type":"textarea","id":"question","attributes":{"label":"Question"},"validations":{"required":true}},
+    {"type":"textarea","id":"question-impact","attributes":{"label":"Question impact"},"validations":{"required":true}},
+    {"type":"dropdown","id":"question-relationship","attributes":{"label":"Question relationship","options":["blocking","related"]},"validations":{"required":true}},
+    {"type":"textarea","id":"answer-authority","attributes":{"label":"Answer authority"},"validations":{"required":true}},
+    {"type":"textarea","id":"evidence-needs","attributes":{"label":"Evidence needs"},"validations":{"required":true}},
+    {"type":"textarea","id":"resolution-criteria","attributes":{"label":"Resolution criteria"},"validations":{"required":true}},
+    {"type":"textarea","id":"promotion-destination","attributes":{"label":"Promotion destination","description":"Name the authoritative decision, specification, policy, human-owned record, or structured state that will receive the answer."},"validations":{"required":true}},
+    {"type":"textarea","id":"no-promotion-resolution","attributes":{"label":"No-promotion resolution","description":"Closing-only exception: explain visibly why the resolved answer requires no durable promotion. Leave blank during normal intake."}},
+    {"type":"checkboxes","id":"readiness","attributes":{"label":"Readiness assertion","options":[{"label":"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.","required":true},{"label":"An authorized implementer can execute this without the originating conversation.","required":true}]}}
+  ]
+}

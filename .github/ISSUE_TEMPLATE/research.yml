@@ -1,0 +1,28 @@
+{
+  "name": "Bounded research",
+  "description": "Authorize bounded evidence-producing work with a durable output.",
+  "title": "",
+  "labels": ["type:research", "needs-triage"],
+  "body": [
+    {"type":"textarea","id":"human-summary","attributes":{"label":"Human summary","description":"Explain the intended outcome and why the research is needed. Keep the hidden schema marker in place.","value":"<!-- starter-kit-executable-schema:v1 -->"},"validations":{"required":true}},
+    {"type":"textarea","id":"context","attributes":{"label":"Current context"},"validations":{"required":true}},
+    {"type":"textarea","id":"references","attributes":{"label":"Governing decisions, personas, policy, and specifications"},"validations":{"required":true}},
+    {"type":"textarea","id":"scope","attributes":{"label":"Scope"},"validations":{"required":true}},
+    {"type":"textarea","id":"out-of-scope","attributes":{"label":"Out of scope"},"validations":{"required":true}},
+    {"type":"textarea","id":"acceptance","attributes":{"label":"Acceptance criteria and negative paths"},"validations":{"required":true}},
+    {"type":"textarea","id":"verification","attributes":{"label":"Tests, evidence, documentation, and communication required"},"validations":{"required":true}},
+    {"type":"textarea","id":"dependencies","attributes":{"label":"Dependencies, sequencing, and task-specific authority"}},
+    {"type":"textarea","id":"research-objective","attributes":{"label":"Research objective"},"validations":{"required":true}},
+    {"type":"textarea","id":"intended-use","attributes":{"label":"Intended use"},"validations":{"required":true}},
+    {"type":"textarea","id":"research-scope","attributes":{"label":"Research scope"},"validations":{"required":true}},
+    {"type":"textarea","id":"research-exclusions","attributes":{"label":"Research exclusions"},"validations":{"required":true}},
+    {"type":"textarea","id":"provenance","attributes":{"label":"Source and provenance expectations"},"validations":{"required":true}},
+    {"type":"textarea","id":"depth-effort","attributes":{"label":"Depth or effort budget"},"validations":{"required":true}},
+    {"type":"textarea","id":"research-authority","attributes":{"label":"Research authority"},"validations":{"required":true}},
+    {"type":"textarea","id":"stopping-conditions","attributes":{"label":"Stopping conditions"},"validations":{"required":true}},
+    {"type":"textarea","id":"durable-output","attributes":{"label":"Durable output"},"validations":{"required":true}},
+    {"type":"textarea","id":"freshness","attributes":{"label":"Freshness requirement"},"validations":{"required":true}},
+    {"type":"textarea","id":"review-needs","attributes":{"label":"Review needs"},"validations":{"required":true}},
+    {"type":"checkboxes","id":"readiness","attributes":{"label":"Readiness assertion","options":[{"label":"No unresolved product, architecture, policy, regulatory, or risk decision is hidden in this task.","required":true},{"label":"An authorized implementer can execute this without the originating conversation.","required":true}]}}
+  ]
+}

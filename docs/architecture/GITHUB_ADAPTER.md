@@ -2,7 +2,7 @@
 
 **Status:** Implemented deterministic production transport; isolated sandbox baseline qualified
 
-**Issue:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72)
+**Issues:** [#72](https://github.com/dragondad22/codex-starter-kit/issues/72), [#74](https://github.com/dragondad22/codex-starter-kit/issues/74)
 
 **Sandbox and live authority:** [#73](https://github.com/dragondad22/codex-starter-kit/issues/73)
 
@@ -84,8 +84,10 @@ does not broaden authority or switch credentials.
 
 Observation follows bounded REST `Link` pages and GraphQL Project-item cursors, matches
 the exact non-secret `starter-kit-managed:<managed-id>` marker, and normalizes issue,
-Project item, lifecycle option, native parent, parent Phase option, and managed metadata
-identities. The capability handshake requires exactly one single-select `Phase` field and
+Project item, lifecycle option, native parent, parent Horizon/Phase option, executable
+issue contract, and small managed-metadata identities. It rejects missing, multiple, or
+unsupported `type:*` labels. The capability handshake requires an exact single-select
+`Horizon` catalog when configured and exactly one single-select `Phase` field and
 the complete named Phase 0–8 option catalog whenever Phase is configured. Renamed,
 duplicate, wrong-type, missing, extra, or stale catalog state is `needs-review`. For an existing selected
 issue it reads the version-pinned native parent, sub-issue, `blocked_by`, and `blocking`
@@ -103,10 +105,29 @@ The adapter accepts only the two semantic effects produced by Work Manager:
   response; multiple matches remain ambiguous.
 - `reconcile-task` carries an ordered list containing only the remaining semantic
   operations: issue metadata, issue closure/reopening, Project membership, Readiness, and
-  Status, plus direct Phase where configured. A related parent closure patches only issue state and therefore does not rewrite
+  Status, Horizon, plus direct Phase where configured. A related parent closure patches only issue state and therefore does not rewrite
   human-owned title, body, or labels. The adapter skips already-converged operations and
   re-reads every mutation before reporting it applied. Phase is set by immutable option ID
   for directly assigned work and cleared from ordinary children that derive it from a parent.
+
+Schema-v2 create renders the complete canonical human issue body; it never creates a
+marker-only Ready issue. Normal reconciliation preserves human prose. The only body
+mutation outside creation is an explicitly qualified exact stale-context refresh, and the
+adapter reparses and compares the exact contract digest after PATCH. Semantic body changes
+stop before mutation.
+
+`ObserveGovernedWork` extends the same seam with bounded delivery evidence. It reads the
+selected issue timeline, follows only same-repository pull-request cross-references, and
+re-reads each PR. A merged PR counts as complete only when its versioned delivery claim
+matches managed ID, desired source revision, executable-contract digest, and bounded
+implemented-file digests; the PR targets the current default branch, the merge remains
+reachable, its exact changed-file manifest matches the claim, and those bytes still exist
+at one immutable default-branch head. Deleted, empty, incomplete, or mismatched manifests
+remain partial. Claims for older governed revisions are ignored rather than poisoning the
+current qualification. Other claimed delivery remains partial; unrelated PR prose is
+ignored. Governed observation additionally requires read access to pull requests and
+repository contents; schema-v1 lifecycle work does not acquire those delivery-observation
+permissions merely to reconcile issues.
 
 Expired/invalid authentication, insufficient authorization, hidden-resource 404,
 validation failure, offline transport, GraphQL partial errors, bounded pagination
