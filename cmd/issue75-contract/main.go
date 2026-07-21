@@ -102,9 +102,10 @@ func runWithDependencies(ctx context.Context, args []string, getenv func(string)
 	flags.SetOutput(io.Discard)
 	requestPath := flags.String("request-file", "", "credential-free DeliveryRequest JSON")
 	mandatePath := flags.String("mandate-file", "", "content-addressed WorkExecutionMandate JSON")
+	sourceRevision := flags.String("source-revision", "", "exact reviewed Starter Kit source revision")
 	executeStep := flags.Bool("execute-step", false, "execute one exact lifecycle transition with scoped GitHub App credentials")
-	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *requestPath == "" || *mandatePath == "" {
-		return errors.New("request-file and mandate-file flags are required; positional arguments are unsupported")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *requestPath == "" || *mandatePath == "" || !commitPattern.MatchString(*sourceRevision) {
+		return errors.New("request-file, mandate-file, and exact source-revision flags are required; positional arguments are unsupported")
 	}
 	var request engine.DeliveryRequest
 	if err := readStrictJSON(*requestPath, &request); err != nil {
@@ -114,7 +115,7 @@ func runWithDependencies(ctx context.Context, args []string, getenv func(string)
 	if err := readStrictJSON(*mandatePath, &mandate); err != nil {
 		return fmt.Errorf("execution mandate: %w", err)
 	}
-	if err := validateEnvelope(request, mandate); err != nil {
+	if err := validateEnvelope(request, mandate, *sourceRevision); err != nil {
 		return err
 	}
 	if *executeStep {
@@ -315,9 +316,9 @@ func readStrictJSON(path string, destination any) error {
 	return nil
 }
 
-func validateEnvelope(request engine.DeliveryRequest, mandate engine.WorkExecutionMandate) error {
+func validateEnvelope(request engine.DeliveryRequest, mandate engine.WorkExecutionMandate, expectedSourceRevision string) error {
 	intent := request.Intent
-	if intent.SchemaVersion != 1 || intent.Target.Host != sandboxHost || intent.Target.RepositoryID != sandboxRepository || intent.Target.ProjectID != sandboxProject || !managedPattern.MatchString(intent.ManagedID) || intent.Title == "" || intent.OperationID == "" || !commitPattern.MatchString(intent.SourceRevision) || intent.OperatingProfileRevision == "" {
+	if intent.SchemaVersion != 1 || intent.Target.Host != sandboxHost || intent.Target.RepositoryID != sandboxRepository || intent.Target.ProjectID != sandboxProject || !managedPattern.MatchString(intent.ManagedID) || intent.Title == "" || intent.OperationID == "" || intent.SourceRevision != expectedSourceRevision || intent.OperatingProfileRevision == "" {
 		return errors.New("delivery request is not bound to the approved immutable issue #75 sandbox target")
 	}
 	if request.Repository != "." || intent.BaseBranch != "main" || !strings.HasPrefix(intent.HeadBranch, "contract/issue-75-") || intent.MergeMethod != "squash" || len(intent.RequiredChecks) == 0 || hasDuplicateOrEmpty(intent.RequiredChecks) {

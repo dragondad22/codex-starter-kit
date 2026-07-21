@@ -26,11 +26,11 @@ func TestContractEmitsRedactedDeterministicWorkflow(t *testing.T) {
 	requestPath := writeJSON(t, "request.json", request)
 	mandatePath := writeJSON(t, "mandate.json", mandate)
 	var first strings.Builder
-	if err := run([]string{"--request-file", requestPath, "--mandate-file", mandatePath}, &first); err != nil {
+	if err := run(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), &first); err != nil {
 		t.Fatal(err)
 	}
 	var second strings.Builder
-	if err := run([]string{"--mandate-file", mandatePath, "--request-file", requestPath}, &second); err != nil {
+	if err := run([]string{"--source-revision", request.Intent.SourceRevision, "--mandate-file", mandatePath, "--request-file", requestPath}, &second); err != nil {
 		t.Fatal(err)
 	}
 	if first.String() != second.String() {
@@ -80,10 +80,19 @@ func TestContractFailsClosedBeforeWorkflowOutput(t *testing.T) {
 			requestPath := writeJSON(t, "request.json", candidateRequest)
 			mandatePath := writeJSON(t, "mandate.json", candidateMandate)
 			var output strings.Builder
-			if err := run([]string{"--request-file", requestPath, "--mandate-file", mandatePath}, &output); err == nil || output.Len() != 0 {
+			if err := run(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), &output); err == nil || output.Len() != 0 {
 				t.Fatalf("unsafe input produced output: %q, %v", output.String(), err)
 			}
 		})
+	}
+}
+
+func TestContractRejectsReviewedSourceMismatch(t *testing.T) {
+	request, mandate := contractFixture(t)
+	var output strings.Builder
+	err := run(contractArgs(strings.Repeat("f", 40), writeJSON(t, "request.json", request), writeJSON(t, "mandate.json", mandate)), &output)
+	if err == nil || output.Len() != 0 {
+		t.Fatalf("mismatched reviewed source produced output: %q, %v", output.String(), err)
 	}
 }
 
@@ -99,7 +108,7 @@ func TestContractRejectsUnknownJSONFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output strings.Builder
-	if err := run([]string{"--request-file", requestPath, "--mandate-file", writeJSON(t, "mandate.json", mandate)}, &output); err == nil || output.Len() != 0 {
+	if err := run(contractArgs(request.Intent.SourceRevision, requestPath, writeJSON(t, "mandate.json", mandate)), &output); err == nil || output.Len() != 0 {
 		t.Fatalf("unknown field was not rejected: %q, %v", output.String(), err)
 	}
 }
@@ -115,10 +124,14 @@ func TestExecuteStepRejectsNonLiveManifestBeforeCredentialsOrOutput(t *testing.T
 	})}
 	var output strings.Builder
 	getenv := func(string) string { return "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----" }
-	err := runWithDependencies(context.Background(), []string{"--request-file", requestPath, "--mandate-file", mandatePath, "--execute-step"}, getenv, client, &output)
+	err := runWithDependencies(context.Background(), append(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), "--execute-step"), getenv, client, &output)
 	if err == nil || output.Len() != 0 || called || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("live execution did not fail closed: output=%q called=%t err=%v", output.String(), called, err)
 	}
+}
+
+func contractArgs(sourceRevision, requestPath, mandatePath string) []string {
+	return []string{"--source-revision", sourceRevision, "--request-file", requestPath, "--mandate-file", mandatePath}
 }
 
 func TestFirstLiveTransitionRequiresCreateBranchWithoutPriorState(t *testing.T) {
