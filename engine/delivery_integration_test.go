@@ -27,6 +27,58 @@ func TestDeliveryPlansReadyTransitionOnlyAfterExactHeadGatesPass(t *testing.T) {
 	}
 }
 
+func TestDeliveryPlansIssueNamedBranchWhenItIsAbsent(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.Branch = engine.DeliveryBranchObservation{}
+		observation.PullRequest = engine.DeliveryPullRequestObservation{}
+		observation.Checks = nil
+		observation.Reviews = nil
+		observation.Rules.BaseRevision = "base-1"
+		observation.Revision = "observation:branch-absent"
+		return observation
+	})
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionBranchAbsent {
+		t.Fatalf("disposition = %q, want branch-absent", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectCreateBranch || plan.Effects[0].HeadRevision != "base-1" {
+		t.Fatalf("effects = %#v, want exact-base branch creation", plan.Effects)
+	}
+}
+
+func TestDeliveryPlansDraftPullRequestWhenBranchExists(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest = engine.DeliveryPullRequestObservation{}
+		observation.Checks = nil
+		observation.Reviews = nil
+		observation.Revision = "observation:pull-request-absent"
+		return observation
+	})
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionPullRequestAbsent {
+		t.Fatalf("disposition = %q, want pull-request-absent", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectCreatePullRequest || plan.Effects[0].Claim == nil {
+		t.Fatalf("effects = %#v, want claimed draft pull request", plan.Effects)
+	}
+}
+
 func TestDeliveryKeepsPendingChecksDistinctAndPlansNoEffect(t *testing.T) {
 	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
 		observation.Checks[0].State = "pending"
@@ -50,10 +102,35 @@ func TestDeliveryKeepsPendingChecksDistinctAndPlansNoEffect(t *testing.T) {
 	}
 }
 
+func TestDeliveryKeepsFailedChecksDistinctAndPlansNoEffect(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.Checks[0].State = "failed"
+		observation.Revision = "observation:checks-failed"
+		return observation
+	})
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionChecksFailed {
+		t.Fatalf("disposition = %q, want checks-failed", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("plan = %#v, want explicit no-change stop", plan)
+	}
+}
+
 func TestDeliveryKeepsPendingDistinctReviewSeparateFromChecks(t *testing.T) {
 	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
 		observation.Reviews = nil
 		observation.PullRequest.Draft = false
+		observation.PullRequest.RequestedReviewers = []string{"reviewer"}
 		observation.Revision = "observation:review-pending"
 		return observation
 	})
@@ -71,6 +148,81 @@ func TestDeliveryKeepsPendingDistinctReviewSeparateFromChecks(t *testing.T) {
 	}
 	if !plan.NoChange || len(plan.Effects) != 0 {
 		t.Fatalf("plan = %#v, want explicit no-change wait", plan)
+	}
+}
+
+func TestDeliveryPlansReviewerRoutingSeparatelyFromApproval(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.Reviews = nil
+		observation.PullRequest.Draft = false
+		observation.PullRequest.RequestedReviewers = nil
+		observation.Revision = "observation:review-unrequested"
+		return observation
+	})
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionReviewUnrequested {
+		t.Fatalf("disposition = %q, want review-unrequested", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectRequestReview || plan.Effects[0].Reviewer != "reviewer" {
+		t.Fatalf("effects = %#v, want reviewer routing", plan.Effects)
+	}
+}
+
+func TestDeliveryKeepsOptionalProductApprovalSeparateFromReview(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.PullRequest.RequestedReviewers = []string{"reviewer"}
+		observation.Revision = "observation:approval-unrequested"
+		return observation
+	})
+	request.Intent.ProductApproval = engine.WorkReviewRequirement{Role: "product-owner", DistinctContext: true}
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionApprovalUnrequested {
+		t.Fatalf("disposition = %q, want approval-unrequested", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectRequestReview || plan.Effects[0].Reviewer != "product-owner" {
+		t.Fatalf("effects = %#v, want product approval routing", plan.Effects)
+	}
+}
+
+func TestDeliveryWaitsForRequestedProductApprovalOnExactHead(t *testing.T) {
+	lifecycle, _, request := deliveryFixture(t, func(observation engine.DeliveryObservation) engine.DeliveryObservation {
+		observation.PullRequest.Draft = false
+		observation.PullRequest.RequestedReviewers = []string{"reviewer", "product-owner"}
+		observation.Revision = "observation:approval-pending"
+		return observation
+	})
+	request.Intent.ProductApproval = engine.WorkReviewRequirement{Role: "product-owner", DistinctContext: true}
+
+	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionApprovalPending {
+		t.Fatalf("disposition = %q, want approval-pending", inspection.Disposition)
+	}
+	plan, err := lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("plan = %#v, want explicit approval wait", plan)
 	}
 }
 
@@ -382,7 +534,7 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", Permissions: []string{"issues:write", "projects:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
 	lifecycle := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(workAdapter), engine.WithDeliveryAdapter(deliveryAdapter))
 	request := engine.DeliveryRequest{Repository: completion.Repository, CompletionIntent: &completion.Intent, Intent: engine.DeliveryIntent{
-		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision,
+		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision, Title: completion.Intent.Task.Title,
 		ManagedID: completion.Intent.Task.ManagedID, Target: completion.Intent.Target, BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"},
 		Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", Claim: &claim, EffectBoundary: completion.Intent.EffectBoundary,
 	}}
@@ -444,7 +596,7 @@ func deliveryFixture(t *testing.T, mutate func(engine.DeliveryObservation) engin
 	}, observation)
 	lifecycle := engine.New(engine.WithClock(deliveryClock{now}), engine.WithDeliveryAdapter(adapter))
 	request := engine.DeliveryRequest{Repository: t.TempDir(), Intent: engine.DeliveryIntent{
-		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", ManagedID: "issue:75",
+		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", ManagedID: "issue:75", Title: "Deliver issue 75",
 		BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []string{"foundation"},
 		Review: engine.WorkReviewRequirement{Role: "reviewer", DistinctContext: true}, MergeMethod: "squash", OperatingProfileRevision: "profile-1",
 		Target:         engine.WorkTarget{Host: "github.com", RepositoryID: "R_repo", ProjectID: "P_project"},
@@ -494,12 +646,13 @@ func readyDraftObservation() engine.DeliveryObservation {
 		SchemaVersion: 1,
 		Revision:      "observation:draft",
 		Issue:         engine.DeliveryIssueObservation{ManagedID: "issue:75", State: "open"},
+		Branch:        engine.DeliveryBranchObservation{Name: "task/75-delivery-squash-completion", Revision: "head-1"},
 		PullRequest: engine.DeliveryPullRequestObservation{
 			Number: 101, State: "open", Draft: true, Base: "main", Head: "task/75-delivery-squash-completion", HeadRevision: "head-1",
 		},
 		Checks:  []engine.DeliveryCheckObservation{{Name: "foundation", HeadRevision: "head-1", State: "passed"}},
 		Reviews: []engine.DeliveryReviewObservation{{Actor: "reviewer", HeadRevision: "head-1", State: "approved", DistinctContext: true, Capable: true}},
-		Rules:   engine.DeliveryRulesObservation{Revision: "rules-1", RequiredChecks: []string{"foundation"}, MergeMethods: []string{"squash"}},
+		Rules:   engine.DeliveryRulesObservation{Revision: "rules-1", BaseRevision: "base-1", RequiredChecks: []string{"foundation"}, MergeMethods: []string{"squash"}},
 	}
 }
 
