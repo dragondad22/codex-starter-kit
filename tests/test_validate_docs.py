@@ -408,14 +408,18 @@ class TaskFitnessValidationTests(unittest.TestCase):
             "AGENTS.md": (
                 "independently completable delivery step; "
                 "ordered checklist with exactly one active step; "
+                "expands issue scope or authority; "
                 "one writer per mutable boundary"
             ),
             "docs/agents/issue-tracker.md": (
                 "Task fitness and implementation planning; bounded decomposition outline "
-                "or deep plan; outcomes become native child tasks"
+                "or deep plan; outcomes become native child tasks; Readiness, Status, "
+                "evidence, and completing change; Neither plan form expands the issue's "
+                "scope or authority"
             ),
             "docs/architecture/LIFECYCLES.md": (
                 "An independently completable plan section is a decomposition signal. "
+                "Neither coordination form expands issue scope. "
                 "One writer owns each mutable boundary."
             ),
             ".github/ISSUE_TEMPLATE/task.yml": (
@@ -427,7 +431,8 @@ class TaskFitnessValidationTests(unittest.TestCase):
                 "create native child tasks for independently completable remediation outcomes"
             ),
             ".github/ISSUE_TEMPLATE/initiative.yml": (
-                "bounded decomposition outline required before executable tasks may become Ready"
+                "bounded decomposition outline required before executable tasks may become "
+                "Ready; its own Project and evidence state"
             ),
         }
         for relative, content in files.items():
@@ -450,6 +455,34 @@ class TaskFitnessValidationTests(unittest.TestCase):
         failures = validate_task_fitness_contract(self.root)
 
         self.assertTrue(any("missing task-fitness marker" in failure for failure in failures))
+
+    def test_rejects_plan_that_can_expand_issue_authority(self) -> None:
+        path = self.root / "AGENTS.md"
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "expands issue scope or authority; ", ""
+            ),
+            encoding="utf-8",
+        )
+
+        failures = validate_task_fitness_contract(self.root)
+
+        self.assertTrue(any("expands issue scope or authority" in failure for failure in failures))
+
+    def test_rejects_missing_independent_child_lifecycle_state(self) -> None:
+        path = self.root / "docs/agents/issue-tracker.md"
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "Readiness, Status, evidence, and completing change; ", ""
+            ),
+            encoding="utf-8",
+        )
+
+        failures = validate_task_fitness_contract(self.root)
+
+        self.assertTrue(
+            any("Readiness, Status, evidence, and completing change" in failure for failure in failures)
+        )
 
 
 class SensitiveDataBoundaryValidationTests(unittest.TestCase):

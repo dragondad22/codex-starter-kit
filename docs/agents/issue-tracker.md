@@ -163,7 +163,8 @@ recovery, or uncertainty benefits from explicit coordination. Plan steps are che
 inside one delivery, not substitutes for decomposition. When no structured plan surface
 exists, use an agent-neutral ordered checklist with exactly one active step in the active
 execution context. At handoff, promote only material deviations and the next action into
-the issue or PR; the checklist is coordination evidence, not authority.
+the issue or PR. Neither plan form expands the issue's scope or authority; both are
+coordination evidence, not authority.
 
 A material change to scope, acceptance, authority, ownership, architecture, policy,
 risk, dependencies, review boundary, evidence boundary, or implemented state repeats

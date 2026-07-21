@@ -102,15 +102,19 @@ TASK_FITNESS_MARKERS = {
     "AGENTS.md": (
         "independently completable delivery step",
         "ordered checklist with exactly one active step",
+        "expands issue scope or authority",
         "one writer per mutable boundary",
     ),
     "docs/agents/issue-tracker.md": (
         "Task fitness and implementation planning",
         "bounded decomposition outline or deep plan",
         "outcomes become native child tasks",
+        "Readiness, Status, evidence, and completing change",
+        "Neither plan form expands the issue's scope or authority",
     ),
     "docs/architecture/LIFECYCLES.md": (
         "An independently completable plan section is a decomposition signal",
+        "Neither coordination form expands issue scope",
         "One writer owns each mutable boundary",
     ),
     ".github/ISSUE_TEMPLATE/task.yml": (
@@ -122,6 +126,7 @@ TASK_FITNESS_MARKERS = {
     ),
     ".github/ISSUE_TEMPLATE/initiative.yml": (
         "bounded decomposition outline required before executable tasks may become Ready",
+        "its own Project and evidence state",
     ),
 }
 

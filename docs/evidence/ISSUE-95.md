@@ -18,6 +18,8 @@
 - Required freshness and fitness checks before implementation planning and after material
   change. Structured plans coordinate a fit task; runtimes without that facility use an
   agent-neutral ordered checklist with exactly one active step.
+- Made both plan forms subordinate to issue authority: neither can expand issue scope or
+  authority.
 - Preserved one writer per mutable boundary while allowing read-only or isolated
   independent review.
 

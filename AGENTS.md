@@ -40,6 +40,7 @@ and design; the approved product contract lives in `docs/`.
   uncertainty benefits from it. A runtime without a plan surface uses an agent-neutral
   ordered checklist with exactly one active step. Plan steps coordinate one delivery;
   independently completable steps trigger decomposition or `Needs refinement`.
+- Neither a structured plan nor its checklist fallback expands issue scope or authority.
 - Keep one writer per mutable boundary. Independent reviewers remain read-only or work in
   isolated copies; they do not concurrently edit the writer's branch.
 - Use the lifecycle-engine interface as the highest test seam: `create`, `retrofit`,

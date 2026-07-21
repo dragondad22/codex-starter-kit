@@ -134,9 +134,10 @@ Implementation refinement follows this order:
 
 An independently completable plan section is a decomposition signal, not permission to
 continue a hidden subproject. Multiple files, modules, tests, or atomic coordinated steps
-are not by themselves separate deliveries. One writer owns each mutable boundary;
-independent reviewers are read-only or isolated. A coherent bug may be promoted in place,
-while independently completable remediation outcomes become native child tasks.
+are not by themselves separate deliveries. Neither coordination form expands issue scope
+or authority. One writer owns each mutable boundary; independent reviewers are read-only
+or isolated. A coherent bug may be promoted in place, while independently completable
+remediation outcomes become native child tasks.
 
 Readiness and completion are subtype-specific:
 
