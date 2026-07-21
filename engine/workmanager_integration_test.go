@@ -1826,7 +1826,119 @@ func TestGovernedManagedTaskMissingExecutableSchemaNeedsRefinement(t *testing.T)
 	}
 }
 
-func TestGovernedManagedTaskStopsForDeliveredBlockedAndStaleSource(t *testing.T) {
+func TestGovernedManagedTaskAlreadyDeliveredClosesInsteadOfReimplementing(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	configureGovernedWorkFixture(t, &request)
+	capability, err := adapter.Capability(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability.Mode = "user-token"
+	capability.Actor = "owner"
+	adapter.SetCapability(capability)
+	request.Intent.Credential = engine.WorkCredentialExpectation{Mode: "user-token", Actor: "owner"}
+	observation := adapter.Observation()
+	observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+	observation.Delivery = &engine.WorkDeliveryObservation{
+		State: "complete", SourceRevision: request.Intent.SourceRevision,
+		ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
+	}
+	observation.Revision = "observation:already-delivered"
+	adapter.SetObservation(observation)
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != engine.WorkFreshnessAlreadyDelivered || inspection.Disposition != string(engine.WorkFreshnessAlreadyDelivered) || len(inspection.Problems) != 0 {
+		t.Fatalf("already-delivered inspection = %#v, %v", inspection, err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil || len(plan.Effects) != 1 || !slices.Contains(plan.Effects[0].Operations, "closure") || !slices.Contains(plan.Effects[0].Operations, "status") || !plan.Effects[0].Desired.Closed || plan.Effects[0].Desired.Status != "done" {
+		t.Fatalf("already-delivered resolution plan = %#v, %v", plan, err)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+		t.Fatal("already-delivered external resolution applied without a DEC-0022 mandate")
+	}
+	mandate := engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "issue-74-delivery-resolution", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: plan.Target, OperationID: plan.OperationID, SelectedManagedID: request.Intent.Task.ManagedID, Actors: []string{"owner"}, CredentialModes: []string{"user-token"}, Permissions: capability.Permissions,
+		OperatingProfileRevisions: []string{plan.OperatingProfileRevision}, ContractDigests: []string{engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue)}, GovernanceDigests: []string{engine.GovernedWorkContractDigest(*request.Intent.Governance)},
+		InputDigests: plan.InputDigests, GovernedSourceDigests: inspection.Qualification.Assessment.SourceDigests, SourceRevisions: []string{plan.SourceRevision},
+		ManagedIDs: []string{plan.Effects[0].ManagedID}, EffectKinds: []string{plan.Effects[0].Kind}, Operations: slices.Clone(plan.Effects[0].Operations), ResourceDigests: []string{engine.ManagedTaskResourceDigest(plan.Effects[0].Desired)}, MaxEffects: len(plan.Effects),
+		DataClass: plan.EffectBoundary.DataClass, CostCeiling: plan.EffectBoundary.CostCeiling, Destructive: plan.EffectBoundary.Destructive, Retention: plan.EffectBoundary.Retention, RecoveryOwner: plan.EffectBoundary.RecoveryOwner,
+	})
+	if _, err := lifecycle.ApplyManagedTaskWithMandate(context.Background(), plan.ID, plan, mandate); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("already-delivered resolution did not verify: %#v, %v", verification, err)
+	}
+	status, err := lifecycle.ManagedTaskStatus(context.Background(), request.Repository)
+	if err != nil || status.Disposition != "converged" || status.Freshness != engine.WorkFreshnessAlreadyDelivered {
+		t.Fatalf("already-delivered status = %#v, %v", status, err)
+	}
+	replayedInspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayedPlan, err := lifecycle.PlanManagedTask(context.Background(), replayedInspection)
+	if err != nil || !replayedPlan.NoChange || len(replayedPlan.Effects) != 0 {
+		t.Fatalf("closed already-delivered work did not replay as no-change: %#v, %v", replayedPlan, err)
+	}
+}
+
+func TestAlreadyDeliveredResolutionFailsClosedWhenDeliveryEvidenceChanges(t *testing.T) {
+	t.Parallel()
+
+	for _, afterApply := range []bool{false, true} {
+		afterApply := afterApply
+		t.Run(fmt.Sprintf("after-apply-%t", afterApply), func(t *testing.T) {
+			t.Parallel()
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
+			configureGovernedWorkFixture(t, &request)
+			observation := adapter.Observation()
+			observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+			observation.Delivery = &engine.WorkDeliveryObservation{
+				State: "complete", SourceRevision: request.Intent.SourceRevision,
+				ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
+			}
+			observation.Revision = "observation:already-delivered"
+			adapter.SetObservation(observation)
+			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if afterApply {
+				if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+					t.Fatal(err)
+				}
+				changed := adapter.Observation()
+				changed.Delivery = nil
+				changed.Revision = "observation:delivery-removed-after-apply"
+				adapter.SetObservation(changed)
+				verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+				if err != nil || verification.OverallState == engine.ControlPass {
+					t.Fatalf("removed delivery evidence passed verification: %#v, %v", verification, err)
+				}
+				return
+			}
+			changed := adapter.Observation()
+			changed.Delivery = nil
+			changed.Revision = "observation:delivery-removed-before-apply"
+			adapter.SetObservation(changed)
+			if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err == nil {
+				t.Fatal("changed delivery evidence applied from a stale resolution plan")
+			}
+		})
+	}
+}
+
+func TestGovernedManagedTaskStopsForBlockedAndStaleSource(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1834,19 +1946,6 @@ func TestGovernedManagedTaskStopsForDeliveredBlockedAndStaleSource(t *testing.T)
 		configure func(*testing.T, *engine.InMemoryWorkAdapter, *engine.ManagedTaskRequest)
 		want      engine.WorkFreshnessDisposition
 	}{
-		{
-			name: "already delivered",
-			configure: func(_ *testing.T, adapter *engine.InMemoryWorkAdapter, request *engine.ManagedTaskRequest) {
-				observation := adapter.Observation()
-				observation.Delivery = &engine.WorkDeliveryObservation{
-					State: "complete", SourceRevision: request.Intent.SourceRevision,
-					ContractDigest: engine.ExecutableIssueContractDigest(request.Intent.Governance.Issue), RepositoryRevision: "default-head", Evidence: []string{"pr:exact-outcome"},
-				}
-				observation.Revision = "observation:already-delivered"
-				adapter.SetObservation(observation)
-			},
-			want: engine.WorkFreshnessAlreadyDelivered,
-		},
 		{
 			name: "new native blocker",
 			configure: func(_ *testing.T, adapter *engine.InMemoryWorkAdapter, _ *engine.ManagedTaskRequest) {
@@ -2039,7 +2138,7 @@ func TestPromotedRecordBacklinkDoesNotAcceptManagedIDSubstringCollisions(t *test
 	t.Parallel()
 
 	body, err := engine.RenderWorkPromotedRecordBacklink(engine.WorkPromotedRecordBacklink{
-		SchemaVersion: 1, ManagedID: "issue:74", IssueURL: "https://github.com/example/repository/issues/74",
+		SchemaVersion: 1, ManagedID: "issue:74", RepositoryID: "repository:fixture", IssueURL: "https://github.com/example/repository/issues/74",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2050,6 +2149,14 @@ func TestPromotedRecordBacklinkDoesNotAcceptManagedIDSubstringCollisions(t *test
 	parsed, err := engine.ParseWorkPromotedRecordBacklink(body)
 	if err != nil || parsed.ManagedID == "issue:7" || parsed.ManagedID != "issue:74" {
 		t.Fatalf("promoted backlink identity = %#v, %v", parsed, err)
+	}
+	for _, invalid := range []engine.WorkPromotedRecordBacklink{
+		{SchemaVersion: 1, ManagedID: "issue:74", RepositoryID: "repository:fixture", IssueURL: "https://github.com/%zz/issues/74"},
+		{SchemaVersion: 1, ManagedID: "issue:74", IssueURL: "https://github.com/example/repository/issues/74"},
+	} {
+		if _, err := engine.RenderWorkPromotedRecordBacklink(invalid); err == nil {
+			t.Fatalf("invalid promoted backlink passed: %#v", invalid)
+		}
 	}
 }
 
@@ -2068,9 +2175,10 @@ func TestGovernedQuestionAndResearchSubtypeContracts(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		configure func(*engine.ManagedTaskRequest)
-		wantError bool
+		name            string
+		configure       func(*engine.ManagedTaskRequest)
+		wantError       bool
+		wantDisposition engine.WorkFreshnessDisposition
 	}{
 		{
 			name: "question ready",
@@ -2130,17 +2238,24 @@ func TestGovernedQuestionAndResearchSubtypeContracts(t *testing.T) {
 		{
 			name: "closed research output",
 			configure: func(request *engine.ManagedTaskRequest) {
-				request.Intent.Task.IssueType = "research"
-				request.Intent.Task.Review = nil
-				request.Intent.Task.Closed = true
-				request.Intent.Task.PromotionRecord = "docs/research/RESULT.md"
-				request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Research: &engine.ResearchWorkContract{
-					Objective: "Compare supported routes.", IntendedUse: "Select one route.", Scope: "Public GitHub.", Exclusions: "Paid features.",
-					Provenance: "Official documentation.", DepthOrEffort: "Two hours.", Authority: "read-only web research.",
-					StoppingConditions: "The routes are distinguishable.", Output: "docs/research/RESULT.md", Freshness: "Checked at execution.", ReviewNeeds: "Maintainer review.",
-				}}
-				bindPromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md")
+				configureClosedResearch(t, request)
 			},
+		},
+		{
+			name: "closed research incomplete durable record",
+			configure: func(request *engine.ManagedTaskRequest) {
+				configureClosedResearch(t, request)
+				writePromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md", "https://"+request.Intent.Target.Host+"/example/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), false)
+			},
+			wantDisposition: engine.WorkFreshnessNeedsRefinement,
+		},
+		{
+			name: "closed research wrong repository backlink",
+			configure: func(request *engine.ManagedTaskRequest) {
+				configureClosedResearch(t, request)
+				writePromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md", "https://"+request.Intent.Target.Host+"/wrong/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), true)
+			},
+			wantDisposition: engine.WorkFreshnessNeedsRefinement,
 		},
 		{
 			name: "closed research wrong output",
@@ -2161,13 +2276,24 @@ func TestGovernedQuestionAndResearchSubtypeContracts(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			lifecycle, _, request, _ := newManagedTaskFixture(t)
+			lifecycle, adapter, request, _ := newManagedTaskFixture(t)
 			configureGovernedWorkFixture(t, &request)
 			test.configure(&request)
+			if request.Intent.Task.Closed && request.Intent.Task.PromotionRecord != "" {
+				observation := adapter.Observation()
+				observation.Task = observedGovernedTask(&request, request.Intent.Target.OptionIDs["readiness:ready"])
+				adapter.SetObservation(observation)
+			}
 			inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
 			if test.wantError {
 				if err == nil {
 					t.Fatalf("invalid subtype contract was accepted: %#v", inspection)
+				}
+				return
+			}
+			if test.wantDisposition != "" {
+				if err != nil || inspection.Qualification == nil || inspection.Qualification.Assessment.Disposition != test.wantDisposition {
+					t.Fatalf("subtype completion disposition = %#v, %v; want %q", inspection, err, test.wantDisposition)
 				}
 				return
 			}
@@ -2327,7 +2453,7 @@ func configureGovernedWorkFixture(t *testing.T, request *engine.ManagedTaskReque
 func observedGovernedTask(request *engine.ManagedTaskRequest, readinessOption string) *engine.WorkObservedTask {
 	contract := request.Intent.Governance.Issue
 	return &engine.WorkObservedTask{
-		ManagedID: request.Intent.Task.ManagedID, IssueNodeID: "memory:" + request.Intent.Task.ManagedID, ProjectItemID: "memory:item:" + request.Intent.Task.ManagedID,
+		ManagedID: request.Intent.Task.ManagedID, IssueNodeID: "memory:" + request.Intent.Task.ManagedID, IssueURL: "https://" + request.Intent.Target.Host + "/example/repository/issues/" + strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), ProjectItemID: "memory:item:" + request.Intent.Task.ManagedID,
 		Title: request.Intent.Task.Title, IssueType: request.Intent.Task.IssueType, ReadinessOption: readinessOption,
 		StatusOption: request.Intent.Target.OptionIDs["status:"+request.Intent.Task.Status], Phase: request.Intent.Task.Phase,
 		PhaseOption: request.Intent.Target.OptionIDs["phase:"+request.Intent.Task.Phase], PhaseAssignmentReason: request.Intent.Task.PhaseAssignmentReason,
@@ -2337,11 +2463,20 @@ func observedGovernedTask(request *engine.ManagedTaskRequest, readinessOption st
 
 func bindPromotionOutput(t *testing.T, request *engine.ManagedTaskRequest, id, slashPath string) {
 	t.Helper()
-	backlink, err := engine.RenderWorkPromotedRecordBacklink(engine.WorkPromotedRecordBacklink{SchemaVersion: 1, ManagedID: request.Intent.Task.ManagedID, IssueURL: "https://github.com/example/repository/issues/" + strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:")})
+	writePromotionOutput(t, request, id, slashPath, "https://"+request.Intent.Target.Host+"/example/repository/issues/"+strings.TrimPrefix(request.Intent.Task.ManagedID, "issue:"), request.Intent.Task.IssueType == "research")
+}
+
+func writePromotionOutput(t *testing.T, request *engine.ManagedTaskRequest, id, slashPath, issueURL string, includeResearchSections bool) {
+	t.Helper()
+	backlink, err := engine.RenderWorkPromotedRecordBacklink(engine.WorkPromotedRecordBacklink{SchemaVersion: 1, ManagedID: request.Intent.Task.ManagedID, RepositoryID: request.Intent.Target.RepositoryID, IssueURL: issueURL})
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := []byte("# Promoted result\n\n" + backlink + "\n")
+	body := "# Promoted result\n\n" + backlink + "\n"
+	if includeResearchSections {
+		body += "\n## Method\n\nCompared the bounded routes.\n\n## Sources\n\nOfficial source records.\n\n## Findings\n\nThe routes differ.\n\n## Conflicting evidence\n\nNo conflicts were found.\n\n## Uncertainty\n\nProvider behavior can change.\n\n## Limitations\n\nPaid features were excluded.\n\n## Freshness\n\nChecked during execution.\n"
+	}
+	content := []byte(body)
 	path := filepath.Join(request.Repository, filepath.FromSlash(slashPath))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -2350,8 +2485,31 @@ func bindPromotionOutput(t *testing.T, request *engine.ManagedTaskRequest, id, s
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(content)
-	request.Intent.Governance.Sources = append(request.Intent.Governance.Sources, engine.GovernedSourceBinding{ID: id, Path: slashPath, Digest: fmt.Sprintf("sha256:%x", digest)})
-	request.Intent.Governance.Issue.GoverningReferences += "\n- " + id + " — promoted output with reciprocal provenance."
+	found := false
+	for index := range request.Intent.Governance.Sources {
+		if request.Intent.Governance.Sources[index].Path == slashPath {
+			request.Intent.Governance.Sources[index].Digest = fmt.Sprintf("sha256:%x", digest)
+			found = true
+		}
+	}
+	if !found {
+		request.Intent.Governance.Sources = append(request.Intent.Governance.Sources, engine.GovernedSourceBinding{ID: id, Path: slashPath, Digest: fmt.Sprintf("sha256:%x", digest)})
+		request.Intent.Governance.Issue.GoverningReferences += "\n- " + id + " — promoted output with reciprocal provenance."
+	}
+}
+
+func configureClosedResearch(t *testing.T, request *engine.ManagedTaskRequest) {
+	t.Helper()
+	request.Intent.Task.IssueType = "research"
+	request.Intent.Task.Review = nil
+	request.Intent.Task.Closed = true
+	request.Intent.Task.PromotionRecord = "docs/research/RESULT.md"
+	request.Intent.Governance.Issue.Subtype = &engine.WorkSubtypeContract{Research: &engine.ResearchWorkContract{
+		Objective: "Compare supported routes.", IntendedUse: "Select one route.", Scope: "Public GitHub.", Exclusions: "Paid features.",
+		Provenance: "Official documentation.", DepthOrEffort: "Two hours.", Authority: "read-only web research.",
+		StoppingConditions: "The routes are distinguishable.", Output: "docs/research/RESULT.md", Freshness: "Checked at execution.", ReviewNeeds: "Maintainer review.",
+	}}
+	bindPromotionOutput(t, request, "RESEARCH-RESULT", "docs/research/RESULT.md")
 }
 
 func configureHorizonTarget(adapter *engine.InMemoryWorkAdapter, request *engine.ManagedTaskRequest) {

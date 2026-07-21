@@ -34,12 +34,15 @@
 The engine and native HTTP adapter cases cover canonical contract and subtype round-trip,
 missing schema, unexpected preamble, edited acceptance, unbound governing references,
 stale source digest, human-owned context conflict, delegated context refresh, unchanged
-fresh work, mechanical Project drift, open native blockers, exact already-delivered work,
-partial delivery, plan/effect qualification binding, missing external mandate, contained
+fresh work, mechanical Project drift, open native blockers, exact already-delivered
+closure/Done reconciliation, delivery-evidence loss before apply/verify, partial delivery
+claimed by another managed item, plan/effect qualification binding, missing external mandate, contained
 mandate receipts, native parent-derived Horizon, copied child Horizon clearing, Ready
 feature Horizon requirements, optional capability reporting, ambiguous type labels, and
 current default-branch delivery observation including wrong-base, unreachable, removed,
-changed-content, omitted-file, empty-PR, and historical-revision negatives. Mandate cases
+changed-content, omitted-file, empty-PR, ordinary cross-reference, and historical-revision
+negatives. Promotion cases require exact repository/issue identity and complete research
+record sections, including malformed URL, wrong-repository, and backlink-only negatives. Mandate cases
 cover exact governance/refresh authority, desired resources, operation/root identity,
 cumulative usage across work switches, and missing/corrupt state.
 

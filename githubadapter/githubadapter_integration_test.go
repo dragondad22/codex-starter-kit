@@ -793,6 +793,38 @@ func TestObserveGovernedWorkBindsMergedRelatedPRToExactOutcome(t *testing.T) {
 			}
 		})
 	}
+	otherClaim, err := engine.RenderWorkDeliveryClaim(engine.WorkDeliveryClaim{
+		SchemaVersion: 1, ManagedID: "issue:other", SourceRevision: "source:other", ContractDigest: "sha256:" + strings.Repeat("a", 64),
+		ImplementedSources: []engine.GovernedSourceBinding{{ID: "other", Path: "docs/other.md", Digest: "sha256:" + strings.Repeat("b", 64)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partialFixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: otherClaim,
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	partialServer := httptest.NewServer(http.HandlerFunc(partialFixture.serveHTTP))
+	defer partialServer.Close()
+	partialObservation, err := newUserAdapter(t, partialServer, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || partialObservation.Delivery == nil || partialObservation.Delivery.State != "partial" || len(partialObservation.Delivery.Evidence) != 1 {
+		t.Fatalf("another governed PR was not retained as possible partial implementation: %#v, %v", partialObservation, err)
+	}
+
+	unclaimedFixture := &lifecycleFixture{
+		fields: map[string]string{"F_readiness": "O_ready", "F_status": "O_next"}, projectItemID: "PVTI_item", deliveryClaim: "ordinary cross-reference",
+		issue: &githubFixtureIssue{Number: 17, NodeID: "I_issue", Title: desired.Title, State: "open", Body: body, Labels: []string{"type:task"}},
+	}
+	unclaimedServer := httptest.NewServer(http.HandlerFunc(unclaimedFixture.serveHTTP))
+	defer unclaimedServer.Close()
+	unclaimedObservation, err := newUserAdapter(t, unclaimedServer, now).ObserveGovernedWork(context.Background(), managedTarget(), engine.GovernedWorkObservationRequest{
+		ManagedID: desired.ManagedID, SourceRevision: "source:v2", ContractDigest: engine.ExecutableIssueContractDigest(contract),
+	})
+	if err != nil || unclaimedObservation.Delivery == nil || unclaimedObservation.Delivery.State != "none" || len(unclaimedObservation.Delivery.Evidence) != 0 {
+		t.Fatalf("ordinary cross-reference was treated as delivery evidence: %#v, %v", unclaimedObservation, err)
+	}
 	oldClaim, err := engine.RenderWorkDeliveryClaim(engine.WorkDeliveryClaim{
 		SchemaVersion: 1, ManagedID: desired.ManagedID, SourceRevision: "source:v1", ContractDigest: engine.ExecutableIssueContractDigest(contract),
 		ImplementedSources: []engine.GovernedSourceBinding{{ID: "implementation", Path: "docs/implementation.md", Digest: fmt.Sprintf("sha256:%x", implementedDigest)}},

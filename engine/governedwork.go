@@ -130,6 +130,7 @@ type WorkPromotionLink struct {
 type WorkPromotedRecordBacklink struct {
 	SchemaVersion int    `json:"schema_version"`
 	ManagedID     string `json:"managed_id"`
+	RepositoryID  string `json:"repository_id"`
 	IssueURL      string `json:"issue_url"`
 }
 
@@ -137,7 +138,7 @@ type WorkPromotedRecordBacklink struct {
 func RenderWorkPromotedRecordBacklink(link WorkPromotedRecordBacklink) (string, error) {
 	parsed, err := url.Parse(link.IssueURL)
 	issueNumber := strings.TrimPrefix(link.ManagedID, "issue:")
-	if link.SchemaVersion != 1 || link.ManagedID == "" || parsed.Scheme != "https" || parsed.Host == "" || issueNumber == link.ManagedID || issueNumber == "" || strings.TrimSuffix(parsed.Path, "/") == "" || !strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/issues/"+issueNumber) || containsSensitiveText(link.ManagedID+"\n"+link.IssueURL) {
+	if err != nil || parsed == nil || link.SchemaVersion != 1 || link.ManagedID == "" || link.RepositoryID == "" || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || issueNumber == link.ManagedID || issueNumber == "" || strings.TrimSuffix(parsed.Path, "/") == "" || !strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/issues/"+issueNumber) || containsSensitiveText(link.ManagedID+"\n"+link.RepositoryID+"\n"+link.IssueURL) {
 		return "", errors.New("promoted record backlink is invalid")
 	}
 	content, err := json.Marshal(link)
@@ -777,9 +778,19 @@ func qualifyGovernedWork(root string, intent WorkDesiredIntent, observation Work
 		}
 		if intent.Task.Closed && intent.Task.PromotionRecord == source.Path && !intent.Task.NoPromotionRequired {
 			backlink, backlinkErr := ParseWorkPromotedRecordBacklink(string(content))
-			if backlinkErr != nil || backlink.ManagedID != intent.Task.ManagedID {
+			observedIssueURL := ""
+			if observation.Task != nil {
+				observedIssueURL = observation.Task.IssueURL
+			}
+			if backlinkErr != nil || backlink.ManagedID != intent.Task.ManagedID || backlink.RepositoryID != intent.Target.RepositoryID || !promotionIssueURLMatchesTarget(backlink.IssueURL, observedIssueURL, intent.Target.Host, intent.Task.ManagedID) {
 				assessment.Disposition = WorkFreshnessNeedsRefinement
 				assessment.Reasons = append(assessment.Reasons, "promoted output lacks the exact reciprocal managed issue backlink")
+			}
+			if intent.Task.IssueType == "research" {
+				if err := validateResearchRecord(string(content)); err != nil {
+					assessment.Disposition = WorkFreshnessNeedsRefinement
+					assessment.Reasons = append(assessment.Reasons, err.Error())
+				}
 			}
 		}
 	}
@@ -810,7 +821,7 @@ func qualifyGovernedWork(root string, intent WorkDesiredIntent, observation Work
 		switch observation.Delivery.State {
 		case "none", "":
 		case "complete":
-			if observation.Delivery.SourceRevision == intent.SourceRevision && observation.Delivery.ContractDigest == assessment.ContractDigest && observation.Delivery.RepositoryRevision != "" && len(observation.Delivery.Evidence) != 0 {
+			if slices.Contains([]string{"task", "bug", "feature"}, intent.Task.IssueType) && observation.Delivery.SourceRevision == intent.SourceRevision && observation.Delivery.ContractDigest == assessment.ContractDigest && observation.Delivery.RepositoryRevision != "" && len(observation.Delivery.Evidence) != 0 {
 				assessment.Disposition = WorkFreshnessAlreadyDelivered
 				assessment.Reasons = append(assessment.Reasons, "the exact outcome is already delivered with retained evidence")
 			} else if assessment.Disposition == WorkFreshnessFresh {
@@ -855,4 +866,46 @@ func qualifyGovernedWork(root string, intent WorkDesiredIntent, observation Work
 		Assessment                                                                                           WorkFreshnessAssessment
 	}{qualification.SchemaVersion, qualification.IssueManagedID, qualification.SourceRevision, qualification.OperatingProfileRevision, qualification.ObservationRevision, qualification.ConfigurationRevision, qualification.Target, qualification.Assessment})
 	return qualification, nil
+}
+
+func promotionIssueURLMatchesTarget(issueURL, observedIssueURL, host, managedID string) bool {
+	parsed, err := url.Parse(issueURL)
+	issueNumber := strings.TrimPrefix(managedID, "issue:")
+	return err == nil && parsed != nil && issueURL == observedIssueURL && parsed.Scheme == "https" && parsed.Host == host && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" && issueNumber != "" && issueNumber != managedID && strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/issues/"+issueNumber)
+}
+
+func validateResearchRecord(body string) error {
+	required := []string{"Method", "Sources", "Findings", "Conflicting evidence", "Uncertainty", "Limitations", "Freshness"}
+	sections := map[string]string{}
+	current := ""
+	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
+		headingPrefix := ""
+		if strings.HasPrefix(line, "### ") {
+			headingPrefix = "### "
+		} else if strings.HasPrefix(line, "## ") {
+			headingPrefix = "## "
+		}
+		if headingPrefix != "" {
+			heading := strings.TrimSpace(strings.TrimPrefix(line, headingPrefix))
+			if slices.Contains(required, heading) {
+				if _, duplicate := sections[heading]; duplicate {
+					return errors.New("promoted research record contains a duplicate required section")
+				}
+				sections[heading] = ""
+				current = heading
+			} else {
+				current = ""
+			}
+			continue
+		}
+		if current != "" {
+			sections[current] += line + "\n"
+		}
+	}
+	for _, heading := range required {
+		if strings.TrimSpace(sections[heading]) == "" {
+			return errors.New("promoted research record lacks required method, sources, findings, conflicting evidence, uncertainty, limitations, or freshness")
+		}
+	}
+	return nil
 }

@@ -165,7 +165,9 @@ workflow override only when it is exceptional, explicit, justified, and authorit
 - Require bounded objectives, authority, depth or effort, stopping conditions, provenance,
   and durable outputs for research issues.
 - Promote material question and research results into the correct authoritative record.
-  Link that record back to the issue and identify it in the issue's closing comment.
+  Link that record back to the exact repository issue and identify it in the issue's
+  closing comment. A completed research record preserves nonempty Method, Sources,
+  Findings, Conflicting evidence, Uncertainty, Limitations, and Freshness sections.
 - Keep Horizon as rolling feature intent. Use one native GitHub Milestone as the finite
   manifest for each named release and one aggregate release issue for readiness and
   publication; milestone percentage alone is not evidence that a release is ready.

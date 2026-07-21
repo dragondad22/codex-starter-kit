@@ -63,9 +63,12 @@ Inspection produces a content-addressed `ManagedWorkQualification` bound to the 
 source, operating profile, observation, configuration, and immutable target. It is
 provenance, not effect authority. One deterministic pre-work disposition is retained:
 `fresh`, `mechanical-drift-repaired`, `contained-context-refreshed`,
-`needs-refinement`, `already-delivered`, or `blocked`. Planning proceeds only from
-`fresh`; the two past-tense repair dispositions are reported only after apply and verify
-receipts prove convergence. Source, acceptance, authority, risk, title/type, or
+`needs-refinement`, `already-delivered`, or `blocked`. Normal implementation planning
+proceeds only from `fresh`. Exact `already-delivered` implementation work admits only a
+resolution plan that closes the issue, sets Status `done`, and reconciles its bounded
+parent/dependent slice; it cannot plan implementation effects. External resolution still
+requires its exact DEC-0022 mandate. The two past-tense repair dispositions are reported
+only after apply and verify receipts prove convergence. Source, acceptance, authority, risk, title/type, or
 human-owned context changes yield `needs-refinement`. A current-context refresh is
 available only when the task contract names the exact stale context-fragment digest as
 refreshable and all other semantic sections remain unchanged.
@@ -86,19 +89,25 @@ repository paths and digests. The PR must target the current default branch, its
 commit must remain reachable from one immutable default-branch head, and every claimed
 file digest must still match at that head. The claimed path set must exactly equal the
 PR's bounded changed-file manifest; deletion-bearing or empty PRs cannot prove complete
-delivery. Historical claims for other governed revisions are ignored. Open, reverted,
-removed, different-revision, or otherwise partial claimed delivery returns to refinement.
+delivery. Historical claims for other governed revisions are ignored. A valid
+cross-referenced claim owned by another managed item is retained as possible partial
+implementation and requires explicit residual-scope refinement; ordinary cross-references
+without a delivery claim remain non-evidence. Open, reverted, removed, current-claim
+contract mismatch, or otherwise partial claimed delivery returns to refinement.
 Issue #75 emits the same delivery claim during branch/PR delivery.
 
 Question and research subtype fields round-trip through the same visible issue contract.
 Question relationship and answer authority are explicit. Research objective, intended
 use, scope/exclusions, provenance, effort, authority, stopping, output, freshness, and
 review are required. Closing promotion must match the governed destination, bind its
-exact repository digest, and contain the reciprocal managed issue identity. Question
+exact repository digest, and contain the reciprocal managed issue identity, immutable
+repository ID, and exact observed issue URL. Question
 completion also posts and re-observes one canonical issue comment linking that promoted
 record; the promoted record carries a structured, collision-safe backlink to the exact
 issue. A no-promotion exception requires a visible closing resolution in the executable
-contract rather than a machine-only boolean.
+contract rather than a machine-only boolean. A closed research output must also contain
+nonempty `Method`, `Sources`, `Findings`, `Conflicting evidence`, `Uncertainty`,
+`Limitations`, and `Freshness` sections; a backlink-only file cannot complete research.
 
 ## Policy and adapter ownership
 

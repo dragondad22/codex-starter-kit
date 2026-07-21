@@ -205,7 +205,7 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		}
 		return adapter.failedObservation(target, managedID, &credential, err), nil
 	}
-	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target)
+	observation.Task = normalizeObservedTask(issue, projectItem, managedID, target, adapter.issueWebURL(issue.Number))
 	if observation.Task.IssueType == "question" && observation.Task.PromotionRecord != "" {
 		backlink, backlinkErr := adapter.observePromotionBacklink(ctx, credential, issue.Number, managedID, observation.Task.PromotionRecord)
 		if backlinkErr != nil {
@@ -311,12 +311,27 @@ func (adapter *Adapter) observeRelatedDelivery(ctx context.Context, credential C
 			return engine.WorkDeliveryObservation{}, err
 		}
 		claim, claimErr := engine.ParseWorkDeliveryClaim(pull.Body)
-		if claimErr != nil || claim.ManagedID != request.ManagedID || claim.SourceRevision != request.SourceRevision || claim.ContractDigest != request.ContractDigest {
-			continue
-		}
 		evidence := pull.HTMLURL
 		if evidence == "" {
 			evidence = "pull-request:" + strconv.Itoa(pull.Number)
+		}
+		if claimErr != nil {
+			if !strings.Contains(pull.Body, "<!-- starter-kit-delivery:") {
+				continue
+			}
+			delivery.Evidence = append(delivery.Evidence, evidence)
+			delivery.ResidualScope = "a cross-referenced pull request has malformed delivery provenance and requires explicit residual-scope refinement"
+			continue
+		}
+		if claim.ManagedID != request.ManagedID {
+			delivery.Evidence = append(delivery.Evidence, evidence)
+			delivery.ResidualScope = "a cross-referenced pull request claims another governed item and may partially implement this outcome; explicit residual-scope refinement is required"
+			continue
+		}
+		// A prior exact claim for this managed item is historical evidence, not a
+		// current partial implementation signal.
+		if claim.SourceRevision != request.SourceRevision || claim.ContractDigest != request.ContractDigest {
+			continue
 		}
 		delivery.Evidence = append(delivery.Evidence, evidence)
 		if pull.Merged && pull.MergedAt != nil {
@@ -520,7 +535,7 @@ func (adapter *Adapter) observeNativeRelationships(ctx context.Context, credenti
 			if childItem == nil {
 				return relationships, nil, errors.New("native sibling is missing its managed Project item")
 			}
-			childObserved := normalizeObservedTask(child, childItem, childManagedID, target)
+			childObserved := normalizeObservedTask(child, childItem, childManagedID, target, adapter.issueWebURL(child.Number))
 			status := semanticOption(target, "status", childObserved.StatusOption)
 			if status == "" {
 				return relationships, nil, errors.New("native sibling is missing a recognized Project Status")
@@ -586,7 +601,7 @@ func (adapter *Adapter) normalizeRelatedIssue(ctx context.Context, credential Cr
 	if item == nil {
 		return engine.WorkObservedTask{}, errors.New("native related issue is missing its managed Project item")
 	}
-	return *normalizeObservedTask(issue, item, managedID, target), nil
+	return *normalizeObservedTask(issue, item, managedID, target, adapter.issueWebURL(issue.Number)), nil
 }
 
 func (adapter *Adapter) listRelationshipIssues(ctx context.Context, credential Credential, initialPath string) ([]githubIssue, error) {
@@ -641,7 +656,7 @@ func semanticOption(target engine.WorkTarget, field, optionID string) string {
 	return ""
 }
 
-func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget) *engine.WorkObservedTask {
+func normalizeObservedTask(issue githubIssue, item *projectItem, managedID string, target engine.WorkTarget, issueURL string) *engine.WorkObservedTask {
 	issueType := ""
 	typeLabels := []string{}
 	for _, label := range issue.Labels {
@@ -652,7 +667,7 @@ func normalizeObservedTask(issue githubIssue, item *projectItem, managedID strin
 	if len(typeLabels) == 1 {
 		issueType = typeLabels[0]
 	}
-	observed := &engine.WorkObservedTask{ManagedID: managedID, IssueNodeID: issue.NodeID, Title: issue.Title, IssueType: issueType, Closed: strings.EqualFold(issue.State, "closed")}
+	observed := &engine.WorkObservedTask{ManagedID: managedID, IssueNodeID: issue.NodeID, IssueURL: issueURL, Title: issue.Title, IssueType: issueType, Closed: strings.EqualFold(issue.State, "closed")}
 	if len(typeLabels) != 1 || !slices.Contains([]string{"task", "bug", "feature", "question", "research"}, issueType) {
 		observed.IssueContractProblems = append(observed.IssueContractProblems, "issue requires exactly one supported type label")
 	}
@@ -1189,6 +1204,10 @@ func (adapter *Adapter) configOptionID(field, value string) string {
 
 func (adapter *Adapter) issuePath() string {
 	return "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName) + "/issues"
+}
+
+func (adapter *Adapter) issueWebURL(number int) string {
+	return "https://" + adapter.config.Host + "/" + adapter.config.RepositoryOwner + "/" + adapter.config.RepositoryName + "/issues/" + strconv.Itoa(number)
 }
 
 func managedBody(desired engine.DesiredManagedTask, contract *engine.ExecutableIssueContract) string {
