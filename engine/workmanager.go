@@ -1419,7 +1419,7 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 		requiredPermissions = append(requiredPermissions, "pull_requests:read", "contents:read")
 	}
 	for _, permission := range requiredPermissions {
-		if !slices.Contains(capability.Permissions, permission) {
+		if !workPermissionAvailable(capability.Permissions, permission) {
 			problems = append(problems, "adapter lacks required permission: "+permission)
 		}
 	}
@@ -1467,6 +1467,14 @@ func validateWorkHandshake(intent WorkDesiredIntent, capability WorkCapability, 
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+func workPermissionAvailable(permissions []string, required string) bool {
+	aliases := []string{required, strings.ReplaceAll(required, "_", "-")}
+	if required == "projects:write" {
+		aliases = append(aliases, "organization-projects:write")
+	}
+	return slices.ContainsFunc(aliases, func(alias string) bool { return slices.Contains(permissions, alias) })
 }
 
 func duplicateMapValue(values map[string]string) bool {
