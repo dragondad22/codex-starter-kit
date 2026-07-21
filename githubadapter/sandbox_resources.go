@@ -52,7 +52,7 @@ func (adapter *SandboxAdapter) observeRepositoryResources(ctx context.Context) (
 
 func (adapter *SandboxAdapter) applyRepositoryResource(ctx context.Context, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
 	switch effect.Resource.Kind {
-	case engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView:
+	case engine.SandboxResourceProjectField, engine.SandboxResourceProjectOption, engine.SandboxResourceProjectView, engine.SandboxResourceProjectItemField:
 		credential, err := adapter.roleCredential(ctx, SandboxRoleReconciler)
 		if err != nil {
 			return engine.SandboxEffectResult{}, errors.New("sandbox reconciler credential is unavailable")
@@ -178,7 +178,7 @@ func (adapter *SandboxAdapter) applyTokenRevocation(ctx context.Context, effect 
 }
 
 func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
-	path := "/orgs/" + url.PathEscape(adapter.config.RepositoryOwner) + "/projectsV2/" + strconv.Itoa(adapter.config.ProjectNumber)
+	path := adapter.projectRESTPath()
 	switch effect.Resource.Kind {
 	case engine.SandboxResourceProjectView:
 		if effect.Kind == "remove-resource" {
@@ -193,9 +193,23 @@ func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credent
 				return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: resource.ID, Detail: "existing Project view drift requires human-owned view reconciliation"}, nil
 			}
 		}
+		if effect.Resource.Attributes["group_by"] != "" || effect.Resource.Attributes["sort_by"] != "" {
+			return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "Project view creation cannot express required grouping or sorting through the approved public API route"}, nil
+		}
 		body := map[string]any{"name": effect.Resource.Name, "layout": effect.Resource.Attributes["layout"]}
 		if filter := effect.Resource.Attributes["filter"]; filter != "" {
 			body["filter"] = filter
+		}
+		if raw := effect.Resource.Attributes["input:visible_fields"]; raw != "" {
+			values := []int{}
+			for _, item := range strings.Split(raw, ",") {
+				value, conversionErr := strconv.Atoi(strings.TrimSpace(item))
+				if conversionErr != nil || value <= 0 {
+					return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "Project view visible-field identity is invalid"}, nil
+				}
+				values = append(values, value)
+			}
+			body["visible_fields"] = values
 		}
 		var response struct {
 			Value struct {
@@ -203,12 +217,36 @@ func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credent
 			} `json:"value"`
 		}
 		if _, err := adapter.rest(ctx, credential, http.MethodPost, path+"/views", body, &response); err != nil {
+			if isResponseStatus(err, http.StatusNotFound) {
+				return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "Project view creation route is unavailable for the selected owner or credential"}, nil
+			}
+			if isResponseStatus(err, http.StatusForbidden) {
+				return engine.SandboxEffectResult{Outcome: "denied", Detail: "Project view creation lacks the selected owner authority"}, nil
+			}
 			return engine.SandboxEffectResult{}, err
 		}
-		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: response.Value.NodeID, Detail: "Project view created"}, nil
+		observed, problems := adapter.observeProject(ctx, credential)
+		if len(problems) != 0 {
+			return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: response.Value.NodeID, Detail: "Project view was created but its postcondition is unavailable"}, nil
+		}
+		for _, resource := range observed {
+			if resource.Key == effect.Resource.Key && resource.ID == response.Value.NodeID && sandboxObservedResourceMatches(effect.Resource, resource) {
+				return engine.SandboxEffectResult{Outcome: "applied", ResourceID: resource.ID, Detail: "Project view created and re-observed"}, nil
+			}
+		}
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: response.Value.NodeID, Detail: "Project view creation postcondition did not converge"}, nil
 	case engine.SandboxResourceProjectField:
 		if effect.Kind == "remove-resource" {
 			return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "baseline Project fields are not removed automatically"}, nil
+		}
+		existing, problems := adapter.observeProject(ctx, credential)
+		if len(problems) != 0 {
+			return engine.SandboxEffectResult{}, errors.New(problems[0])
+		}
+		for _, resource := range existing {
+			if resource.Key == effect.Resource.Key {
+				return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: resource.ID, Detail: "existing Project field drift requires immutable-identity review"}, nil
+			}
 		}
 		input := map[string]any{"projectId": adapter.config.Target.ProjectID, "name": effect.Resource.Name, "dataType": strings.ToUpper(effect.Resource.Attributes["data_type"])}
 		options := adapter.desiredProjectOptions(effect.Resource.Name)
@@ -232,8 +270,111 @@ func (adapter *SandboxAdapter) applyProjectResource(ctx context.Context, credent
 		return engine.SandboxEffectResult{Outcome: "applied", ResourceID: response.Data.Create.Field.ID, Detail: "Project field and approved options created"}, nil
 	case engine.SandboxResourceProjectOption:
 		return adapter.applyProjectOption(ctx, credential, effect)
+	case engine.SandboxResourceProjectItemField:
+		return adapter.applyProjectItemField(ctx, credential, effect)
 	}
 	return engine.SandboxEffectResult{Outcome: "not-configured", Detail: "Project resource kind is unsupported"}, nil
+}
+
+func sandboxObservedResourceMatches(desired engine.SandboxResourceSpec, observed engine.SandboxObservedResource) bool {
+	if desired.Key != observed.Key || desired.Kind != observed.Kind || desired.Name != observed.Name || desired.Marker != observed.Marker {
+		return false
+	}
+	for key, value := range desired.Attributes {
+		if strings.HasPrefix(key, "input:") {
+			continue
+		}
+		if observed.Attributes[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func (adapter *SandboxAdapter) applyProjectItemField(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
+	existing, problems := adapter.observeProject(ctx, credential)
+	if len(problems) != 0 {
+		return engine.SandboxEffectResult{}, errors.New(problems[0])
+	}
+	for _, resource := range existing {
+		if resource.Key == effect.Resource.Key && sandboxObservedResourceMatches(effect.Resource, resource) {
+			return engine.SandboxEffectResult{Outcome: "no-change", ResourceID: resource.ID, Detail: "Project item field already matches the immutable option"}, nil
+		}
+	}
+	itemID, err := adapter.projectItemID(ctx, credential, effect.Resource.Attributes["content_id"])
+	if err != nil {
+		return engine.SandboxEffectResult{}, err
+	}
+	if itemID == "" {
+		return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "Project item field cannot be reconciled because the immutable content item is absent"}, nil
+	}
+	if expected := effect.Resource.Attributes["item_id"]; expected != "" && itemID != expected {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: itemID, Detail: "Project item immutable identity changed"}, nil
+	}
+	var response struct {
+		Data struct {
+			Update struct {
+				Item struct {
+					ID string `json:"id"`
+				} `json:"projectV2Item"`
+			} `json:"update"`
+		} `json:"data"`
+		Errors []graphQLError `json:"errors"`
+	}
+	query := `mutation($project:ID!,$item:ID!,$field:ID!,$option:String!){update:updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}){projectV2Item{id}}}`
+	variables := map[string]any{"project": adapter.config.Target.ProjectID, "item": itemID, "field": effect.Resource.Attributes["field_id"], "option": effect.Resource.Attributes["option_id"]}
+	if err := adapter.graphql(ctx, credential, query, variables, &response); err != nil || len(response.Errors) != 0 || response.Data.Update.Item.ID != itemID {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: itemID, Detail: "Project item field update returned partial or missing data"}, nil
+	}
+	observed, problems := adapter.observeProject(ctx, credential)
+	if len(problems) != 0 {
+		return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: itemID, Detail: "Project item field changed but its postcondition is unavailable"}, nil
+	}
+	for _, resource := range observed {
+		if resource.Key == effect.Resource.Key && resource.ID == itemID && sandboxObservedResourceMatches(effect.Resource, resource) {
+			return engine.SandboxEffectResult{Outcome: "applied", ResourceID: itemID, Detail: "Project item field reconciled and re-observed"}, nil
+		}
+	}
+	return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: itemID, Detail: "Project item field postcondition did not converge"}, nil
+}
+
+func (adapter *SandboxAdapter) projectItemID(ctx context.Context, credential Credential, contentID string) (string, error) {
+	after := ""
+	for page := 0; page < sandboxGraphQLPageLimit; page++ {
+		var response struct {
+			Data struct {
+				Node struct {
+					Items struct {
+						Nodes []struct {
+							ID      string `json:"id"`
+							Content struct {
+								ID string `json:"id"`
+							} `json:"content"`
+						} `json:"nodes"`
+						PageInfo graphQLPageInfo `json:"pageInfo"`
+					} `json:"items"`
+				} `json:"node"`
+			} `json:"data"`
+			Errors []graphQLError `json:"errors"`
+		}
+		query := `query($id:ID!,$after:String){node(id:$id){... on ProjectV2{items(first:100,after:$after){nodes{id content{... on Issue{id}}} pageInfo{hasNextPage endCursor}}}}}`
+		if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.Target.ProjectID, "after": after}, &response); err != nil || len(response.Errors) != 0 {
+			return "", errors.New("Project item inventory is unavailable")
+		}
+		for _, item := range response.Data.Node.Items.Nodes {
+			if item.Content.ID == contentID {
+				return item.ID, nil
+			}
+		}
+		if !response.Data.Node.Items.PageInfo.HasNextPage {
+			return "", nil
+		}
+		after = response.Data.Node.Items.PageInfo.EndCursor
+		if after == "" {
+			return "", errors.New("Project item inventory pagination exhausted before completion")
+		}
+	}
+	return "", errors.New("Project item inventory pagination exhausted before completion")
 }
 
 func (adapter *SandboxAdapter) applyProjectOption(ctx context.Context, credential Credential, effect engine.SandboxEffect) (engine.SandboxEffectResult, error) {
@@ -245,6 +386,19 @@ func (adapter *SandboxAdapter) applyProjectOption(ctx context.Context, credentia
 	for _, field := range fields {
 		if field.Name != fieldName {
 			continue
+		}
+		for _, option := range field.Options {
+			if string(option.Name) != effect.Resource.Name {
+				continue
+			}
+			matches := option.Color == effect.Resource.Attributes["color"] && string(option.Description) == effect.Resource.Attributes["description"]
+			if expectedID := effect.Resource.Attributes["option_id"]; expectedID != "" {
+				matches = matches && option.ID == expectedID
+			}
+			if matches {
+				return engine.SandboxEffectResult{Outcome: "no-change", ResourceID: option.ID, Detail: "Project option already matches and its provider identity was retained"}, nil
+			}
+			return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: option.ID, Detail: "existing Project option drift requires immutable-identity review"}, nil
 		}
 		options := adapter.desiredProjectOptions(fieldName)
 		input := map[string]any{"fieldId": field.NodeID, "singleSelectOptions": options}
@@ -282,7 +436,7 @@ func (adapter *SandboxAdapter) desiredProjectOptions(field string) []map[string]
 
 func (adapter *SandboxAdapter) projectFields(ctx context.Context, credential Credential) ([]projectField, error) {
 	var fields []projectField
-	path := "/orgs/" + url.PathEscape(adapter.config.RepositoryOwner) + "/projectsV2/" + strconv.Itoa(adapter.config.ProjectNumber) + "/fields"
+	path := adapter.projectRESTPath() + "/fields"
 	_, err := adapter.rest(ctx, credential, http.MethodGet, path, nil, &fields)
 	return fields, err
 }

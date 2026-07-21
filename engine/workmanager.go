@@ -72,21 +72,22 @@ type WorkDependentContext struct {
 
 // DesiredManagedTask is the Work Manager-owned desired state for one task.
 type DesiredManagedTask struct {
-	ManagedID           string                  `json:"managed_id"`
-	IssueType           string                  `json:"issue_type"`
-	Title               string                  `json:"title"`
-	ParentManagedID     string                  `json:"parent_managed_id,omitempty"`
-	Blockers            []WorkDependency        `json:"blockers"`
-	Readiness           string                  `json:"readiness"`
-	Status              string                  `json:"status"`
-	Phase               string                  `json:"phase,omitempty"`
-	ParentPhase         string                  `json:"parent_phase,omitempty"`
-	PromotionRecord     string                  `json:"promotion_record,omitempty"`
-	NoPromotionRequired bool                    `json:"no_promotion_required"`
-	Review              []WorkReviewRequirement `json:"review"`
-	Closed              bool                    `json:"closed"`
-	ParentContext       *WorkParentContext      `json:"parent_context,omitempty"`
-	Dependents          []WorkDependentContext  `json:"dependents,omitempty"`
+	ManagedID             string                  `json:"managed_id"`
+	IssueType             string                  `json:"issue_type"`
+	Title                 string                  `json:"title"`
+	ParentManagedID       string                  `json:"parent_managed_id,omitempty"`
+	Blockers              []WorkDependency        `json:"blockers"`
+	Readiness             string                  `json:"readiness"`
+	Status                string                  `json:"status"`
+	Phase                 string                  `json:"phase,omitempty"`
+	ParentPhase           string                  `json:"parent_phase,omitempty"`
+	PhaseAssignmentReason string                  `json:"phase_assignment_reason,omitempty"`
+	PromotionRecord       string                  `json:"promotion_record,omitempty"`
+	NoPromotionRequired   bool                    `json:"no_promotion_required"`
+	Review                []WorkReviewRequirement `json:"review"`
+	Closed                bool                    `json:"closed"`
+	ParentContext         *WorkParentContext      `json:"parent_context,omitempty"`
+	Dependents            []WorkDependentContext  `json:"dependents,omitempty"`
 }
 
 // WorkDesiredIntent is credential-free, source-bound managed-task intent.
@@ -148,19 +149,23 @@ type WorkRateBudget struct {
 
 // WorkObservedTask is normalized adapter state; raw transport requests are never retained.
 type WorkObservedTask struct {
-	ManagedID       string                  `json:"managed_id"`
-	IssueNodeID     string                  `json:"issue_node_id"`
-	ProjectItemID   string                  `json:"project_item_id"`
-	Title           string                  `json:"title"`
-	IssueType       string                  `json:"issue_type"`
-	ParentManagedID string                  `json:"parent_managed_id,omitempty"`
-	BlockedBy       []string                `json:"blocked_by"`
-	ReadinessOption string                  `json:"readiness_option_id"`
-	StatusOption    string                  `json:"status_option_id"`
-	Phase           string                  `json:"phase,omitempty"`
-	PromotionRecord string                  `json:"promotion_record,omitempty"`
-	Review          []WorkReviewRequirement `json:"review"`
-	Closed          bool                    `json:"closed"`
+	ManagedID             string                  `json:"managed_id"`
+	IssueNodeID           string                  `json:"issue_node_id"`
+	ProjectItemID         string                  `json:"project_item_id"`
+	Title                 string                  `json:"title"`
+	IssueType             string                  `json:"issue_type"`
+	ParentManagedID       string                  `json:"parent_managed_id,omitempty"`
+	NativeParentManagedID string                  `json:"native_parent_managed_id,omitempty"`
+	BlockedBy             []string                `json:"blocked_by"`
+	ReadinessOption       string                  `json:"readiness_option_id"`
+	StatusOption          string                  `json:"status_option_id"`
+	Phase                 string                  `json:"phase,omitempty"`
+	PhaseOption           string                  `json:"phase_option_id,omitempty"`
+	ParentPhaseOption     string                  `json:"parent_phase_option_id,omitempty"`
+	PhaseAssignmentReason string                  `json:"phase_assignment_reason,omitempty"`
+	PromotionRecord       string                  `json:"promotion_record,omitempty"`
+	Review                []WorkReviewRequirement `json:"review"`
+	Closed                bool                    `json:"closed"`
 }
 
 // WorkObservedDependent is one natively observed direct dependent and its complete blocker slice.
@@ -250,14 +255,16 @@ type WorkPlan struct {
 
 // WorkDerivedFacts exposes policy results without adding a second managed item.
 type WorkDerivedFacts struct {
-	Readiness       string                  `json:"readiness"`
-	Status          string                  `json:"status"`
-	Phase           string                  `json:"phase,omitempty"`
-	PromotionRecord string                  `json:"promotion_record,omitempty"`
-	Review          []WorkReviewRequirement `json:"review"`
-	Completion      string                  `json:"completion"`
-	ParentStatus    string                  `json:"parent_status,omitempty"`
-	ParentClosed    bool                    `json:"parent_closed"`
+	Readiness             string                  `json:"readiness"`
+	Status                string                  `json:"status"`
+	Phase                 string                  `json:"phase,omitempty"`
+	PhaseSource           string                  `json:"phase_source,omitempty"`
+	PhaseAssignmentReason string                  `json:"phase_assignment_reason,omitempty"`
+	PromotionRecord       string                  `json:"promotion_record,omitempty"`
+	Review                []WorkReviewRequirement `json:"review"`
+	Completion            string                  `json:"completion"`
+	ParentStatus          string                  `json:"parent_status,omitempty"`
+	ParentClosed          bool                    `json:"parent_closed"`
 }
 
 // WorkEffectResult is the adapter's explicit result for one attempted semantic effect.
@@ -518,7 +525,7 @@ func (e *Engine) PlanManagedTask(_ context.Context, inspection WorkInspection) (
 		return WorkEffect{ID: id, Kind: kind, Operations: slices.Clone(operations), Before: before, After: mergedLifecycleState(before, effectDesired, operations), Attempt: nextWorkEffectAttempt(state.Receipts, id, e.clock.Now()), ManagedID: effectDesired.ManagedID, Marker: "starter-kit-managed:" + effectDesired.ManagedID, Desired: effectDesired}
 	}
 	if inspection.Observation.Task == nil {
-		effects = append(effects, newEffect("create-task", nil, desired, nil), newEffect("reconcile-task", []string{"issue", "project", "readiness", "status"}, desired, nil))
+		effects = append(effects, newEffect("create-task", nil, desired, nil), newEffect("reconcile-task", remainingWorkOperations(desired, nil, inspection.Intent.Target), desired, nil))
 	} else if operations := remainingWorkOperations(desired, inspection.Observation.Task, inspection.Intent.Target); len(operations) != 0 {
 		effects = append(effects, newEffect("reconcile-task", operations, desired, inspection.Observation.Task))
 	}
@@ -771,6 +778,22 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 	if !slices.Contains([]string{"task", "bug", "feature", "question", "research"}, intent.Task.IssueType) || !slices.Contains([]string{"intake", "needs-refinement", "ready", "blocked"}, intent.Task.Readiness) || !slices.Contains([]string{"backlog", "next", "in-progress", "done"}, intent.Task.Status) {
 		return errors.New("managed-task intent contains an unsupported issue type or lifecycle value")
 	}
+	if intent.Task.Phase != "" && !validRoadmapPhase(intent.Task.Phase) || intent.Task.ParentPhase != "" && !validRoadmapPhase(intent.Task.ParentPhase) {
+		return errors.New("managed-task intent contains an unsupported roadmap Phase")
+	}
+	if intent.Task.ParentPhase != "" && intent.Task.ParentManagedID == "" {
+		return errors.New("parent-derived Phase requires a native parent identity")
+	}
+	if intent.Task.ParentManagedID != "" && intent.Task.Phase != "" {
+		if intent.Task.Phase == intent.Task.ParentPhase {
+			return errors.New("ordinary child work must derive Phase from its parent instead of duplicating the assignment")
+		}
+		if strings.TrimSpace(intent.Task.PhaseAssignmentReason) == "" {
+			return errors.New("cross-cutting direct Phase assignment requires a reason")
+		}
+	} else if intent.Task.IssueType != "feature" && intent.Task.Phase != "" && strings.TrimSpace(intent.Task.PhaseAssignmentReason) == "" {
+		return errors.New("cross-cutting direct Phase assignment requires a reason")
+	}
 	if slices.Contains([]string{"task", "bug", "feature"}, intent.Task.IssueType) {
 		distinctReview := false
 		for _, review := range intent.Task.Review {
@@ -824,12 +847,25 @@ func validateWorkIntent(intent WorkDesiredIntent) error {
 	if intent.Target.FieldIDs["readiness"] == "" || intent.Target.FieldIDs["status"] == "" || intent.Target.OptionIDs["readiness:"+derived.Readiness] == "" || intent.Target.OptionIDs["status:"+derived.Status] == "" {
 		return errors.New("managed-task intent lacks required lifecycle field or option identities")
 	}
+	if derived.Phase != "" && (intent.Target.FieldIDs["phase"] == "" || intent.Target.OptionIDs["phase:"+derived.Phase] == "") {
+		return errors.New("managed-task intent lacks immutable Phase field or option identity")
+	}
+	if intent.Task.Phase != "" || intent.Task.ParentPhase != "" {
+		if intent.Target.FieldIDs["phase"] == "" {
+			return errors.New("managed-task intent lacks immutable Phase field or option identity")
+		}
+		for _, phase := range RoadmapPhases() {
+			if intent.Target.OptionIDs["phase:"+phase] == "" {
+				return errors.New("managed-task intent lacks the complete immutable Phase option catalog")
+			}
+		}
+	}
 	for _, related := range deriveRelatedManagedTasks(derived) {
 		if related.Readiness != "" && intent.Target.OptionIDs["readiness:"+related.Readiness] == "" || related.Status != "" && intent.Target.OptionIDs["status:"+related.Status] == "" {
 			return errors.New("managed-task intent lacks a related lifecycle option identity")
 		}
 	}
-	values := []string{intent.OperationID, intent.SourceRevision, intent.OperatingProfileRevision, intent.Credential.Actor, intent.Task.ManagedID, intent.Task.Title, intent.Task.ParentManagedID, intent.Task.Phase, intent.Task.ParentPhase, intent.Task.PromotionRecord, intent.Target.Host, intent.Target.RepositoryID, intent.Target.ProjectID}
+	values := []string{intent.OperationID, intent.SourceRevision, intent.OperatingProfileRevision, intent.Credential.Actor, intent.Task.ManagedID, intent.Task.Title, intent.Task.ParentManagedID, intent.Task.Phase, intent.Task.ParentPhase, intent.Task.PhaseAssignmentReason, intent.Task.PromotionRecord, intent.Target.Host, intent.Target.RepositoryID, intent.Target.ProjectID}
 	for key, value := range intent.InputDigests {
 		if key == "" || !validSHA256Digest(value) {
 			return errors.New("managed-task intent contains an invalid input digest")
@@ -992,9 +1028,6 @@ func deriveManagedTask(task DesiredManagedTask) DesiredManagedTask {
 		parent.OtherChildren = slices.Clone(task.ParentContext.OtherChildren)
 		derived.ParentContext = &parent
 	}
-	if derived.Phase == "" {
-		derived.Phase = derived.ParentPhase
-	}
 	if len(derived.Blockers) != 0 {
 		allClosed := true
 		for _, blocker := range derived.Blockers {
@@ -1032,6 +1065,14 @@ func effectiveManagedTask(task DesiredManagedTask, observation WorkObservation, 
 	}
 	if task.ParentManagedID != expectedParent {
 		return DesiredManagedTask{}, errors.New("governed parent metadata differs from parent reconciliation policy")
+	}
+	if task.ParentPhase != "" {
+		if observation.Task.NativeParentManagedID != expectedParent {
+			return DesiredManagedTask{}, errors.New("native parent observation does not match the governed parent identity")
+		}
+		if observation.Task.ParentPhaseOption != target.OptionIDs["phase:"+task.ParentPhase] {
+			return DesiredManagedTask{}, errors.New("native parent Phase does not match the immutable parent Phase option")
+		}
 	}
 	if !sameManagedIDsFromDependencies(task.Blockers, observation.Relationships.Blockers) {
 		return DesiredManagedTask{}, errors.New("native blocker relationships differ from governed intent")
@@ -1165,7 +1206,8 @@ func findObservedDependent(dependents []WorkObservedDependent, managedID string)
 }
 
 func deriveManagedTaskFacts(task DesiredManagedTask) WorkDerivedFacts {
-	facts := WorkDerivedFacts{Readiness: task.Readiness, Status: task.Status, Phase: task.Phase, PromotionRecord: task.PromotionRecord, Review: slices.Clone(task.Review), Completion: "incomplete"}
+	phase, phaseSource := effectiveRoadmapPhase(task)
+	facts := WorkDerivedFacts{Readiness: task.Readiness, Status: task.Status, Phase: phase, PhaseSource: phaseSource, PhaseAssignmentReason: task.PhaseAssignmentReason, PromotionRecord: task.PromotionRecord, Review: slices.Clone(task.Review), Completion: "incomplete"}
 	if task.Closed {
 		facts.Completion = "complete"
 	}
@@ -1323,14 +1365,18 @@ func observedTaskMatches(desired DesiredManagedTask, observed *WorkObservedTask,
 
 func remainingWorkOperations(desired DesiredManagedTask, observed *WorkObservedTask, target WorkTarget) []string {
 	if observed == nil {
-		return []string{"issue", "project", "readiness", "status"}
+		operations := []string{"issue", "project", "readiness", "status"}
+		if desired.Phase != "" {
+			operations = append(operations, "phase")
+		}
+		return operations
 	}
 	blockedBy := make([]string, 0, len(desired.Blockers))
 	for _, blocker := range desired.Blockers {
 		blockedBy = append(blockedBy, blocker.ManagedID)
 	}
 	operations := []string{}
-	if observed.ManagedID != desired.ManagedID || observed.Title != desired.Title || observed.IssueType != desired.IssueType || observed.ParentManagedID != desired.ParentManagedID || !slices.Equal(observed.BlockedBy, blockedBy) || observed.Phase != desired.Phase || observed.PromotionRecord != desired.PromotionRecord || !slices.Equal(observed.Review, desired.Review) || observed.Closed != desired.Closed {
+	if observed.ManagedID != desired.ManagedID || observed.Title != desired.Title || observed.IssueType != desired.IssueType || observed.ParentManagedID != desired.ParentManagedID || !slices.Equal(observed.BlockedBy, blockedBy) || observed.Phase != desired.Phase || observed.PhaseAssignmentReason != desired.PhaseAssignmentReason || observed.PromotionRecord != desired.PromotionRecord || !slices.Equal(observed.Review, desired.Review) || observed.Closed != desired.Closed {
 		operations = append(operations, "issue")
 	}
 	if observed.ProjectItemID == "" {
@@ -1342,6 +1388,13 @@ func remainingWorkOperations(desired DesiredManagedTask, observed *WorkObservedT
 	if observed.StatusOption != target.OptionIDs["status:"+desired.Status] {
 		operations = append(operations, "status")
 	}
+	desiredPhaseOption := ""
+	if desired.Phase != "" {
+		desiredPhaseOption = target.OptionIDs["phase:"+desired.Phase]
+	}
+	if observed.PhaseOption != desiredPhaseOption {
+		operations = append(operations, "phase")
+	}
 	return operations
 }
 
@@ -1351,12 +1404,31 @@ func validWorkOperations(operations []string) bool {
 	}
 	seen := map[string]bool{}
 	for _, operation := range operations {
-		if !slices.Contains([]string{"issue", "project", "readiness", "status", "closure"}, operation) || seen[operation] {
+		if !slices.Contains([]string{"issue", "project", "readiness", "status", "phase", "closure"}, operation) || seen[operation] {
 			return false
 		}
 		seen[operation] = true
 	}
 	return true
+}
+
+func validRoadmapPhase(value string) bool {
+	return slices.Contains(RoadmapPhases(), value)
+}
+
+// RoadmapPhases returns the complete governed Phase option catalog in roadmap order.
+func RoadmapPhases() []string {
+	return []string{"Phase 0", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 6", "Phase 7", "Phase 8"}
+}
+
+func effectiveRoadmapPhase(task DesiredManagedTask) (string, string) {
+	if task.Phase != "" {
+		return task.Phase, "direct"
+	}
+	if task.ParentPhase != "" {
+		return task.ParentPhase, "parent"
+	}
+	return "", ""
 }
 
 func nextWorkEffectAttempt(receipts []WorkEffectReceipt, effectID string, now time.Time) int {
@@ -1555,7 +1627,15 @@ func (adapter *InMemoryWorkAdapter) applyObservedEffect(effect WorkEffect) {
 	for _, blocker := range desired.Blockers {
 		blockedBy = append(blockedBy, blocker.ManagedID)
 	}
-	adapter.observation.Task = &WorkObservedTask{ManagedID: desired.ManagedID, IssueNodeID: "memory:issue:" + desired.ManagedID, ProjectItemID: "memory:project-item:" + desired.ManagedID, Title: desired.Title, IssueType: desired.IssueType, ParentManagedID: desired.ParentManagedID, BlockedBy: blockedBy, ReadinessOption: adapter.observation.Target.OptionIDs["readiness:"+desired.Readiness], StatusOption: adapter.observation.Target.OptionIDs["status:"+desired.Status], Phase: desired.Phase, PromotionRecord: desired.PromotionRecord, Review: slices.Clone(desired.Review), Closed: desired.Closed}
+	phaseOption := ""
+	if desired.Phase != "" {
+		phaseOption = adapter.observation.Target.OptionIDs["phase:"+desired.Phase]
+	}
+	parentPhaseOption := ""
+	if desired.ParentPhase != "" {
+		parentPhaseOption = adapter.observation.Target.OptionIDs["phase:"+desired.ParentPhase]
+	}
+	adapter.observation.Task = &WorkObservedTask{ManagedID: desired.ManagedID, IssueNodeID: "memory:issue:" + desired.ManagedID, ProjectItemID: "memory:project-item:" + desired.ManagedID, Title: desired.Title, IssueType: desired.IssueType, ParentManagedID: desired.ParentManagedID, NativeParentManagedID: desired.ParentManagedID, BlockedBy: blockedBy, ReadinessOption: adapter.observation.Target.OptionIDs["readiness:"+desired.Readiness], StatusOption: adapter.observation.Target.OptionIDs["status:"+desired.Status], Phase: desired.Phase, PhaseOption: phaseOption, ParentPhaseOption: parentPhaseOption, PhaseAssignmentReason: desired.PhaseAssignmentReason, PromotionRecord: desired.PromotionRecord, Review: slices.Clone(desired.Review), Closed: desired.Closed}
 	adapter.observation.Revision = digestJSON(adapter.observation.Task)
 }
 

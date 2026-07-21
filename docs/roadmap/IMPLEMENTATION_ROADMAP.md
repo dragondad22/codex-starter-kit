@@ -4,6 +4,8 @@
 **Roadmap authority:** Live features and ordering are maintained in the
 [Codex Starter Kit GitHub Project](https://github.com/users/dragondad22/projects/8).
 This document is sequencing/reference architecture, not a hand-maintained status tracker.
+The Project's governed `Phase` field maps features #1–#9 to Phase 0–Phase 8; ordinary
+children derive that context through their native parent.
 
 ## Sequencing Principle
 
@@ -20,8 +22,8 @@ reduces applicable code, security, user-experience, testing, or documentation qu
 Outcome: this kit repository follows the rules it will ship.
 
 - Initialize Git and GitHub repository.
-- Create the required GitHub Project, Status/Horizon/Readiness fields, views, rulesets,
-  labels, issue/PR templates, and reconciliation baseline.
+- Create the required GitHub Project, Status/Horizon/Readiness fields, rulesets, labels,
+  issue/PR templates, and reconciliation baseline; preserve optional human-owned views.
 - Add concise root `AGENTS.md` and document routing.
 - Promote approved discovery decisions into stable decision records.
 - Select license, ownership, security policy, contribution policy, and release approach.
@@ -68,7 +70,8 @@ Outcome: managed repositories have synchronized Issues/Project and one Ready iss
 executed end to end.
 
 - Implement GitHub adapter and in-memory contract double.
-- Bootstrap/reconcile labels, fields, views, rulesets, auto-add, and close-to-Done flow.
+- Bootstrap/reconcile labels, fields, rulesets, auto-add, and close-to-Done flow while
+  leaving saved-view presence and layout to each user or team.
 - Render/validate two-layer issues and readiness refresh.
 - Implement sparse `type:question` and bounded `type:research` forms, subtype readiness,
   authorization, completion/promotion checks, and reciprocal source links.

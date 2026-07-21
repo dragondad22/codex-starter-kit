@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "mandate_id": "sha256:b09038fbd3ed1a2f0a38b92ff8f9c033b404c25b3a12090b27c96ad4639822c1",
+  "approved_by": "dragondad22",
+  "approval_id": "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5017894175",
+  "approved_at": "2026-07-20T00:17:09Z",
+  "expires_at": "2026-07-21T00:17:09Z",
+  "target": {
+    "host": "github.com",
+    "owner_id": "19365745",
+    "repository_id": "R_kgDOTVs5Hg",
+    "project_id": "PVT_kwHOASd_cc4BdI9q",
+    "repository_name": "dragondad22/codex-starter-kit"
+  },
+  "actors": [
+    "reconciler"
+  ],
+  "marker_prefix": "starter-kit-contract:issue-46",
+  "unmarked_resource_keys": [
+    "project-field:phase",
+    "project-option:phase-0",
+    "project-option:phase-1",
+    "project-option:phase-2",
+    "project-option:phase-3",
+    "project-option:phase-4",
+    "project-option:phase-5",
+    "project-option:phase-6",
+    "project-option:phase-7",
+    "project-option:phase-8",
+    "project-view:phases",
+    "project-item-field:feature-1-phase",
+    "project-item-field:feature-2-phase",
+    "project-item-field:feature-3-phase",
+    "project-item-field:feature-4-phase",
+    "project-item-field:feature-5-phase",
+    "project-item-field:feature-6-phase",
+    "project-item-field:feature-7-phase",
+    "project-item-field:feature-8-phase",
+    "project-item-field:feature-9-phase"
+  ],
+  "resource_kinds": [
+    "project-field",
+    "project-option",
+    "project-view",
+    "project-item-field"
+  ],
+  "effect_kinds": [
+    "reconcile-resource"
+  ],
+  "resource_digests": [
+    "sha256:11ac2300c1a08adf8e3e6e10e6504f5d219632930bc69fef0ef973af305f81a7",
+    "sha256:144c4d4da0ccc409696d1520df60e906108852bda6ee0f2550a8f1a6e95ac76a",
+    "sha256:17c8ca5153f455384fef9c5e19629a2c59fc2d5de90a105ea8477f0daae82d43",
+    "sha256:2721319a73a8dd196a336066522a7b154b4fde02eb7831f864760b9ff70858f4",
+    "sha256:495630a9e18e24675be9f20a959208adfeca0a2091e090d377885e2fe453968d",
+    "sha256:5434c0ce5c11ad9ea43b9a5a2c0f79faadf75c92859227570b3c761022c66295",
+    "sha256:85a883296cccc119f5e1daf31ace5e232afb62a67badda403521d96362aa97a4",
+    "sha256:91d4b17228c673c8e804fe62b7a5f6f8d40910052d51910b0091539d53b3671f",
+    "sha256:a1ab54651775dd634cb39c05b8b9e782bc2d5cef3fa41905c6c4b60faf679317",
+    "sha256:ab0216177322e30c1bd4ad49525e39c317d5f701a047c6d68cec885923769c08",
+    "sha256:b0874855c16d5232f91252969d760e4495e68b346f5915943fda1688eff0bddc",
+    "sha256:b96ab1ea0c9f860ed04499b2b02bfd765942fb8bdfdbc6d20f78cfc914dd3277",
+    "sha256:b9a0c0d1e461fc35b54d9acc10b52c1a7e815699ef7acbe8b2143cf606373ca1",
+    "sha256:bbe2aaa3db7eae5ef8490b92308d4b16ae2c975d466c55294dc4a88681c57b43",
+    "sha256:bf07c2176a8d2c92993a795b6c19ba589cfde9f95e2e9872ea54e58d37bf003c",
+    "sha256:c4572d67df3422078f46df049b8c61a2d38cea1c31920a641f62c017ac2cb580",
+    "sha256:db123553954bbb40ae46f97e1212cd022b8a5b5c3e7ad38ad2a8f03f1b9d3dd0",
+    "sha256:efb7b9d6250c0c446a0edefc87a0e33475c037d8204e1201e51d2e694e0a4350",
+    "sha256:f42917248662c6dc0afd4ef41350c76d23afc120d6f1f506b34ef356f791c226",
+    "sha256:f851aa94ade0a1845dcbebda7103b8791c69333ff0006b54a2b42b692727d146"
+  ],
+  "max_effects": 0,
+  "data_classification": "public-project-metadata",
+  "cost_ceiling": "zero-dollar",
+  "destructive_ceiling": "no-delete-no-overwrite-human-view",
+  "retention": "30-days",
+  "recovery_owner": "dragondad22",
+  "authority": {
+    "credential_identities": [
+      "reconciler|user-token|dragondad22|dragondad22|19365745|"
+    ],
+    "permissions": [
+      "reconciler:classic-scope:gist",
+      "reconciler:classic-scope:project",
+      "reconciler:classic-scope:read:org",
+      "reconciler:classic-scope:repo",
+      "reconciler:classic-scope:workflow",
+      "reconciler:projects:write"
+    ],
+    "evidence_mode": "live",
+    "compatibility": "github.com:api.github.com:2026-03-10:native-rest-graphql",
+    "data_classification": "public-project-metadata",
+    "cost_ceiling": "zero-dollar",
+    "destructive_ceiling": "no-delete-no-overwrite-human-view",
+    "retention": "30-days"
+  }
+}

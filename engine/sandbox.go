@@ -19,6 +19,7 @@ const (
 	SandboxResourceProjectField     = "project-field"
 	SandboxResourceProjectOption    = "project-option"
 	SandboxResourceProjectView      = "project-view"
+	SandboxResourceProjectItemField = "project-item-field"
 	SandboxResourceProjectWorkflow  = "project-workflow"
 	SandboxResourceProjectItemProof = "project-item-proof"
 	SandboxResourceRuleset          = "ruleset"
@@ -40,6 +41,7 @@ var supportedSandboxResourceKinds = map[string]struct{}{
 	SandboxResourceProjectField:     {},
 	SandboxResourceProjectOption:    {},
 	SandboxResourceProjectView:      {},
+	SandboxResourceProjectItemField: {},
 	SandboxResourceProjectWorkflow:  {},
 	SandboxResourceProjectItemProof: {},
 	SandboxResourceRuleset:          {},
@@ -629,6 +631,12 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 		}
 		if resource.DesiredState == SandboxResourceAbsent && (resource.Marker == "" || !strings.HasPrefix(resource.Marker, manifest.MarkerPrefix)) {
 			return fmt.Errorf("sandbox cleanup resource %s requires an exact approved marker", resource.Key)
+		}
+		if resource.Kind == SandboxResourceProjectItemField && (resource.Attributes["content_id"] == "" || resource.Attributes["field"] == "" || resource.Attributes["field_id"] == "" || resource.Attributes["option_id"] == "") {
+			return fmt.Errorf("Project item field resource %s requires immutable content, field, and option identities", resource.Key)
+		}
+		if resource.Kind == SandboxResourceProjectView && !slices.Contains([]string{"table", "board", "roadmap"}, resource.Attributes["layout"]) {
+			return fmt.Errorf("Project view resource %s requires a supported layout", resource.Key)
 		}
 		if _, duplicate := seen[resource.Key]; duplicate {
 			return fmt.Errorf("duplicate sandbox resource key: %s", resource.Key)

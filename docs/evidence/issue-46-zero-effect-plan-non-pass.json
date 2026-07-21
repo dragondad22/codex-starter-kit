@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "evidence_id": "sha256:567464257526a4b61514ae53d4e40f6ebe15acf34dd76e77e4c47183e5846f58",
+  "candidate": "368f043accbc297fcbea1ddf41d564b60aff8eb0",
+  "attempted_at": "2026-07-20T00:22:35Z",
+  "stage": "plan",
+  "outcome": "non_pass",
+  "mandate_id": "sha256:b09038fbd3ed1a2f0a38b92ff8f9c033b404c25b3a12090b27c96ad4639822c1",
+  "approval_id": "https://github.com/dragondad22/codex-starter-kit/issues/46#issuecomment-5017894175",
+  "mandate_max_effects": 0,
+  "plan_id": null,
+  "plan_effect_count": null,
+  "apply_attempted": false,
+  "project_effect_count": 0,
+  "retained_problems": [
+    "reconciler: Project immutable identity or owner is unavailable or mismatched",
+    "sandbox capability is unavailable or stale"
+  ],
+  "post_stop_read_only_probe": {
+    "route": "GET /users/dragondad22/projectsV2/8",
+    "api_version": "2026-03-10",
+    "outcome": "match",
+    "project_node_id": "PVT_kwHOASd_cc4BdI9q",
+    "project_number": 8,
+    "owner_login": "dragondad22",
+    "owner_id": "19365745",
+    "owner_type": "User"
+  },
+  "evidence_boundary": "The lifecycle stopped before emitting a plan and intentionally did not retain provider response bodies or temporary repository paths. The matching post-stop read-only probe does not convert the earlier lifecycle non-pass into a pass or authorize retry/apply."
+}

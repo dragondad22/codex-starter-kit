@@ -40,10 +40,19 @@ func TestManagedTaskLifecycleConvergesThroughInMemoryAdapter(t *testing.T) {
 			Host:         "memory.local",
 			RepositoryID: "repository:fixture",
 			ProjectID:    "project:fixture",
-			FieldIDs:     map[string]string{"readiness": "field:readiness", "status": "field:status"},
+			FieldIDs:     map[string]string{"readiness": "field:readiness", "status": "field:status", "phase": "field:phase"},
 			OptionIDs: map[string]string{
 				"readiness:ready": "option:ready",
 				"status:next":     "option:next",
+				"phase:Phase 0":   "option:phase-0",
+				"phase:Phase 1":   "option:phase-1",
+				"phase:Phase 2":   "option:phase-2",
+				"phase:Phase 3":   "option:phase-3",
+				"phase:Phase 4":   "option:phase-4",
+				"phase:Phase 5":   "option:phase-5",
+				"phase:Phase 6":   "option:phase-6",
+				"phase:Phase 7":   "option:phase-7",
+				"phase:Phase 8":   "option:phase-8",
 			},
 		},
 	})
@@ -59,12 +68,13 @@ func TestManagedTaskLifecycleConvergesThroughInMemoryAdapter(t *testing.T) {
 			Credential:               engine.WorkCredentialExpectation{Mode: "memory", Actor: "test:maintainer"},
 			Target:                   adapter.Observation().Target,
 			Task: engine.DesiredManagedTask{
-				ManagedID: "issue:71",
-				IssueType: "task",
-				Title:     "Manage one task deterministically through the lifecycle engine",
-				Readiness: "ready",
-				Status:    "next",
-				Phase:     "Phase 3",
+				ManagedID:             "issue:71",
+				IssueType:             "task",
+				Title:                 "Manage one task deterministically through the lifecycle engine",
+				Readiness:             "ready",
+				Status:                "next",
+				Phase:                 "Phase 3",
+				PhaseAssignmentReason: "Cross-cutting Work Manager delivery is sequenced in Phase 3.",
 				Review: []engine.WorkReviewRequirement{{
 					Role:            "change-review",
 					DistinctContext: true,
@@ -171,8 +181,8 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 		Relationships: engine.WorkRelationshipObservation{Observed: true},
 		Target: engine.WorkTarget{
 			Host: "memory.local", RepositoryID: "repository:fixture", ProjectID: "project:fixture",
-			FieldIDs:  map[string]string{"readiness": "field:readiness", "status": "field:status"},
-			OptionIDs: map[string]string{"readiness:ready": "option:ready", "readiness:blocked": "option:blocked", "status:backlog": "option:backlog", "status:next": "option:next", "status:in-progress": "option:in-progress", "status:done": "option:done"},
+			FieldIDs:  map[string]string{"readiness": "field:readiness", "status": "field:status", "phase": "field:phase"},
+			OptionIDs: map[string]string{"readiness:ready": "option:ready", "readiness:blocked": "option:blocked", "status:backlog": "option:backlog", "status:next": "option:next", "status:in-progress": "option:in-progress", "status:done": "option:done", "phase:Phase 0": "option:phase-0", "phase:Phase 1": "option:phase-1", "phase:Phase 2": "option:phase-2", "phase:Phase 3": "option:phase-3", "phase:Phase 4": "option:phase-4", "phase:Phase 5": "option:phase-5", "phase:Phase 6": "option:phase-6", "phase:Phase 7": "option:phase-7", "phase:Phase 8": "option:phase-8"},
 		},
 	})
 	request := engine.ManagedTaskRequest{
@@ -185,7 +195,7 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 			Target:                   adapter.Observation().Target,
 			Task: engine.DesiredManagedTask{
 				ManagedID: "issue:71", IssueType: "task", Title: "Manage one task deterministically through the lifecycle engine",
-				Readiness: "ready", Status: "next", Phase: "Phase 3",
+				Readiness: "ready", Status: "next", Phase: "Phase 3", PhaseAssignmentReason: "Cross-cutting Work Manager delivery is sequenced in Phase 3.",
 				Review: []engine.WorkReviewRequirement{{Role: "change-review", DistinctContext: true}},
 			},
 		},
@@ -195,6 +205,17 @@ func newManagedTaskFixture(t *testing.T) (*engine.Engine, *engine.InMemoryWorkAd
 
 func observeIntentRelationships(observation *engine.WorkObservation, task engine.DesiredManagedTask) {
 	observation.Relationships = engine.WorkRelationshipObservation{Observed: true, Blockers: slices.Clone(task.Blockers)}
+	if observation.Task != nil {
+		observation.Task.Phase = task.Phase
+		observation.Task.PhaseAssignmentReason = task.PhaseAssignmentReason
+		if task.Phase != "" {
+			observation.Task.PhaseOption = observation.Target.OptionIDs["phase:"+task.Phase]
+		}
+		if task.ParentPhase != "" {
+			observation.Task.NativeParentManagedID = task.ParentManagedID
+			observation.Task.ParentPhaseOption = observation.Target.OptionIDs["phase:"+task.ParentPhase]
+		}
+	}
 	if task.ParentContext != nil {
 		observation.Relationships.ParentManagedID = task.ParentContext.ManagedID
 		observation.Relationships.OtherChildren = slices.Clone(task.ParentContext.OtherChildren)
@@ -771,8 +792,11 @@ func TestManagedTaskPolicyDerivesReadinessPhaseReviewAndCompletion(t *testing.T)
 		t.Fatal("expected derived task effects")
 	}
 	derived := plan.Effects[len(plan.Effects)-1].Desired
-	if derived.Readiness != "ready" || derived.Status != "done" || derived.Phase != "Phase 3" {
+	if derived.Readiness != "ready" || derived.Status != "done" || derived.Phase != "" {
 		t.Fatalf("unexpected derived lifecycle facts: %#v", derived)
+	}
+	if plan.DerivedFacts.Phase != "Phase 3" || plan.DerivedFacts.PhaseSource != "parent" {
+		t.Fatalf("expected parent-derived Phase context without a copied assignment, got %#v", plan.DerivedFacts)
 	}
 	if len(derived.Review) != 1 || !derived.Review[0].DistinctContext {
 		t.Fatalf("review requirement must remain distinct: %#v", derived.Review)
@@ -1038,8 +1062,9 @@ func TestManagedTaskUsesObservedParentLifecycleAsUnstartedBaseline(t *testing.T)
 	observation.Task = &engine.WorkObservedTask{
 		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
 		Title: request.Intent.Task.Title, IssueType: "task", ParentManagedID: "issue:4",
-		ReadinessOption: "option:ready", StatusOption: "option:next", Phase: "Phase 3",
-		Review: request.Intent.Task.Review,
+		ReadinessOption: "option:ready", StatusOption: "option:next", Phase: "Phase 3", PhaseOption: "option:phase-3",
+		PhaseAssignmentReason: request.Intent.Task.PhaseAssignmentReason,
+		Review:                request.Intent.Task.Review,
 	}
 	observation.RelatedTasks = []engine.WorkObservedTask{{
 		ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4",
@@ -1259,6 +1284,136 @@ func TestManagedTaskRelatedPartialFailureResumesOnlyUnconvergedCorrections(t *te
 	verification, err := restarted.VerifyManagedTask(context.Background(), request.Repository)
 	if err != nil || verification.OverallState != engine.ControlPass {
 		t.Fatalf("related recovery did not converge: %#v, %v", verification, err)
+	}
+}
+
+func TestManagedTaskPlansDirectPhaseAssignmentByImmutableOption(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ReadinessOption: "option:ready", StatusOption: "option:next",
+	}
+	observation.Revision = "observation:missing-phase"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanManagedTask(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || !slices.Contains(plan.Effects[0].Operations, "phase") {
+		t.Fatalf("expected one immutable Phase correction, got %#v", plan.Effects)
+	}
+	if _, err := lifecycle.ApplyManagedTask(context.Background(), plan.ID, plan); err != nil {
+		t.Fatal(err)
+	}
+	verification, err := lifecycle.VerifyManagedTask(context.Background(), request.Repository)
+	if err != nil || verification.OverallState != engine.ControlPass {
+		t.Fatalf("direct Phase assignment did not converge: %#v, %v", verification, err)
+	}
+}
+
+func TestManagedTaskRequiresReasonForCrossCuttingDirectPhase(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, _, request, _ := newManagedTaskFixture(t)
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentPhase = "Phase 3"
+	request.Intent.Task.Phase = "Phase 5"
+	request.Intent.Task.PhaseAssignmentReason = ""
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil || !strings.Contains(err.Error(), "cross-cutting") {
+		t.Fatalf("expected unjustified cross-cutting Phase to stop, got %v", err)
+	}
+	request.Intent.Task.PhaseAssignmentReason = "Shared qualification work is sequenced with Phase 5."
+	if _, err := lifecycle.InspectManagedTask(context.Background(), request); err != nil {
+		t.Fatalf("expected justified cross-cutting Phase to inspect: %v", err)
+	}
+}
+
+func TestManagedTaskRejectsInvalidDuplicatedAndStalePhaseInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		prepare func(*engine.ManagedTaskRequest)
+		want    string
+	}{
+		{name: "unsupported phase", prepare: func(request *engine.ManagedTaskRequest) {
+			request.Intent.Task.Phase = "Phase 9"
+		}, want: "unsupported roadmap Phase"},
+		{name: "orphan parent phase", prepare: func(request *engine.ManagedTaskRequest) {
+			request.Intent.Task.Phase = ""
+			request.Intent.Task.PhaseAssignmentReason = ""
+			request.Intent.Task.ParentPhase = "Phase 3"
+		}, want: "native parent identity"},
+		{name: "duplicated parent assignment", prepare: func(request *engine.ManagedTaskRequest) {
+			request.Intent.Task.ParentManagedID = "issue:4"
+			request.Intent.Task.ParentPhase = "Phase 3"
+		}, want: "derive Phase from its parent"},
+		{name: "stale option identity", prepare: func(request *engine.ManagedTaskRequest) {
+			delete(request.Intent.Target.OptionIDs, "phase:Phase 3")
+		}, want: "immutable Phase field or option identity"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			lifecycle, _, request, _ := newManagedTaskFixture(t)
+			test.prepare(&request)
+			if _, err := lifecycle.InspectManagedTask(context.Background(), request); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q rejection, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestManagedTaskBindsInheritedPhaseToNativeParentObservation(t *testing.T) {
+	t.Parallel()
+
+	lifecycle, adapter, request, now := newManagedTaskFixture(t)
+	request.Intent.Task.Phase = ""
+	request.Intent.Task.PhaseAssignmentReason = ""
+	request.Intent.Task.ParentManagedID = "issue:4"
+	request.Intent.Task.ParentPhase = "Phase 3"
+	request.Intent.Task.ParentContext = &engine.WorkParentContext{ManagedID: "issue:4", Status: "backlog", OtherChildren: []engine.WorkRelatedTask{}}
+	observation := adapter.Observation()
+	observation.Task = &engine.WorkObservedTask{
+		ManagedID: "issue:71", IssueNodeID: "memory:issue:71", ProjectItemID: "memory:item:71",
+		Title: request.Intent.Task.Title, IssueType: "task", ParentManagedID: "issue:4",
+		ReadinessOption: "option:ready", StatusOption: "option:next",
+	}
+	observation.RelatedTasks = []engine.WorkObservedTask{{
+		ManagedID: "issue:4", IssueNodeID: "memory:issue:4", ProjectItemID: "memory:item:4",
+		ReadinessOption: "option:ready", StatusOption: "option:backlog", PhaseOption: "option:phase-3",
+	}}
+	observation.Relationships = engine.WorkRelationshipObservation{Observed: true, ParentManagedID: "issue:4", OtherChildren: []engine.WorkRelatedTask{}}
+	observation.Revision = "observation:unbound-parent-phase"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+
+	inspection, err := lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != "non-pass" || !strings.Contains(strings.Join(inspection.Problems, " "), "native parent") {
+		t.Fatalf("caller-supplied parent Phase must not bypass native observation: %#v", inspection)
+	}
+
+	observation.Task.NativeParentManagedID = "issue:4"
+	observation.Task.ParentPhaseOption = "option:phase-3"
+	observation.Revision = "observation:bound-parent-phase"
+	adapter.SetObservation(observation)
+	lifecycle = engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(adapter))
+	inspection, err = lifecycle.InspectManagedTask(context.Background(), request)
+	if err != nil || inspection.Disposition != "inspected" {
+		t.Fatalf("native parent Phase observation should satisfy the binding: %#v, %v", inspection, err)
 	}
 }
 

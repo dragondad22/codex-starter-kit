@@ -3,11 +3,11 @@
 Issues, PRDs, findings, epics, features, and executable tasks live in
 [`dragondad22/codex-starter-kit` GitHub Issues](https://github.com/dragondad22/codex-starter-kit/issues).
 The linked [Codex Starter Kit Project](https://github.com/users/dragondad22/projects/8),
-with Status, Horizon, and Readiness fields, is operational authority.
+with Status, Horizon, Readiness, and Phase fields, is operational authority.
 
 ## Field semantics
 
-The three planning fields are independent. In particular, Project `Backlog` is not a
+The four planning fields are independent. In particular, Project `Backlog` is not a
 synonym for a Scrum product backlog and does not mean Horizon `Later`.
 
 | Field | Question answered | Transition contract |
@@ -15,10 +15,16 @@ synonym for a Scrum product backlog and does not mean Horizon `Later`.
 | Status | Where is this item in execution? | `Backlog` means tracked but not selected for immediate execution; `Next` means explicitly selected as the immediate queue; `In progress` means delivery has started; `Done` means completed. A Ready item may remain Backlog until selected. |
 | Readiness | Could authorized work start now? | `Intake` has not been refined; `Needs refinement` has unresolved specification or authority; `Ready` is executable; `Blocked` has an identified unresolved dependency or control. |
 | Horizon | Where does this feature sit in rolling product intent? | `Now`, `Next`, and `Later` apply to feature direction. Tasks normally inherit context from their parent and may leave Horizon blank. Horizon does not select work or assign release membership. |
+| Phase | Which ordered roadmap outcome contains this work? | `Phase 0` through `Phase 8` are assigned directly to roadmap features. Ordinary children derive Phase through their native parent and leave their own field blank. A directly assigned cross-cutting child records why. Phase is not execution state, Horizon, sprint, Milestone, or release completion. |
 
 `Next` is intentionally overloaded by GitHub's field option names: Status `Next` is an
 execution queue, while Horizon `Next` is product direction. Always name the field when
 the distinction is not obvious.
+
+Saved Project views are optional, human-owned navigation surfaces over these governed
+facts. Individuals and teams may arrange them to fit their work. A `Phases` view, when
+used, does not become another roadmap authority and its progress context does not prove a
+phase or release complete; its absence or a different layout does not invalidate Phase.
 
 Triage labels route a complete item to the intended executor; they do not supersede the
 Project gate. For example, `ready-for-agent` plus Readiness `Blocked` means the brief is

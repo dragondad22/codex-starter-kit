@@ -222,6 +222,15 @@ func (adapter *Adapter) Observe(ctx context.Context, target engine.WorkTarget, m
 		}
 		observation.Relationships = relationships
 		observation.RelatedTasks = related
+		if relationships.ParentManagedID != "" {
+			for _, relatedTask := range related {
+				if relatedTask.ManagedID == relationships.ParentManagedID {
+					observation.Task.NativeParentManagedID = relationships.ParentManagedID
+					observation.Task.ParentPhaseOption = relatedTask.PhaseOption
+					break
+				}
+			}
+		}
 	}
 	observation.Revision = digest(struct {
 		Task          *engine.WorkObservedTask
@@ -417,7 +426,7 @@ func normalizeObservedTask(issue githubIssue, item *projectItem, managedID strin
 			case target.FieldIDs["status"]:
 				observed.StatusOption = field.OptionID
 			case target.FieldIDs["phase"]:
-				observed.Phase = field.OptionID
+				observed.PhaseOption = field.OptionID
 			}
 		}
 	}
@@ -429,6 +438,7 @@ func normalizeObservedTask(issue githubIssue, item *projectItem, managedID strin
 			observed.BlockedBy = append(observed.BlockedBy, blocker.ManagedID)
 		}
 		observed.Phase = metadata.Phase
+		observed.PhaseAssignmentReason = metadata.PhaseAssignmentReason
 		observed.PromotionRecord = metadata.PromotionRecord
 		observed.Review = slices.Clone(metadata.Review)
 	}
@@ -522,7 +532,7 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 	}
 	operations := slices.Clone(effect.Operations)
 	if len(operations) == 0 {
-		operations = []string{"issue", "project", "readiness", "status"}
+		operations = []string{"issue", "project", "readiness", "status", "phase"}
 	}
 	issue := issues[0]
 	if slices.Contains(operations, "closure") && strings.EqualFold(issue.State, "closed") != effect.Desired.Closed {
@@ -600,7 +610,7 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 		}
 		itemID = item.ID
 	}
-	if itemID == "" && (slices.Contains(operations, "readiness") || slices.Contains(operations, "status")) {
+	if itemID == "" && (slices.Contains(operations, "readiness") || slices.Contains(operations, "status") || slices.Contains(operations, "phase")) {
 		return engine.WorkEffectResult{Outcome: "failed", Attempt: attempt, Detail: "Project item is absent for lifecycle field reconciliation", Recoverable: true}, nil
 	}
 	for _, field := range []struct {
@@ -610,12 +620,13 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 	}{
 		{"readiness", adapter.configFieldID("readiness"), adapter.configOptionID("readiness", effect.Desired.Readiness)},
 		{"status", adapter.configFieldID("status"), adapter.configOptionID("status", effect.Desired.Status)},
+		{"phase", adapter.configFieldID("phase"), adapter.configOptionID("phase", effect.Desired.Phase)},
 	} {
 		if !slices.Contains(operations, field.Operation) || projectFieldMatches(item, field.Field, field.Option) {
 			continue
 		}
-		if field.Field == "" || field.Option == "" {
-			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "immutable lifecycle field or option identity is unavailable", Recoverable: true}, nil
+		if field.Field == "" || field.Operation != "phase" && field.Option == "" {
+			return engine.WorkEffectResult{Outcome: "needs-review", Attempt: attempt, Detail: "immutable Project field or option identity is unavailable", Recoverable: true}, nil
 		}
 		var updated struct {
 			Data struct {
@@ -623,12 +634,17 @@ func (adapter *Adapter) Apply(ctx context.Context, effect engine.WorkEffect) (en
 					Item struct {
 						ID string `json:"id"`
 					} `json:"projectV2Item"`
-				} `json:"updateProjectV2ItemFieldValue"`
+				} `json:"update"`
 			} `json:"data"`
 			Errors []graphQLError `json:"errors"`
 		}
-		query := `mutation UpdateManagedTaskField($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`
-		if graphErr := adapter.mutateGraphQL(ctx, credential, query, map[string]any{"project": adapter.config.ProjectID, "item": itemID, "field": field.Field, "option": field.Option}, &updated); graphErr != nil {
+		query := `mutation UpdateManagedTaskField($project: ID!, $item: ID!, $field: ID!, $option: String!) { update: updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) { projectV2Item { id } } }`
+		variables := map[string]any{"project": adapter.config.ProjectID, "item": itemID, "field": field.Field, "option": field.Option}
+		if field.Operation == "phase" && field.Option == "" {
+			query = `mutation ClearManagedTaskPhase($project: ID!, $item: ID!, $field: ID!) { update: clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) { projectV2Item { id } } }`
+			delete(variables, "option")
+		}
+		if graphErr := adapter.mutateGraphQL(ctx, credential, query, variables, &updated); graphErr != nil {
 			return adapter.transportResult(graphErr, nil, attempt)
 		}
 		if len(updated.Errors) != 0 || updated.Data.Update.Item.ID == "" {
@@ -879,7 +895,7 @@ func issueMatchesDesired(issue githubIssue, desired engine.DesiredManagedTask) b
 	if !ok {
 		return false
 	}
-	return metadata.ManagedID == desired.ManagedID && metadata.IssueType == desired.IssueType && metadata.ParentManagedID == desired.ParentManagedID && slices.Equal(metadata.Blockers, desired.Blockers) && metadata.Phase == desired.Phase && metadata.PromotionRecord == desired.PromotionRecord && slices.Equal(metadata.Review, desired.Review)
+	return metadata.ManagedID == desired.ManagedID && metadata.IssueType == desired.IssueType && metadata.ParentManagedID == desired.ParentManagedID && slices.Equal(metadata.Blockers, desired.Blockers) && metadata.Phase == desired.Phase && metadata.PhaseAssignmentReason == desired.PhaseAssignmentReason && metadata.PromotionRecord == desired.PromotionRecord && slices.Equal(metadata.Review, desired.Review)
 }
 
 func mergeManagedBody(existing string, desired engine.DesiredManagedTask) string {
@@ -913,15 +929,19 @@ func mergeManagedLabels(existing []struct {
 }
 
 func projectFieldMatches(item *projectItem, fieldID, optionID string) bool {
-	if item == nil {
-		return false
+	return projectFieldOption(item, fieldID) == optionID
+}
+
+func projectFieldOption(item *projectItem, fieldID string) string {
+	if item == nil || fieldID == "" {
+		return ""
 	}
 	for _, field := range item.FieldValues.Nodes {
 		if field.Field.ID == fieldID {
-			return field.OptionID == optionID
+			return field.OptionID
 		}
 	}
-	return false
+	return ""
 }
 
 func (adapter *Adapter) waitForMutation(ctx context.Context) error {
@@ -1165,9 +1185,12 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 				} `json:"owner"`
 				Fields struct {
 					Nodes []struct {
-						ID      string `json:"id"`
-						Options []struct {
-							ID string `json:"id"`
+						ID       string `json:"id"`
+						Name     string `json:"name"`
+						DataType string `json:"dataType"`
+						Options  []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
 						} `json:"options"`
 					} `json:"nodes"`
 					PageInfo struct {
@@ -1187,10 +1210,12 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 	var projectResponse projectHandshakeResponse
 	observedFields := map[string]bool{}
 	observedOptions := map[string]bool{}
+	phaseFieldCount := 0
+	phaseCatalogMatches := true
 	cursor := any(nil)
 	for page := 0; page < adapter.config.MaxPages; page++ {
 		var response projectHandshakeResponse
-		query := `query ManagedTaskProject($id: ID!, $after: String) { node(id: $id) { ... on ProjectV2 { id owner { __typename ... on User { login } ... on Organization { login } } fields(first: 100, after: $after) { nodes { ... on ProjectV2SingleSelectField { id options { id } } } pageInfo { hasNextPage endCursor } } } } rateLimit { limit remaining resetAt } }`
+		query := `query ManagedTaskProject($id: ID!, $after: String) { node(id: $id) { ... on ProjectV2 { id owner { __typename ... on User { login } ... on Organization { login } } fields(first: 100, after: $after) { nodes { ... on ProjectV2FieldCommon { id name dataType } ... on ProjectV2SingleSelectField { options { id name } } } pageInfo { hasNextPage endCursor } } } } rateLimit { limit remaining resetAt } }`
 		if err := adapter.graphql(ctx, credential, query, map[string]any{"id": adapter.config.ProjectID, "after": cursor}, &response); err != nil {
 			return adapter.failedCapability(capability, err), nil
 		}
@@ -1204,6 +1229,18 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 			observedFields[field.ID] = true
 			for _, option := range field.Options {
 				observedOptions[field.ID+":"+option.ID] = true
+			}
+			if field.Name == "Phase" {
+				phaseFieldCount++
+				phaseCatalogMatches = phaseCatalogMatches && field.ID == adapter.config.FieldIDs["phase"] && field.DataType == "SINGLE_SELECT" && len(field.Options) == len(engine.RoadmapPhases())
+				seenNames := map[string]bool{}
+				for _, option := range field.Options {
+					phaseCatalogMatches = phaseCatalogMatches && !seenNames[option.Name] && adapter.config.OptionIDs["phase:"+option.Name] == option.ID
+					seenNames[option.Name] = true
+				}
+				for _, name := range engine.RoadmapPhases() {
+					phaseCatalogMatches = phaseCatalogMatches && seenNames[name]
+				}
 			}
 		}
 		if !response.Data.Node.Fields.PageInfo.HasNextPage {
@@ -1223,6 +1260,9 @@ func (adapter *Adapter) Capability(ctx context.Context) (engine.WorkCapability, 
 	for key, optionID := range adapter.config.OptionIDs {
 		fieldName, _, ok := strings.Cut(key, ":")
 		configurationMatches = configurationMatches && ok && observedOptions[adapter.config.FieldIDs[fieldName]+":"+optionID]
+	}
+	if adapter.config.FieldIDs["phase"] != "" {
+		configurationMatches = configurationMatches && phaseFieldCount == 1 && phaseCatalogMatches
 	}
 	if !configurationMatches {
 		capability.Disposition = "needs-review"

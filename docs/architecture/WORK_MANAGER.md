@@ -2,7 +2,7 @@
 
 **Status:** Implemented credential-free lifecycle and deterministic GitHub transport
 
-**Issue:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71)
+**Issues:** [#71](https://github.com/dragondad22/codex-starter-kit/issues/71), [#46](https://github.com/dragondad22/codex-starter-kit/issues/46)
 
 **GitHub adapter:** [#72 contract](GITHUB_ADAPTER.md); live sandbox deferred to #73/#76
 
@@ -25,7 +25,7 @@ Every boundary is schema version 1:
 
 - `WorkDesiredIntent` binds one stable managed ID to the governed source revision,
   operating-profile revision, input digests, expected actor, immutable target IDs,
-  relationships, lifecycle values, Phase, promotion route, review requirements, and
+  relationships, lifecycle values, direct and parent-derived Phase, promotion route, review requirements, and
   desired completion state.
 - `WorkCapability` reports online/fresh state, actor/mode, immutable target ownership,
   API version, exact permissions, rate budgets, limitations, evidence mode,
@@ -50,13 +50,23 @@ the emitted JSON plus black-box behavior through the CLI and engine seam.
 
 Work Manager derives the effective task before planning. It promotes a blocked task to
 Readiness `ready` only when every natively observed blocker is closed, never changes Status
-as a side effect of that promotion, inherits Phase from the parent when direct Phase is
+as a side effect of that promotion, reports Phase from the parent when direct Phase is
 absent, maps a closed task to Status `done`, and preserves parent, blocker, promotion, and
 distinct-review facts. The adapter observes and attempts semantic effects; it cannot
 select policy, credentials, broader authority, or a passing result.
 Closed questions require either a durable promotion route or an explicit no-promotion
 resolution; closed research requires a durable promoted output. Implementation work
 requires a named distinct-context review role.
+
+Phase projection uses the immutable `Phase` field and `Phase 0`–`Phase 8` option IDs.
+Roadmap features may carry a direct assignment. Ordinary children retain a blank Phase
+field while `DerivedFacts` reports the adapter-observed native parent's immutable Phase
+option with source `parent`; caller text alone cannot establish that fact. This avoids
+copying context onto every child. A non-feature direct assignment is cross-cutting
+and requires a durable reason. A child cannot duplicate its parent's value directly.
+Unsupported values, missing/stale identities, or an unjustified direct assignment stop
+before durable state. Reconciliation sets a justified direct option and clears a copied
+option from ordinary child work.
 
 For the selected task, the immutable plan derives and applies a bounded reconciliation
 slice containing the selected item, its one parent, and its direct dependents. A closed
@@ -126,12 +136,23 @@ transport outcomes, and simulated/live receipt separation. See the
 
 Neither in-memory nor deterministic HTTP-fixture evidence is live GitHub evidence. #73
 owns separately approved sandbox provisioning. #15 owns the deterministic reconciliation
-backstop; #74 consumes that result while owning full intake, subtype, Horizon, Phase, and
-Project governance; #75 owns branch/PR/review/gate delivery; and #76 owns aggregate live
+backstop; #46 owns governed Phase field, option, and assignment configuration while its
+repository-specific receipt also observes an optional human-owned saved view;
+#74 consumes those results while owning full intake, subtype, Horizon, Phase, and Project
+governance; #75 owns branch/PR/review/gate delivery; and #76 owns aggregate live
 qualification, including the live item/parent/dependent reconciliation receipt.
 
-The current draft route manages one selected task plus its bounded parent/direct-dependent
-reconciliation slice and discovers native relationships read-only. It does not create
-credentials, provision repositories or Projects, configure rules or workflows, publish a
-release, or claim private/paid/GHES support. Native Linux, macOS, and Windows support is
-claimed only after the exact completing revision passes the repository matrix.
+The current route manages one selected task plus its bounded parent/direct-dependent
+reconciliation slice, discovers native relationships read-only, and reconciles an existing
+Phase assignment by immutable option identity. It does not create credentials, provision
+repositories or Projects, configure rules or workflows, publish a release, or claim
+private/paid/GHES support. Native Linux, macOS, and Windows support is claimed only after
+the exact completing revision passes the repository matrix.
+
+Project-level Phase configuration uses the engine's existing content-addressed external-
+resource lifecycle rather than the one-task intent. Its v1 implementation names remain
+`Sandbox*` for compatibility, but #46 supplies a distinct operational target, user-token
+authority profile, manifest, mandate, and state repository. The plan covers exactly one
+Phase catalog, feature #1–#9 assignments, and the repository's observed optional `Phases`
+view; it cannot inherit #73's sandbox authority or widen routine Work Manager effects.
+Work Manager does not prescribe saved-view presence or layout.

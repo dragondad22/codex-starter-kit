@@ -81,6 +81,9 @@ adapter. Local in-memory and HTTP-fixture tests are supported deterministic beha
 live organization route remains `not-configured` until the approved App permissions,
 human-owned Project workflow, fixtures, cleanup, revocation, and completing native CI
 evidence all pass. The personal Project/classic-PAT route is outside the 1.0 support claim.
+The shared external-resource transport retries only bounded idempotent REST reads for
+eligible provider-transient responses; effects remain single-attempt and exhausted reads
+remain explicit non-pass evidence.
 
 ## Native proof contract
 
