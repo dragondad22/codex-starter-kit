@@ -1,7 +1,15 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
+	"github.com/dragondad22/codex-starter-kit/githubadapter"
 )
 
 func TestContractEmitsRedactedDeterministicWorkflow(t *testing.T) {
@@ -95,6 +104,76 @@ func TestContractRejectsUnknownJSONFields(t *testing.T) {
 	}
 }
 
+func TestExecuteStepRejectsNonLiveManifestBeforeCredentialsOrOutput(t *testing.T) {
+	request, mandate := contractFixture(t)
+	requestPath := writeJSON(t, "request.json", request)
+	mandatePath := writeJSON(t, "mandate.json", mandate)
+	called := false
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, io.EOF
+	})}
+	var output strings.Builder
+	getenv := func(string) string { return "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----" }
+	err := runWithDependencies(context.Background(), []string{"--request-file", requestPath, "--mandate-file", mandatePath, "--execute-step"}, getenv, client, &output)
+	if err == nil || output.Len() != 0 || called || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("live execution did not fail closed: output=%q called=%t err=%v", output.String(), called, err)
+	}
+}
+
+func TestSeederCredentialMintUsesExactRepositoryAndPermissionScope(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	secret := "installation-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/app":
+			io.WriteString(writer, `{"id":4319763,"slug":"codex-starter-kit-labs-seeder","owner":{"login":"codex-starter-kit-labs","id":305967668}}`)
+		case "/app/installations/147094309":
+			io.WriteString(writer, `{"id":147094309,"app_id":4319763,"app_slug":"codex-starter-kit-labs-seeder","account":{"login":"codex-starter-kit-labs","id":305967668},"permissions":{"contents":"write","metadata":"read","pull_requests":"write","issues":"write","workflows":"write"}}`)
+		case "/app/installations/147094309/access_tokens":
+			var body struct {
+				RepositoryIDs []int64           `json:"repository_ids"`
+				Permissions   map[string]string `json:"permissions"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			expected := map[string]string{"contents": "write", "metadata": "read", "pull_requests": "write"}
+			if !slices.Equal(body.RepositoryIDs, []int64{sandboxRESTID}) || !equalMap(body.Permissions, expected) {
+				t.Fatalf("mint scope = %#v / %#v", body.RepositoryIDs, body.Permissions)
+			}
+			io.WriteString(writer, `{"token":"`+secret+`","expires_at":"2099-01-01T00:00:00Z","permissions":{"contents":"write","metadata":"read","pull_requests":"write"},"repositories":[{"id":1303189066}]}`)
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	provider, err := githubadapter.NewAppInstallationProvider(
+		appConfig(server.URL, "4319763", "147094309", "codex-starter-kit-labs-seeder", map[string]string{"contents": "write", "metadata": "read", "pull_requests": "write"}),
+		githubadapter.PrivateKeyProviderFunc(func(context.Context) ([]byte, error) { return []byte(privateKey), nil }), server.Client(),
+		githubadapter.WithAppCredentialClock(func() time.Time { return time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC) }),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := provider.Credential(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), secret) || strings.Contains(string(encoded), "PRIVATE KEY") || !slices.Equal(credential.Permissions, []string{"contents:write", "metadata:read", "pull-requests:write"}) {
+		t.Fatalf("credential evidence leaked or broadened: %s / %#v", encoded, credential.Permissions)
+	}
+}
+
 func contractFixture(t *testing.T) (engine.DeliveryRequest, engine.WorkExecutionMandate) {
 	t.Helper()
 	target := engine.WorkTarget{Host: sandboxHost, RepositoryID: sandboxRepository, ProjectID: sandboxProject, FieldIDs: map[string]string{"status": "field-status", "readiness": "field-readiness"}, OptionIDs: map[string]string{"status:done": "done", "readiness:ready": "ready"}}
@@ -152,4 +231,10 @@ func writeJSON(t *testing.T, name string, value any) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
 }

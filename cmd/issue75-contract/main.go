@@ -1,27 +1,35 @@
 // Command issue75-contract validates and emits the credential-free execution envelope
-// for the approved issue #75 sandbox qualification. It never contacts GitHub or applies
-// an effect; the lifecycle runner must still inspect, plan, and apply with the exact plan
-// and mandate identities emitted here.
+// for the approved issue #75 sandbox qualification. Its default mode never contacts
+// GitHub. Explicit --execute-step mode uses separately injected, down-scoped GitHub App
+// credentials for one exact inspect, plan, conditional apply, verify, and status cycle.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/dragondad22/codex-starter-kit/engine"
+	"github.com/dragondad22/codex-starter-kit/githubadapter"
 )
 
 const (
 	sandboxHost       = "github.com"
 	sandboxRepository = "R_kgDOTa0WSg"
 	sandboxProject    = "PVT_kwDOEjyyNM4Bdm9F"
+	sandboxRESTID     = int64(1303189066)
+	sandboxOwner      = "codex-starter-kit-labs"
+	sandboxName       = "codex-starter-kit-sandbox"
+	sandboxAccountID  = "305967668"
 )
 
 var (
@@ -59,18 +67,42 @@ type envelope struct {
 	Limitations              []string                        `json:"limitations"`
 }
 
+type transitionEvidence struct {
+	SchemaVersion int                         `json:"schema_version"`
+	EvidenceMode  string                      `json:"evidence_mode"`
+	Outcome       string                      `json:"outcome"`
+	Inspection    engine.DeliveryInspection   `json:"inspection"`
+	Plan          engine.DeliveryPlan         `json:"plan"`
+	Apply         *engine.DeliveryApplyResult `json:"apply,omitempty"`
+	Verification  engine.DeliveryVerification `json:"verification"`
+	Status        engine.DeliveryStatusResult `json:"status"`
+}
+
+type executionRuntime struct {
+	restBaseURL string
+	graphqlURL  string
+	evidence    string
+	live        bool
+	now         func() time.Time
+}
+
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := runWithDependencies(context.Background(), os.Args[1:], os.Getenv, http.DefaultClient, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string, output io.Writer) error {
+	return runWithDependencies(context.Background(), args, os.Getenv, http.DefaultClient, output)
+}
+
+func runWithDependencies(ctx context.Context, args []string, getenv func(string) string, client *http.Client, output io.Writer) error {
 	flags := flag.NewFlagSet("issue75-contract", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	requestPath := flags.String("request-file", "", "credential-free DeliveryRequest JSON")
 	mandatePath := flags.String("mandate-file", "", "content-addressed WorkExecutionMandate JSON")
+	executeStep := flags.Bool("execute-step", false, "execute one exact lifecycle transition with scoped GitHub App credentials")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *requestPath == "" || *mandatePath == "" {
 		return errors.New("request-file and mandate-file flags are required; positional arguments are unsupported")
 	}
@@ -84,6 +116,10 @@ func run(args []string, output io.Writer) error {
 	}
 	if err := validateEnvelope(request, mandate); err != nil {
 		return err
+	}
+	if *executeStep {
+		runtime := executionRuntime{restBaseURL: "https://api.github.com", graphqlURL: "https://api.github.com/graphql", evidence: "live", live: true, now: func() time.Time { return time.Now().UTC() }}
+		return executeTransition(ctx, request, mandate, getenv, client, runtime, output)
 	}
 
 	intent := request.Intent
@@ -118,6 +154,134 @@ func run(args []string, output io.Writer) error {
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(result)
+}
+
+func executeTransition(ctx context.Context, request engine.DeliveryRequest, mandate engine.WorkExecutionMandate, getenv func(string) string, client *http.Client, runtime executionRuntime, output io.Writer) error {
+	if err := validateLiveTarget(request); err != nil {
+		return err
+	}
+	now := runtime.now()
+	if now.Before(mandate.ApprovedAt) || !now.Before(mandate.ExpiresAt) {
+		return errors.New("execution mandate is not active")
+	}
+	reconcilerKey := getenv("CSK_RECONCILER_APP_PRIVATE_KEY")
+	seederKey := getenv("CSK_SEEDER_APP_PRIVATE_KEY")
+	if reconcilerKey == "" || seederKey == "" {
+		return errors.New("approved GitHub App private keys are unavailable")
+	}
+	observer, effect, err := executionAdapters(client, runtime, reconcilerKey, seederKey)
+	if err != nil {
+		return err
+	}
+	delivery, err := githubadapter.NewDeliveryAdapter(observer, []githubadapter.DeliveryReviewerTrust{{Actor: "american-dragon-designs", Capable: true, DistinctContext: true}}, effect)
+	if err != nil {
+		return err
+	}
+	lifecycle := engine.New(engine.WithWorkAdapter(observer), engine.WithDeliveryAdapter(delivery))
+	inspection, err := lifecycle.InspectDelivery(ctx, request)
+	if err != nil {
+		return err
+	}
+	plan, err := lifecycle.PlanDelivery(ctx, inspection)
+	if err != nil {
+		return err
+	}
+	var apply *engine.DeliveryApplyResult
+	if len(plan.Effects) != 0 {
+		result, err := lifecycle.ApplyDelivery(ctx, plan.ID, plan, mandate)
+		if err != nil {
+			return err
+		}
+		apply = &result
+	}
+	verification, err := lifecycle.VerifyDelivery(ctx, request.Repository)
+	if err != nil {
+		return err
+	}
+	status, err := lifecycle.DeliveryStatus(ctx, request.Repository)
+	if err != nil {
+		return err
+	}
+	result := transitionEvidence{SchemaVersion: 1, EvidenceMode: "live", Outcome: string(verification.OverallState), Inspection: inspection, Plan: plan, Apply: apply, Verification: verification, Status: status}
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(result)
+}
+
+func executionAdapters(client *http.Client, runtime executionRuntime, reconcilerKey, seederKey string) (*githubadapter.Adapter, *githubadapter.Adapter, error) {
+	provider := func(config githubadapter.AppInstallationConfig, key string) (*githubadapter.AppInstallationProvider, error) {
+		return githubadapter.NewAppInstallationProvider(config, githubadapter.PrivateKeyProviderFunc(func(context.Context) ([]byte, error) { return []byte(key), nil }), client, githubadapter.WithAppCredentialClock(runtime.now))
+	}
+	reconcilerPermissions := map[string]string{"actions": "read", "checks": "read", "contents": "read", "issues": "write", "metadata": "read", "organization_projects": "write", "pull_requests": "read", "statuses": "read"}
+	seederPermissions := map[string]string{"contents": "write", "metadata": "read", "pull_requests": "write"}
+	reconcilerProvider, err := provider(appConfig(runtime.restBaseURL, "4319725", "147093185", "codex-starter-kit-labs-reconciler", reconcilerPermissions), reconcilerKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	seederProvider, err := provider(appConfig(runtime.restBaseURL, "4319763", "147094309", "codex-starter-kit-labs-seeder", seederPermissions), seederKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	observerConfig := adapterConfig(runtime, "codex-starter-kit-labs-reconciler", "147093185", []string{"actions:read", "checks:read", "contents:read", "issues:write", "metadata:read", "organization-projects:write", "pull-requests:read", "statuses:read"})
+	effectConfig := adapterConfig(runtime, "codex-starter-kit-labs-seeder", "147094309", []string{"contents:write", "metadata:read", "pull-requests:write"})
+	observer, err := githubadapter.New(observerConfig, reconcilerProvider, client, githubadapter.WithClock(runtime.now))
+	if err != nil {
+		return nil, nil, err
+	}
+	effect, err := githubadapter.New(effectConfig, seederProvider, client, githubadapter.WithClock(runtime.now))
+	if err != nil {
+		return nil, nil, err
+	}
+	return observer, effect, nil
+}
+
+func appConfig(rest, appID, installationID, actor string, permissions map[string]string) githubadapter.AppInstallationConfig {
+	return githubadapter.AppInstallationConfig{RESTBaseURL: rest, APIVersion: "2026-03-10", AppID: appID, InstallationID: installationID, Actor: actor, Account: sandboxOwner, AccountID: sandboxAccountID, RepositoryIDs: []int64{sandboxRESTID}, TokenPermissions: permissions}
+}
+
+func adapterConfig(runtime executionRuntime, actor, installationID string, permissions []string) githubadapter.Config {
+	return githubadapter.Config{Host: sandboxHost, RESTBaseURL: runtime.restBaseURL, GraphQLURL: runtime.graphqlURL, APIVersion: "2026-03-10", Mode: "app-installation", Actor: actor, ActorKind: "github-app", Account: sandboxOwner, InstallationID: installationID, RepositoryOwner: sandboxOwner, RepositoryName: sandboxName, RepositoryID: sandboxRepository, ProjectOwner: sandboxOwner, ProjectOwnerKind: "organization", ProjectID: sandboxProject, FieldIDs: liveFieldIDs(), OptionIDs: liveOptionIDs(), RequiredPermissions: permissions, MaxPages: 10, EvidenceMode: runtime.evidence, LiveTargetApproved: runtime.live, MutationInterval: time.Second}
+}
+
+func validateLiveTarget(request engine.DeliveryRequest) error {
+	if !equalMap(request.Intent.Target.FieldIDs, liveFieldIDs()) || !equalMap(request.Intent.Target.OptionIDs, liveOptionIDs()) || request.Intent.ProductApproval.Role != "" || !equalMap(request.CompletionIntent.Target.FieldIDs, liveFieldIDs()) || !equalMap(request.CompletionIntent.Target.OptionIDs, liveOptionIDs()) {
+		return errors.New("execution target fields, options, or approval policy differ from the approved live manifest")
+	}
+	return nil
+}
+
+func liveFieldIDs() map[string]string {
+	return map[string]string{
+		"status":    "PVTSSF_lADOEjyyNM4Bdm9FzhYHTIk",
+		"readiness": "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZA",
+		"horizon":   "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZE",
+		"phase":     "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZI",
+	}
+}
+
+func liveOptionIDs() map[string]string {
+	return map[string]string{
+		"status:backlog":             "f75ad846",
+		"status:next":                "c9b40fc5",
+		"status:in-progress":         "47fc9ee4",
+		"status:done":                "98236657",
+		"readiness:intake":           "8d6f41b6",
+		"readiness:needs-refinement": "26a4c98a",
+		"readiness:ready":            "2323ce77",
+		"readiness:blocked":          "983e3745",
+		"horizon:now":                "b1f7820f",
+		"horizon:next":               "8920dc74",
+		"horizon:later":              "965eb3dd",
+		"phase:Phase 0":              "7fcb7c26",
+		"phase:Phase 1":              "e6cbdc17",
+		"phase:Phase 2":              "db48cb41",
+		"phase:Phase 3":              "3a97d4af",
+		"phase:Phase 4":              "e8eef021",
+		"phase:Phase 5":              "358327da",
+		"phase:Phase 6":              "e3063f78",
+		"phase:Phase 7":              "3c19af01",
+		"phase:Phase 8":              "865934cf",
+	}
 }
 
 func readStrictJSON(path string, destination any) error {
