@@ -32,6 +32,15 @@ credential providers. It aggregates reconciler, seeder, and rules installation a
 without making any one credential a fallback for another. See
 [GitHub Sandbox Bootstrap](SANDBOX_BOOTSTRAP.md).
 
+Issue #75 extends that sandbox seam with exact native issue relationships and
+marker-owned repository files. Parent/sub-issue and blocker/dependent resources bind both
+issues by number, database ID, and node ID and route only through the reconciler. File
+resources bind path, branch, canonical content digest, and marker-bearing approved content
+and route only through the seeder. Cleanup re-reads the current relationship, issue, PR,
+branch head, or contents SHA immediately before mutation and returns `needs-review` on
+identity or content drift. It never treats a marker, branch name, or stale contents SHA by
+itself as deletion authority.
+
 #46 reuses that content-addressed external-resource lifecycle for a separately authorized
 operational Project configuration; it does not reuse sandbox authority. The retained v1
 type names are wire-compatibility labels. For a user-owned Project, the adapter binds the

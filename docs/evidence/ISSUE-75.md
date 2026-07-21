@@ -93,21 +93,50 @@ Issue #76 owns aggregate live qualification and final support claims.
 
 The reviewed workflow candidates
 [`issue-75-contract.yml`](issue-75-contract.yml) and
-[`issue-75-contract-cleanup.yml`](issue-75-contract-cleanup.yml) do not prove that journey
-ran. The main workflow requires exact request, bound active mandate, and 40-character
+[`issue-75-contract-cleanup.yml`](issue-75-contract-cleanup.yml), plus the role-isolated
+[`issue-75-sandbox-stage-plan.yml`](issue-75-sandbox-stage-plan.yml) and
+[`issue-75-sandbox-stage-apply.yml`](issue-75-sandbox-stage-apply.yml), and credential-free
+[`issue-75-delivery-input.yml`](issue-75-delivery-input.yml) and
+[`issue-75-cleanup-plan.yml`](issue-75-cleanup-plan.yml), do not prove that
+the journey ran. The main workflow requires exact request, bound active mandate, and 40-character
 Starter Kit revision artifacts before it emits a credential-free envelope. Each dispatch
 may then execute only one semantic transition; a changed observation requires another
 dispatch through the same envelope gate. Evidence artifacts retain for 30 days and contain
-no credential material. Cleanup is always invoked but currently emits an effect-free
-`not-configured` receipt: #73 cleanup plans bind different fixture markers/resources and
-cannot truthfully clean #75. Delivery remains gated until an exact content-addressed #75
-cleanup plan and reviewed marker/resource executor exist.
+no credential material.
+
+Sandbox resources progress organically through separately planned/applied stages:
+`issues-setup` emits immutable issue identities; the delivery-input workflow binds those
+identities and the generator-derived final fixture workflow digest into one complete
+governed request/mandate artifact; `issues-governed` consumes that exact artifact and
+patches the three native fixture bodies with their managed markers, metadata, and
+executable contracts; `project-setup` then consumes their node IDs to set exact Project
+Status/Readiness; `relationships-setup` consumes the same issue handoff; and
+`file-initial`/`file-stale` prepare the exact-head check fixture. Seeder stages use only
+`contract-seeder`; Project/relationship stages use only `contract-reconciler`. Apply
+regenerates and byte-compares the credential-free input, binds the downloaded plan to its
+own active mandate, verifies convergence, and performs a second read-only plan to retain
+the postcondition and issue identity handoff.
+
+Cleanup is invoked explicitly after terminal replay or for recovery, never after an
+ordinary one-transition dispatch. A credential-free builder combines the four exact
+stage-planning artifacts into one content-addressed #75-native bundle containing exactly
+four ordered apply inputs: `cleanup-delivery` (seeder), `cleanup-file` (seeder),
+`cleanup-relationships` (reconciler), and `cleanup-issues` (seeder). The bundle binds one
+episode, source, target, approval, and active stage mandates. Its delivery stage preserves
+the exact reciprocal `Closes #<delivery>` marker; the other three use the exact episode
+marker. The protected combined runner selects only the key required for each generic
+sandbox apply, requires every stage to converge, and retains per-stage results plus one
+cleanup receipt. This is a reviewed executable candidate, not evidence that cleanup or
+any other live effect occurred.
 
 Each later dispatch must supply the prior run and exact state artifact. The workflow
 rejects symlinks and every payload path except the prior transition receipt and
 `.starter-kit/delivery/state.json`, `.starter-kit/work-manager/state.json`, and
-`.starter-kit/work-mandates.json`. It restores only those state files with owner-only
-permissions and uploads the next integrity-protected state with the transition receipt.
+`.starter-kit/work-mandates.json`. It admits only the latest non-expired canonical state
+artifact from this workflow, binds its manifest to the exact source, mandate, delivery
+resource digest, and predecessor run, and rejects initial-state or older-artifact replay.
+It restores only those state files with owner-only permissions and uploads the next
+integrity-protected state with the transition receipt.
 The exact request uses repository `.` so state remains at the sandbox
 workspace root. Without prior state, only the initial `create-branch` transition is
 admissible. Completing the journey therefore requires repeated dispatches plus external
