@@ -178,6 +178,11 @@ func executeTransition(ctx context.Context, request engine.DeliveryRequest, mand
 		return err
 	}
 	lifecycle := engine.New(engine.WithWorkAdapter(observer), engine.WithDeliveryAdapter(delivery))
+	_, stateErr := os.Stat(".starter-kit/delivery/state.json")
+	hadPriorState := stateErr == nil
+	if stateErr != nil && !errors.Is(stateErr, os.ErrNotExist) {
+		return errors.New("delivery state cannot be inspected safely")
+	}
 	inspection, err := lifecycle.InspectDelivery(ctx, request)
 	if err != nil {
 		return err
@@ -185,6 +190,10 @@ func executeTransition(ctx context.Context, request engine.DeliveryRequest, mand
 	plan, err := lifecycle.PlanDelivery(ctx, inspection)
 	if err != nil {
 		return err
+	}
+	if !validFirstLivePlan(hadPriorState, plan) {
+		_ = os.Remove(".starter-kit/delivery/state.json")
+		return errors.New("first live transition requires absent retained state and an exact create-branch plan")
 	}
 	var apply *engine.DeliveryApplyResult
 	if len(plan.Effects) != 0 {
@@ -206,6 +215,10 @@ func executeTransition(ctx context.Context, request engine.DeliveryRequest, mand
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(result)
+}
+
+func validFirstLivePlan(hadPriorState bool, plan engine.DeliveryPlan) bool {
+	return hadPriorState || len(plan.Effects) == 1 && plan.Effects[0].Kind == engine.DeliveryEffectCreateBranch
 }
 
 func executionAdapters(client *http.Client, runtime executionRuntime, reconcilerKey, seederKey string) (*githubadapter.Adapter, *githubadapter.Adapter, error) {
@@ -307,7 +320,7 @@ func validateEnvelope(request engine.DeliveryRequest, mandate engine.WorkExecuti
 	if intent.SchemaVersion != 1 || intent.Target.Host != sandboxHost || intent.Target.RepositoryID != sandboxRepository || intent.Target.ProjectID != sandboxProject || !managedPattern.MatchString(intent.ManagedID) || intent.Title == "" || intent.OperationID == "" || !commitPattern.MatchString(intent.SourceRevision) || intent.OperatingProfileRevision == "" {
 		return errors.New("delivery request is not bound to the approved immutable issue #75 sandbox target")
 	}
-	if request.Repository == "" || intent.BaseBranch != "main" || !strings.HasPrefix(intent.HeadBranch, "contract/issue-75-") || intent.MergeMethod != "squash" || len(intent.RequiredChecks) == 0 || hasDuplicateOrEmpty(intent.RequiredChecks) {
+	if request.Repository != "." || intent.BaseBranch != "main" || !strings.HasPrefix(intent.HeadBranch, "contract/issue-75-") || intent.MergeMethod != "squash" || len(intent.RequiredChecks) == 0 || hasDuplicateOrEmpty(intent.RequiredChecks) {
 		return errors.New("delivery request branch, checks, or squash policy is invalid")
 	}
 	if intent.Review.Role != "american-dragon-designs" || !intent.Review.DistinctContext || intent.Claim == nil || intent.Claim.ManagedID != intent.ManagedID || intent.Claim.SourceRevision != intent.SourceRevision || !digestPattern.MatchString(intent.Claim.ContractDigest) {

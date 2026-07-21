@@ -36,7 +36,7 @@ func TestContractEmitsRedactedDeterministicWorkflow(t *testing.T) {
 	if first.String() != second.String() {
 		t.Fatal("credential-free envelope is not deterministic")
 	}
-	if strings.Contains(first.String(), request.Repository) || strings.Contains(first.String(), "token") || strings.Contains(first.String(), "private_key") {
+	if strings.Contains(first.String(), "token") || strings.Contains(first.String(), "private_key") {
 		t.Fatalf("envelope leaked local or credential material: %s", first.String())
 	}
 	var result envelope
@@ -121,6 +121,15 @@ func TestExecuteStepRejectsNonLiveManifestBeforeCredentialsOrOutput(t *testing.T
 	}
 }
 
+func TestFirstLiveTransitionRequiresCreateBranchWithoutPriorState(t *testing.T) {
+	if validFirstLivePlan(false, engine.DeliveryPlan{Effects: []engine.DeliveryEffect{{Kind: engine.DeliveryEffectCreatePullRequest}}}) {
+		t.Fatal("first live transition admitted a non-branch effect")
+	}
+	if !validFirstLivePlan(false, engine.DeliveryPlan{Effects: []engine.DeliveryEffect{{Kind: engine.DeliveryEffectCreateBranch}}}) || !validFirstLivePlan(true, engine.DeliveryPlan{NoChange: true}) {
+		t.Fatal("valid first or retained-state transition was rejected")
+	}
+}
+
 func TestSeederCredentialMintUsesExactRepositoryAndPermissionScope(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -200,7 +209,7 @@ func contractFixture(t *testing.T) (engine.DeliveryRequest, engine.WorkExecution
 		Task:       engine.DesiredManagedTask{ManagedID: intent.ManagedID, IssueType: "task", Title: intent.Title, Readiness: "ready", Status: "done", Closed: true, NoPromotionRequired: true},
 		Governance: &engine.GovernedWorkContract{SchemaVersion: 1, Issue: issue, Sources: slices.Clone(intent.Claim.ImplementedSources)}, EffectBoundary: boundary,
 	}
-	request := engine.DeliveryRequest{Repository: t.TempDir(), Intent: intent, CompletionIntent: &completion}
+	request := engine.DeliveryRequest{Repository: ".", Intent: intent, CompletionIntent: &completion}
 	authorized := []engine.WorkExecutionAuthority{
 		{Actor: "codex-starter-kit-labs-seeder", CredentialMode: "app-installation", Account: "codex-starter-kit-labs", InstallationID: "147094309", RepositoryID: sandboxRepository, Permissions: []string{"contents:write", "metadata:read", "pull-requests:write"}},
 		{Actor: "codex-starter-kit-labs-reconciler", CredentialMode: "app-installation", Account: "codex-starter-kit-labs", InstallationID: "147093185", RepositoryID: sandboxRepository, Permissions: []string{"actions:read", "checks:read", "contents:read", "issues:write", "metadata:read", "organization-projects:write", "pull-requests:read", "statuses:read"}},
