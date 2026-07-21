@@ -20,8 +20,8 @@ on:
           - issues-governed
           - project-setup
           - relationships-setup
-          - rules-setup
           - file-initial
+          - rules-setup
           - file-stale
           - cleanup-delivery
           - cleanup-rules

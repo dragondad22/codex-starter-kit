@@ -16,7 +16,7 @@ on:
         description: Exact Issue 75 sandbox stage
         required: true
         type: choice
-        options: [issues-setup, issues-governed, project-setup, relationships-setup, rules-setup, file-initial, file-stale, cleanup-delivery, cleanup-rules, cleanup-file, cleanup-relationships, cleanup-issues]
+        options: [issues-setup, issues-governed, project-setup, relationships-setup, file-initial, rules-setup, file-stale, cleanup-delivery, cleanup-rules, cleanup-file, cleanup-relationships, cleanup-issues]
       approved_by:
         description: Approving human identity used during planning
         required: true

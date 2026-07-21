@@ -120,10 +120,11 @@ identities and the generator-derived final fixture workflow digest into one comp
 governed request/mandate artifact; `issues-governed` consumes that exact artifact and
 patches the three native fixture bodies with their managed markers, metadata, and
 executable contracts; `project-setup` then consumes their node IDs to set exact Project
-Status/Readiness; `relationships-setup` consumes the same issue handoff;
-`rules-setup` installs one marker-owned active ruleset for `main` requiring the
-`contract-delivery` context from GitHub Actions App integration `15368`; and
-`file-initial`/`file-stale` prepare the exact-head check fixture. Seeder stages use only
+Status/Readiness; `relationships-setup` consumes the same issue handoff; `file-initial`
+installs the check workflow on unprotected `main`; `rules-setup` then installs one
+marker-owned active ruleset requiring the `contract-delivery` context from GitHub Actions
+App integration `15368`; and `file-stale` updates the delivery head to exercise
+invalidation. Seeder stages use only
 `contract-seeder`; Project/relationship stages use only `contract-reconciler`; ruleset
 stages use only `contract-rules`. Apply
 regenerates and byte-compares the credential-free input, binds the downloaded plan to its
