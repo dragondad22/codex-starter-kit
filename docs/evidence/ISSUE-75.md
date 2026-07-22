@@ -6,7 +6,8 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; final gates and live qualification pending
+**State:** Development candidate; local gates and final reviews pass; native CI and live
+qualification pending
 
 ## Implemented deterministic contract
 
@@ -80,12 +81,13 @@ live GitHub service or permission claim.
 
 ## Current verification state
 
-This record intentionally does not claim a final pass. The first independent Standards
-and Spec reviews found eight blockers; the branch now contains their regression-covered
-remediation and awaits the required second review. The exact completing revision,
-complete repository gates, final independent Standards and Spec reviews,
-GitHub Actions Linux/macOS/Windows matrix, and live sandbox journey have not yet been
-recorded here.
+This record intentionally does not claim live qualification or completion. The first
+independent Standards and Spec reviews found eight blockers, and subsequent audit found
+credential-binding, exact-ruleset, and bypass-identity gaps. The branch now contains
+regression-covered remediation. Complete local Python/Go/documentation gates, Go vet and
+race tests, embedded workflow syntax validation, and final independent Standards and Spec
+reviews pass at the current candidate. GitHub Actions Linux/macOS/Windows results, the
+separate completing-product-PR review, and the live sandbox journey remain pending.
 
 ## Pending live qualification and completion
 
