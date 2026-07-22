@@ -6,52 +6,58 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	SandboxResourceLabel            = "label"
-	SandboxResourceProjectField     = "project-field"
-	SandboxResourceProjectOption    = "project-option"
-	SandboxResourceProjectView      = "project-view"
-	SandboxResourceProjectItemField = "project-item-field"
-	SandboxResourceProjectWorkflow  = "project-workflow"
-	SandboxResourceProjectItemProof = "project-item-proof"
-	SandboxResourceRuleset          = "ruleset"
-	SandboxResourceFixtureIssue     = "fixture-issue"
-	SandboxResourceFixtureBranch    = "fixture-branch"
-	SandboxResourceFixturePR        = "fixture-pr"
-	SandboxResourceFixtureWorkflow  = "fixture-workflow"
-	SandboxResourceFixtureReview    = "fixture-review"
-	SandboxResourceFixtureDenial    = "fixture-denial-proof"
-	SandboxResourceTokenRevocation  = "token-revocation"
-	SandboxResourcePresent          = "present"
-	SandboxResourceAbsent           = "absent"
+	SandboxResourceLabel             = "label"
+	SandboxResourceProjectField      = "project-field"
+	SandboxResourceProjectOption     = "project-option"
+	SandboxResourceProjectView       = "project-view"
+	SandboxResourceProjectItemField  = "project-item-field"
+	SandboxResourceProjectWorkflow   = "project-workflow"
+	SandboxResourceProjectItemProof  = "project-item-proof"
+	SandboxResourceRuleset           = "ruleset"
+	SandboxResourceFixtureIssue      = "fixture-issue"
+	SandboxResourceFixtureBranch     = "fixture-branch"
+	SandboxResourceFixturePR         = "fixture-pr"
+	SandboxResourceFixtureWorkflow   = "fixture-workflow"
+	SandboxResourceFixtureReview     = "fixture-review"
+	SandboxResourceIssueRelationship = "issue-relationship"
+	SandboxResourceRepositoryFile    = "repository-file"
+	SandboxResourceFixtureDenial     = "fixture-denial-proof"
+	SandboxResourceTokenRevocation   = "token-revocation"
+	SandboxResourcePresent           = "present"
+	SandboxResourceAbsent            = "absent"
 )
 
 const sandboxStatePath = ".starter-kit/sandbox/state.json"
 
 var supportedSandboxResourceKinds = map[string]struct{}{
-	SandboxResourceLabel:            {},
-	SandboxResourceProjectField:     {},
-	SandboxResourceProjectOption:    {},
-	SandboxResourceProjectView:      {},
-	SandboxResourceProjectItemField: {},
-	SandboxResourceProjectWorkflow:  {},
-	SandboxResourceProjectItemProof: {},
-	SandboxResourceRuleset:          {},
-	SandboxResourceFixtureIssue:     {},
-	SandboxResourceFixtureBranch:    {},
-	SandboxResourceFixturePR:        {},
-	SandboxResourceFixtureWorkflow:  {},
-	SandboxResourceFixtureReview:    {},
-	SandboxResourceFixtureDenial:    {},
-	SandboxResourceTokenRevocation:  {},
+	SandboxResourceLabel:             {},
+	SandboxResourceProjectField:      {},
+	SandboxResourceProjectOption:     {},
+	SandboxResourceProjectView:       {},
+	SandboxResourceProjectItemField:  {},
+	SandboxResourceProjectWorkflow:   {},
+	SandboxResourceProjectItemProof:  {},
+	SandboxResourceRuleset:           {},
+	SandboxResourceFixtureIssue:      {},
+	SandboxResourceFixtureBranch:     {},
+	SandboxResourceFixturePR:         {},
+	SandboxResourceFixtureWorkflow:   {},
+	SandboxResourceFixtureReview:     {},
+	SandboxResourceIssueRelationship: {},
+	SandboxResourceRepositoryFile:    {},
+	SandboxResourceFixtureDenial:     {},
+	SandboxResourceTokenRevocation:   {},
 }
 
 // SandboxTarget binds bootstrap work to one approved owner, repository, and Project.
@@ -638,12 +644,63 @@ func validateSandboxManifest(manifest SandboxManifest) error {
 		if resource.Kind == SandboxResourceProjectView && !slices.Contains([]string{"table", "board", "roadmap"}, resource.Attributes["layout"]) {
 			return fmt.Errorf("Project view resource %s requires a supported layout", resource.Key)
 		}
+		if resource.Kind == SandboxResourceRuleset {
+			definition, err := canonicalSandboxJSON(resource.Attributes["input:definition"])
+			if err != nil || resource.Attributes["definition"] != definition || resource.Attributes["definition_sha256"] != digestBytes([]byte(definition)) || resource.Marker == "" || !strings.HasPrefix(resource.Marker, manifest.MarkerPrefix) {
+				return fmt.Errorf("ruleset resource %s requires an exact canonical definition, digest, and approved marker", resource.Key)
+			}
+		}
+		if resource.Kind == SandboxResourceIssueRelationship {
+			relationship := resource.Attributes["relationship"]
+			if !slices.Contains([]string{"parent-sub-issue", "blocker-dependent"}, relationship) || !validPositiveDecimal(resource.Attributes["source_number"]) || !validPositiveDecimal(resource.Attributes["source_id"]) || resource.Attributes["source_node_id"] == "" || !validPositiveDecimal(resource.Attributes["target_number"]) || !validPositiveDecimal(resource.Attributes["target_id"]) || resource.Attributes["target_node_id"] == "" || resource.Attributes["source_id"] == resource.Attributes["target_id"] {
+				return fmt.Errorf("issue relationship resource %s requires a supported relationship and exact source and target issue identities", resource.Key)
+			}
+			if resource.Marker == "" || !strings.HasPrefix(resource.Marker, manifest.MarkerPrefix) {
+				return fmt.Errorf("issue relationship resource %s requires an exact approved marker", resource.Key)
+			}
+		}
+		if resource.Kind == SandboxResourceRepositoryFile {
+			content := resource.Attributes["input:content"]
+			if !validRepositoryFilePath(resource.Attributes["path"]) || resource.Attributes["branch"] == "" || resource.Attributes["content_sha256"] == "" || content == "" || resource.Marker == "" || !strings.HasPrefix(resource.Marker, manifest.MarkerPrefix) || !strings.Contains(content, resource.Marker) {
+				return fmt.Errorf("repository file resource %s requires an exact path, branch, content digest, and marker-owned content", resource.Key)
+			}
+			if digestBytes([]byte(content)) != resource.Attributes["content_sha256"] {
+				return fmt.Errorf("repository file resource %s content digest does not match approved content", resource.Key)
+			}
+		}
+		if resource.Kind == SandboxResourceFixtureIssue && resource.Attributes["body_sha256"] != "" {
+			body := resource.Attributes["input:body"]
+			if body == "" || !strings.Contains(body, resource.Marker) || digestBytes([]byte(body)) != resource.Attributes["body_sha256"] {
+				return fmt.Errorf("fixture issue resource %s body digest or marker ownership is invalid", resource.Key)
+			}
+		}
 		if _, duplicate := seen[resource.Key]; duplicate {
 			return fmt.Errorf("duplicate sandbox resource key: %s", resource.Key)
 		}
 		seen[resource.Key] = struct{}{}
 	}
 	return nil
+}
+
+func canonicalSandboxJSON(raw string) (string, error) {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(value)
+	return string(encoded), err
+}
+
+func validPositiveDecimal(value string) bool {
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	return err == nil && parsed > 0 && strconv.FormatInt(parsed, 10) == value
+}
+
+func validRepositoryFilePath(value string) bool {
+	if value == "" || value == "." || strings.HasPrefix(value, "/") || strings.Contains(value, "\\") || pathpkg.Clean(value) != value {
+		return false
+	}
+	return !slices.Contains(strings.Split(value, "/"), "..")
 }
 
 func sandboxHandshakeProblems(manifest SandboxManifest, capability SandboxCapability, observation SandboxObservation, now time.Time) []string {

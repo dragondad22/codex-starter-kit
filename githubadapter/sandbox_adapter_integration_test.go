@@ -2,10 +2,13 @@ package githubadapter_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -170,6 +173,114 @@ func TestSandboxAdapterRoutesRulesAndFixturesToSeparateRoles(t *testing.T) {
 	if err != nil || issue.ResourceID != "9" {
 		t.Fatalf("issue result = %#v, %v", issue, err)
 	}
+}
+
+func TestSandboxRulesetObservationDriftForcesSetupUpdate(t *testing.T) {
+	now := time.Date(2026, 7, 21, 22, 0, 0, 0, time.UTC)
+	resource := deliveryRulesetResource(false)
+	puts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets":
+			json.NewEncoder(response).Encode([]any{map[string]any{"id": 44, "name": resource.Name, "enforcement": "active", "target": "branch"}})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
+			json.NewEncoder(response).Encode(rulesetHTTPDefinition(44, resource.Name, false, 15368, false))
+		case request.Method == http.MethodPut && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
+			puts++
+			json.NewEncoder(response).Encode(map[string]any{"id": 44, "name": resource.Name})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleRules, sandboxProviders(now)[githubadapter.SandboxRoleRules], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Resources) != 1 || observation.Resources[0].Attributes["definition"] == resource.Attributes["definition"] || observation.Resources[0].Attributes["definition_sha256"] == resource.Attributes["definition_sha256"] {
+		t.Fatalf("drifted live definition was not retained: %#v, %v", observation, err)
+	}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: resource})
+	if err != nil || result.Outcome != "applied" || puts != 1 {
+		t.Fatalf("drifted setup was not updated: %#v, puts=%d, err=%v", result, puts, err)
+	}
+}
+
+func TestSandboxRulesetCleanupRefusesDefinitionDrift(t *testing.T) {
+	now := time.Date(2026, 7, 21, 22, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name          string
+		strict        bool
+		integrationID int64
+		detailName    string
+		detailID      int64
+		bypassActor   bool
+		wantOutcome   string
+		wantDeletes   int
+	}{
+		{name: "strictness drift", strict: false, integrationID: 15368, detailID: 44, wantOutcome: "needs-review"},
+		{name: "integration drift", strict: true, integrationID: 999, detailID: 44, wantOutcome: "needs-review"},
+		{name: "bypass actor drift", strict: true, integrationID: 15368, detailID: 44, bypassActor: true, wantOutcome: "needs-review"},
+		{name: "identity drift", strict: true, integrationID: 15368, detailName: "different-ruleset", detailID: 45, wantOutcome: "needs-review"},
+		{name: "exact definition", strict: true, integrationID: 15368, detailID: 44, wantOutcome: "applied", wantDeletes: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resource := deliveryRulesetResource(true)
+			detailName := test.detailName
+			if detailName == "" {
+				detailName = resource.Name
+			}
+			deletes := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				switch {
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets":
+					json.NewEncoder(response).Encode([]any{map[string]any{"id": 44, "name": resource.Name, "enforcement": "active", "target": "branch"}})
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
+					json.NewEncoder(response).Encode(rulesetHTTPDefinition(test.detailID, detailName, test.strict, test.integrationID, test.bypassActor))
+				case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
+					deletes++
+					response.WriteHeader(http.StatusNoContent)
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			config.Resources = []engine.SandboxResourceSpec{resource}
+			adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleRules, sandboxProviders(now)[githubadapter.SandboxRoleRules], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+			if err != nil || result.Outcome != test.wantOutcome || deletes != test.wantDeletes {
+				t.Fatalf("cleanup = %#v, deletes=%d, err=%v", result, deletes, err)
+			}
+		})
+	}
+}
+
+func deliveryRulesetResource(absent bool) engine.SandboxResourceSpec {
+	definition := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":15368}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`
+	resource := engine.SandboxResourceSpec{Key: "ruleset:delivery", Kind: engine.SandboxResourceRuleset, Name: "starter-kit-contract:issue-75:rules", Marker: "starter-kit-contract:issue-75", Attributes: map[string]string{"enforcement": "active", "target": "branch", "definition": definition, "definition_sha256": testSandboxSHA256(definition), "input:definition": definition}}
+	if absent {
+		resource.DesiredState = engine.SandboxResourceAbsent
+	}
+	return resource
+}
+
+func rulesetHTTPDefinition(id int64, name string, strict bool, integrationID int64, bypassActor bool) map[string]any {
+	bypassActors := []any{}
+	if bypassActor {
+		bypassActors = append(bypassActors, map[string]any{"actor_id": 4, "actor_type": "Integration", "bypass_mode": "always"})
+	}
+	return map[string]any{"id": id, "name": name, "enforcement": "active", "target": "branch", "bypass_actors": bypassActors, "conditions": map[string]any{"ref_name": map[string]any{"exclude": []any{}, "include": []string{"refs/heads/main"}}}, "rules": []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "contract-delivery", "integration_id": integrationID}}, "strict_required_status_checks_policy": strict}}}}
 }
 
 func TestSandboxAdapterClaimsFixtureWorkflowOnlyWhenContentExactlyMatches(t *testing.T) {
@@ -1278,6 +1389,386 @@ func TestSandboxAdapterReconcilesProjectItemFieldByImmutableIdentity(t *testing.
 	if err != nil || replay.Outcome != "no-change" {
 		t.Fatalf("assignment replay = %#v, %v", replay, err)
 	}
+}
+
+func TestSandboxAdapterObservesExactNativeRelationshipsAndMarkerOwnedFile(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	content := marker + "\ndelivery fixture\n"
+	issue := func(id int, number int, node string) map[string]any {
+		return map[string]any{"id": id, "number": number, "node_id": node, "title": "fixture", "body": marker, "state": "open"}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/orgs/labs/projectsV2/1/fields":
+			json.NewEncoder(response).Encode([]any{})
+		case "/graphql":
+			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false}}}}})
+		case "/repos/labs/sandbox/issues/10":
+			if request.Header.Get("Authorization") != "Bearer reconciler-token" {
+				t.Fatalf("relationship authorization = %q", request.Header.Get("Authorization"))
+			}
+			json.NewEncoder(response).Encode(issue(100, 10, "I_parent"))
+		case "/repos/labs/sandbox/issues/10/sub_issues":
+			json.NewEncoder(response).Encode([]any{issue(101, 11, "I_child")})
+		case "/repos/labs/sandbox/issues/12":
+			json.NewEncoder(response).Encode(issue(102, 12, "I_blocker"))
+		case "/repos/labs/sandbox/issues/13":
+			json.NewEncoder(response).Encode(issue(103, 13, "I_dependent"))
+		case "/repos/labs/sandbox/issues/13/dependencies/blocked_by":
+			json.NewEncoder(response).Encode([]any{issue(102, 12, "I_blocker")})
+		case "/repos/labs/sandbox/contents/.starter-kit/delivery-claim.txt":
+			if request.Header.Get("Authorization") != "Bearer seeder-token" {
+				t.Fatalf("file authorization = %q", request.Header.Get("Authorization"))
+			}
+			if request.URL.Query().Get("ref") != "main" {
+				t.Fatalf("file ref = %q", request.URL.Query().Get("ref"))
+			}
+			json.NewEncoder(response).Encode(map[string]any{"sha": "blob-sha", "content": base64.StdEncoding.EncodeToString([]byte(content))})
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	relationships := []engine.SandboxResourceSpec{
+		relationshipResource("parent-sub-issue", marker, "10", "100", "I_parent", "11", "101", "I_child"),
+		relationshipResource("blocker-dependent", marker, "12", "102", "I_blocker", "13", "103", "I_dependent"),
+	}
+	config.Resources = relationships
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, sandboxProviders(now)[githubadapter.SandboxRoleReconciler], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	relationshipObservation, err := adapter.Observe(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Resources = []engine.SandboxResourceSpec{{Key: "file:claim", Kind: engine.SandboxResourceRepositoryFile, Name: "delivery-claim.txt", Marker: marker, Attributes: map[string]string{"path": ".starter-kit/delivery-claim.txt", "branch": "main", "content_sha256": testSandboxSHA256(content), "input:content": content}}}
+	adapter, err = githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileObservation, err := adapter.Observe(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := append(fileObservation.Resources, relationshipObservation.Resources...)
+	if len(resources) != 3 {
+		t.Fatalf("resources = %#v", resources)
+	}
+	if resources[0].ID != "blob-sha" || resources[1].ID != "102:103" || resources[2].ID != "100:101" {
+		t.Fatalf("stable native resource IDs = %#v", resources)
+	}
+}
+
+func TestSandboxAdapterExactFixtureCleanupConvergesAfterCloseAndDelete(t *testing.T) {
+	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	issueOpen, pullOpen, branchPresent := true, true, true
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			state := "closed"
+			if issueOpen {
+				state = "open"
+			}
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_issue", "body": marker, "state": state})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			issueOpen = false
+			response.WriteHeader(http.StatusOK)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/pulls/21":
+			state := "closed"
+			if pullOpen {
+				state = "open"
+			}
+			json.NewEncoder(response).Encode(map[string]any{"id": 201, "number": 21, "node_id": "PR_pull", "body": marker, "state": state, "head": map[string]any{"ref": "contract/run-75", "sha": "head-sha"}, "base": map[string]any{"ref": "main"}})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/labs/sandbox/pulls/21":
+			pullOpen = false
+			response.WriteHeader(http.StatusOK)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run-75":
+			if !branchPresent {
+				http.NotFound(response, request)
+				return
+			}
+			json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": "head-sha"}})
+		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/git/refs/heads/contract/run-75":
+			branchPresent = false
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected cleanup request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{
+		{Key: "cleanup:issue", Kind: engine.SandboxResourceFixtureIssue, Name: "issue", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"number": "20", "id": "200", "node_id": "I_issue", "state": "closed"}},
+		{Key: "cleanup:pr", Kind: engine.SandboxResourceFixturePR, Name: "pull", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"number": "21", "id": "201", "node_id": "PR_pull", "state": "closed", "head": "contract/run-75", "base": "main", "head_sha": "head-sha"}},
+		{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}},
+	}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, resource := range config.Resources {
+		result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+		if err != nil || result.Outcome != "applied" {
+			t.Fatalf("cleanup %s = %#v, %v", resource.Key, result, err)
+		}
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observation.Resources) != 0 {
+		t.Fatalf("closed/deleted cleanup resources remained observed: %#v", observation.Resources)
+	}
+	for _, resource := range config.Resources {
+		result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+		if err != nil || result.Outcome != "no-change" {
+			t.Fatalf("cleanup replay %s = %#v, %v", resource.Key, result, err)
+		}
+	}
+}
+
+func TestSandboxAdapterFixtureIssueObservationEmitsExactIdentityHandoff(t *testing.T) {
+	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75:issue:parent"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/issues" {
+			t.Fatalf("unexpected identity request: %s %s", request.Method, request.URL.Path)
+		}
+		json.NewEncoder(response).Encode([]any{map[string]any{"id": 200, "number": 20, "node_id": "I_parent", "title": "parent", "body": marker, "state": "open"}})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{{Key: "fixture:issue:parent", Kind: engine.SandboxResourceFixtureIssue, Name: "parent", Marker: marker, Attributes: map[string]string{"title": "parent", "state": "open"}}}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil || len(observation.Resources) != 1 {
+		t.Fatalf("observation = %#v, %v", observation, err)
+	}
+	attributes := observation.Resources[0].Attributes
+	if attributes["number"] != "20" || attributes["id"] != "200" || attributes["node_id"] != "I_parent" {
+		t.Fatalf("identity handoff = %#v", attributes)
+	}
+}
+
+func TestSandboxAdapterReconcilesExactGovernedFixtureIssueBody(t *testing.T) {
+	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75:issue:delivery"
+	body := "governed body\n\n" + marker
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_issue", "body": marker, "state": "open"})
+		case request.Method == http.MethodPatch && request.URL.Path == "/repos/labs/sandbox/issues/20":
+			var payload map[string]any
+			json.NewDecoder(request.Body).Decode(&payload)
+			if payload["body"] != body {
+				t.Fatalf("governed body payload = %#v", payload)
+			}
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_issue", "body": body, "state": "open"})
+		default:
+			t.Fatalf("unexpected governed issue request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	resource := engine.SandboxResourceSpec{Key: "fixture:issue:delivery", Kind: engine.SandboxResourceFixtureIssue, Name: "delivery", Marker: marker, Attributes: map[string]string{
+		"title": "delivery", "state": "open", "number": "20", "id": "200", "node_id": "I_issue", "body_sha256": testSandboxSHA256(body), "input:body": body,
+	}}
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: resource})
+	if err != nil || result.Outcome != "applied" {
+		t.Fatalf("governed issue result = %#v, %v", result, err)
+	}
+}
+
+func TestSandboxAdapterExactFixtureCleanupRefusesIdentityAndHeadDrift(t *testing.T) {
+	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			t.Fatalf("cleanup drift triggered mutation: %s %s", request.Method, request.URL.Path)
+		}
+		switch request.URL.Path {
+		case "/repos/labs/sandbox/issues/20":
+			json.NewEncoder(response).Encode(map[string]any{"id": 200, "number": 20, "node_id": "I_replaced", "body": marker, "state": "open"})
+		case "/repos/labs/sandbox/pulls/21":
+			json.NewEncoder(response).Encode(map[string]any{"id": 201, "number": 21, "node_id": "PR_pull", "body": marker, "state": "open", "head": map[string]any{"ref": "contract/run-75", "sha": "changed-sha"}, "base": map[string]any{"ref": "main"}})
+		case "/repos/labs/sandbox/git/ref/heads/contract/run-75":
+			json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": "changed-sha"}})
+		default:
+			t.Fatalf("unexpected drift request: %s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources := []engine.SandboxResourceSpec{
+		{Key: "cleanup:issue", Kind: engine.SandboxResourceFixtureIssue, Name: "issue", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"number": "20", "id": "200", "node_id": "I_issue", "state": "closed"}},
+		{Key: "cleanup:pr", Kind: engine.SandboxResourceFixturePR, Name: "pull", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"number": "21", "id": "201", "node_id": "PR_pull", "state": "closed", "head": "contract/run-75", "base": "main", "head_sha": "head-sha"}},
+		{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}},
+	}
+	for _, resource := range resources {
+		result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+		if err != nil || result.Outcome != "needs-review" {
+			t.Fatalf("drift cleanup %s = %#v, %v", resource.Key, result, err)
+		}
+	}
+}
+
+func TestSandboxAdapterAppliesAndSafelyRemovesExactNativeResources(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	oldContent := marker + "\nold\n"
+	newContent := marker + "\nnew\n"
+	var relationshipCreated, relationshipDeleted, fileUpdated, fileDeleted bool
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/10":
+			json.NewEncoder(response).Encode(map[string]any{"id": 100, "number": 10, "node_id": "I_parent", "body": marker})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/11":
+			json.NewEncoder(response).Encode(map[string]any{"id": 101, "number": 11, "node_id": "I_child", "body": marker})
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/labs/sandbox/issues/10/sub_issues":
+			relationshipCreated = true
+			response.WriteHeader(http.StatusCreated)
+		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/issues/10/sub_issue":
+			var body map[string]any
+			json.NewDecoder(request.Body).Decode(&body)
+			if body["sub_issue_id"] != float64(101) {
+				t.Fatalf("relationship delete body = %#v", body)
+			}
+			relationshipDeleted = true
+			response.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/contents/.starter-kit/delivery-claim.txt":
+			json.NewEncoder(response).Encode(map[string]any{"sha": "old-sha", "content": base64.StdEncoding.EncodeToString([]byte(oldContent))})
+		case request.Method == http.MethodPut && request.URL.Path == "/repos/labs/sandbox/contents/.starter-kit/delivery-claim.txt":
+			var body map[string]any
+			json.NewDecoder(request.Body).Decode(&body)
+			if body["sha"] != "old-sha" || body["branch"] != "contract/run-75" {
+				t.Fatalf("file update body = %#v", body)
+			}
+			fileUpdated = true
+			json.NewEncoder(response).Encode(map[string]any{"content": map[string]any{"sha": "new-sha"}})
+		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/contents/.starter-kit/delivery-claim.txt":
+			fileDeleted = true
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, sandboxProviders(now)[githubadapter.SandboxRoleReconciler], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	relationship := relationshipResource("parent-sub-issue", marker, "10", "100", "I_parent", "11", "101", "I_child")
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: relationship})
+	if err != nil || result.Outcome != "applied" || !relationshipCreated {
+		t.Fatalf("relationship create result = %#v, created=%v, err=%v", result, relationshipCreated, err)
+	}
+	result, err = adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: relationship})
+	if err != nil || result.Outcome != "applied" || !relationshipDeleted {
+		t.Fatalf("relationship result = %#v, deleted=%v, err=%v", result, relationshipDeleted, err)
+	}
+	file := engine.SandboxResourceSpec{Key: "file:claim", Kind: engine.SandboxResourceRepositoryFile, Name: "delivery-claim.txt", Marker: marker, Attributes: map[string]string{"path": ".starter-kit/delivery-claim.txt", "branch": "contract/run-75", "content_sha256": testSandboxSHA256(newContent), "input:content": newContent}}
+	adapter, err = githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: file})
+	if err != nil || result.ResourceID != "new-sha" || !fileUpdated {
+		t.Fatalf("file result = %#v, updated=%v, err=%v", result, fileUpdated, err)
+	}
+	deleteFile := file
+	deleteFile.Attributes = maps.Clone(file.Attributes)
+	deleteFile.Attributes["content_sha256"] = testSandboxSHA256(oldContent)
+	result, err = adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: deleteFile})
+	if err != nil || result.Outcome != "applied" || !fileDeleted {
+		t.Fatalf("file delete result = %#v, deleted=%v, err=%v", result, fileDeleted, err)
+	}
+}
+
+func TestSandboxAdapterDoesNotDeleteUnownedRepositoryFile(t *testing.T) {
+	marker := "starter-kit-contract:run-75"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			t.Fatalf("unowned file triggered mutation: %s", request.Method)
+		}
+		json.NewEncoder(response).Encode(map[string]any{"sha": "human-sha", "content": base64.StdEncoding.EncodeToString([]byte(marker + "\nhuman edit\n"))})
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(time.Now())[githubadapter.SandboxRoleSeeder], server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := engine.SandboxResourceSpec{Key: "file:claim", Kind: engine.SandboxResourceRepositoryFile, Name: "claim", Marker: marker, Attributes: map[string]string{"path": "claim.txt", "branch": "main", "content_sha256": testSandboxSHA256(marker), "input:content": marker}}
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+	if err != nil || result.Outcome != "needs-review" {
+		t.Fatalf("result = %#v, err=%v", result, err)
+	}
+}
+
+func TestSandboxAdapterDoesNotMutateUnownedIssueRelationship(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			t.Fatalf("unowned relationship triggered mutation: %s", request.Method)
+		}
+		switch request.URL.Path {
+		case "/repos/labs/sandbox/issues/10":
+			json.NewEncoder(response).Encode(map[string]any{"id": 100, "number": 10, "node_id": "I_parent", "body": "human-owned"})
+		case "/repos/labs/sandbox/issues/11":
+			json.NewEncoder(response).Encode(map[string]any{"id": 101, "number": 11, "node_id": "I_child", "body": marker})
+		default:
+			t.Fatalf("unexpected request: %s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, sandboxProviders(now)[githubadapter.SandboxRoleReconciler], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resource := relationshipResource("parent-sub-issue", marker, "10", "100", "I_parent", "11", "101", "I_child")
+	result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+	if err != nil || result.Outcome != "needs-review" {
+		t.Fatalf("result = %#v, err=%v", result, err)
+	}
+}
+
+func relationshipResource(relationship, marker, sourceNumber, sourceID, sourceNodeID, targetNumber, targetID, targetNodeID string) engine.SandboxResourceSpec {
+	return engine.SandboxResourceSpec{Key: "relationship:" + relationship, Kind: engine.SandboxResourceIssueRelationship, Name: relationship, Marker: marker, Attributes: map[string]string{
+		"relationship": relationship, "source_number": sourceNumber, "source_id": sourceID, "source_node_id": sourceNodeID, "target_number": targetNumber, "target_id": targetID, "target_node_id": targetNodeID,
+	}}
+}
+
+func testSandboxSHA256(value string) string {
+	digest := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func userProjectSandboxConfig(server *httptest.Server, target engine.SandboxTarget, now time.Time, resources ...engine.SandboxResourceSpec) (githubadapter.SandboxConfig, map[string]githubadapter.CredentialProvider) {

@@ -17,9 +17,19 @@ import (
 
 // Engine owns lifecycle orchestration behind the public operation seam.
 type Engine struct {
-	clock          Clock
-	workAdapter    WorkAdapter
-	sandboxAdapter SandboxAdapter
+	clock           Clock
+	workAdapter     WorkAdapter
+	deliveryAdapter DeliveryAdapter
+	sandboxAdapter  SandboxAdapter
+}
+
+// WithDeliveryAdapter supplies the transport adapter used by delivery lifecycle operations.
+func WithDeliveryAdapter(adapter DeliveryAdapter) Option {
+	return func(engine *Engine) {
+		if adapter != nil {
+			engine.deliveryAdapter = adapter
+		}
+	}
 }
 
 // WithSandboxAdapter supplies the external-resource adapter used by sandbox bootstrap operations.

@@ -2,6 +2,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -327,5 +329,19 @@ func absentResource(key, kind, name, marker string, attributes map[string]string
 }
 
 func resource(key, kind, name, marker string, attributes map[string]string) engine.SandboxResourceSpec {
+	if kind == engine.SandboxResourceRuleset {
+		var definition map[string]any
+		if json.Unmarshal([]byte(attributes["input:definition"]), &definition) == nil {
+			if _, present := definition["bypass_actors"]; !present {
+				definition["bypass_actors"] = []any{}
+			}
+			if canonical, err := json.Marshal(definition); err == nil {
+				attributes["input:definition"] = string(canonical)
+				attributes["definition"] = string(canonical)
+				digest := sha256.Sum256(canonical)
+				attributes["definition_sha256"] = "sha256:" + hex.EncodeToString(digest[:])
+			}
+		}
+	}
 	return engine.SandboxResourceSpec{Key: key, Kind: kind, Name: name, Marker: marker, Attributes: attributes}
 }

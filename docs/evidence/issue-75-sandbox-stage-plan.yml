@@ -1,0 +1,258 @@
+name: Plan one Issue 75 sandbox stage
+
+# Reviewed candidate for installation in the isolated sandbox repository. One dispatch
+# plans one organic fixture or cleanup stage. Identity flags are carried in one strict JSON
+# object so workflow_dispatch remains below GitHub's ten-input limit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact 40-character reviewed codex-starter-kit commit
+        required: true
+        type: string
+      stage:
+        description: Exact Issue 75 sandbox stage
+        required: true
+        type: choice
+        options:
+          - issues-setup
+          - issues-governed
+          - project-setup
+          - relationships-setup
+          - file-initial
+          - rules-setup
+          - file-stale
+          - cleanup-delivery
+          - cleanup-rules
+          - cleanup-file
+          - cleanup-relationships
+          - cleanup-issues
+      approved_by:
+        description: Approving human identity
+        required: true
+        type: string
+      approval_id:
+        description: Durable approval record identity
+        required: true
+        type: string
+      approved_at:
+        description: Active approval time in RFC3339 format
+        required: true
+        type: string
+      expires_at:
+        description: Authority expiry in RFC3339 format
+        required: true
+        type: string
+      identity_flags_json:
+        description: Optional exact identity flags as one strict JSON object
+        required: false
+        default: "{}"
+        type: string
+      delivery_input_run_id:
+        description: Optional exact delivery-input workflow run for issues-governed
+        required: false
+        default: ""
+        type: string
+      delivery_input_artifact:
+        description: Optional exact artifact containing issue-75-delivery-input.json
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    environment: ${{ (inputs.stage == 'rules-setup' || inputs.stage == 'cleanup-rules') && 'contract-rules' || ((inputs.stage == 'project-setup' || inputs.stage == 'relationships-setup' || inputs.stage == 'cleanup-relationships') && 'contract-reconciler' || 'contract-seeder') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Validate source, stage role, and optional identity flags
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          STAGE: ${{ inputs.stage }}
+          IDENTITY_FLAGS_JSON: ${{ inputs.identity_flags_json }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ "$(git -C tool rev-parse HEAD)" != "$SOURCE_REVISION" ]]; then
+            echo "source revision is not the exact reviewed commit" >&2
+            exit 1
+          fi
+          cmp .github/workflows/issue-75-sandbox-stage-plan.yml \
+            tool/docs/evidence/issue-75-sandbox-stage-plan.yml
+          case "$STAGE" in
+            rules-setup|cleanup-rules) ROLE=rules ;;
+            project-setup|relationships-setup|cleanup-relationships) ROLE=reconciler ;;
+            issues-setup|issues-governed|file-initial|file-stale|cleanup-delivery|cleanup-file|cleanup-issues) ROLE=seeder ;;
+            *) echo "unsupported Issue 75 stage" >&2; exit 1 ;;
+          esac
+          jq -e '
+            type == "object" and
+            ([keys[]] - ["parent_number", "parent_id", "parent_node_id",
+              "delivery_number", "delivery_id", "delivery_node_id",
+              "dependent_number", "dependent_id", "dependent_node_id",
+              "pull_number", "pull_id", "pull_node_id", "branch_head_sha"] | length == 0) and
+            ([.[] | type] | all(. == "string"))' \
+            <<<"$IDENTITY_FLAGS_JSON"
+          printf '%s' "$IDENTITY_FLAGS_JSON" > identity-flags.json
+          printf '%s' "$ROLE" > expected-role.txt
+
+      - name: Download and validate exact governed delivery input
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE: ${{ inputs.stage }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          DELIVERY_INPUT_RUN_ID: ${{ inputs.delivery_input_run_id }}
+          DELIVERY_INPUT_ARTIFACT: ${{ inputs.delivery_input_artifact }}
+        shell: bash
+        run: |
+          if [[ "$STAGE" != "issues-governed" ]]; then
+            test -z "$DELIVERY_INPUT_RUN_ID"
+            test -z "$DELIVERY_INPUT_ARTIFACT"
+            exit 0
+          fi
+          if [[ ! "$DELIVERY_INPUT_RUN_ID" =~ ^[0-9]+$ ]] || \
+             [[ "$DELIVERY_INPUT_ARTIFACT" != "issue-75-delivery-input" ]]; then
+            echo "issues-governed requires the exact delivery-input artifact identity" >&2
+            exit 1
+          fi
+          gh api \
+            "repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/$DELIVERY_INPUT_RUN_ID" \
+            --jq 'select(.event == "workflow_dispatch" and .path == ".github/workflows/issue-75-delivery-input.yml") | .id' \
+            | grep -qx "$DELIVERY_INPUT_RUN_ID"
+          gh run download "$DELIVERY_INPUT_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$DELIVERY_INPUT_ARTIFACT" --dir delivery-input
+          test -f delivery-input/issue-75-delivery-input.json
+          test "$(find delivery-input -type f | wc -l)" -eq 1
+          jq -e --arg source "$SOURCE_REVISION" \
+            --arg parent "$(jq -r '.parent_number // ""' identity-flags.json)" \
+            --arg parent_id "$(jq -r '.parent_id // ""' identity-flags.json)" \
+            --arg parent_node "$(jq -r '.parent_node_id // ""' identity-flags.json)" \
+            --arg delivery "$(jq -r '.delivery_number // ""' identity-flags.json)" \
+            --arg delivery_id "$(jq -r '.delivery_id // ""' identity-flags.json)" \
+            --arg delivery_node "$(jq -r '.delivery_node_id // ""' identity-flags.json)" \
+            --arg dependent "$(jq -r '.dependent_number // ""' identity-flags.json)" \
+            --arg dependent_id "$(jq -r '.dependent_id // ""' identity-flags.json)" \
+            --arg dependent_node "$(jq -r '.dependent_node_id // ""' identity-flags.json)" '
+              .request.intent.source_revision == $source and
+              (.artifact_contract.parent.number | tostring) == $parent and
+              (.artifact_contract.parent.database_id | tostring) == $parent_id and
+              .artifact_contract.parent.node_id == $parent_node and
+              (.artifact_contract.delivery.number | tostring) == $delivery and
+              (.artifact_contract.delivery.database_id | tostring) == $delivery_id and
+              .artifact_contract.delivery.node_id == $delivery_node and
+              (.artifact_contract.dependent.number | tostring) == $dependent and
+              (.artifact_contract.dependent.database_id | tostring) == $dependent_id and
+              .artifact_contract.dependent.node_id == $dependent_node and
+              .request.intent.managed_id == ("issue:" + $delivery) and
+              .request.intent.target.repository_id == "R_kgDOTa0WSg" and
+              .request.intent.target.project_id == "PVT_kwDOEjyyNM4Bdm9F"' \
+            delivery-input/issue-75-delivery-input.json
+
+      - name: Generate exact credential-free stage input
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          STAGE: ${{ inputs.stage }}
+          APPROVED_BY: ${{ inputs.approved_by }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+          APPROVED_AT: ${{ inputs.approved_at }}
+          EXPIRES_AT: ${{ inputs.expires_at }}
+        shell: bash
+        run: |
+          DELIVERY_ARG=()
+          if [[ "$STAGE" == "issues-governed" ]]; then
+            DELIVERY_ARG=(--delivery-input-file "../delivery-input/issue-75-delivery-input.json")
+          fi
+          go -C tool run ./cmd/issue75-sandbox \
+            --stage "$STAGE" --repository "${{ github.workspace }}" \
+            --source-revision "$SOURCE_REVISION" \
+            --approved-by "$APPROVED_BY" --approval-id "$APPROVAL_ID" \
+            --approved-at "$APPROVED_AT" --expires-at "$EXPIRES_AT" \
+            --parent-number "$(jq -r '.parent_number // ""' identity-flags.json)" \
+            --parent-id "$(jq -r '.parent_id // ""' identity-flags.json)" \
+            --parent-node-id "$(jq -r '.parent_node_id // ""' identity-flags.json)" \
+            --delivery-number "$(jq -r '.delivery_number // ""' identity-flags.json)" \
+            --delivery-id "$(jq -r '.delivery_id // ""' identity-flags.json)" \
+            --delivery-node-id "$(jq -r '.delivery_node_id // ""' identity-flags.json)" \
+            --dependent-number "$(jq -r '.dependent_number // ""' identity-flags.json)" \
+            --dependent-id "$(jq -r '.dependent_id // ""' identity-flags.json)" \
+            --dependent-node-id "$(jq -r '.dependent_node_id // ""' identity-flags.json)" \
+            --pull-number "$(jq -r '.pull_number // ""' identity-flags.json)" \
+            --pull-id "$(jq -r '.pull_id // ""' identity-flags.json)" \
+            --pull-node-id "$(jq -r '.pull_node_id // ""' identity-flags.json)" \
+            --branch-head-sha "$(jq -r '.branch_head_sha // ""' identity-flags.json)" \
+            "${DELIVERY_ARG[@]}" \
+            > "$STAGE-input.json"
+
+      - name: Require exact generated stage identity
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          STAGE: ${{ inputs.stage }}
+        shell: bash
+        run: |
+          ROLE="$(cat expected-role.txt)"
+          jq -e --arg stage "$STAGE" --arg role "$ROLE" --arg source "$SOURCE_REVISION" \
+            '.role == $role and .stage_contract.stage == $stage and
+             .request.manifest.source_revision == $source and
+             .request.manifest.operation_id == ("issue-75-live-" + $stage + "-v1") and
+             .request.manifest.target.repository_id == "R_kgDOTa0WSg" and
+             .request.manifest.target.project_id == "PVT_kwDOEjyyNM4Bdm9F" and
+             .mandate.mandate_id != ""' "$STAGE-input.json"
+
+      - name: Inspect and emit immutable stage plan
+        env:
+          CSK_APP_PRIVATE_KEY: ${{ secrets.CSK_APP_PRIVATE_KEY }}
+          STAGE: ${{ inputs.stage }}
+        run: >-
+          go -C tool run ./cmd/starter-kit sandbox-live-plan
+          --input "../$STAGE-input.json" > "$STAGE-planning.json"
+
+      - name: Require plan binding to the generated input
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          STAGE: ${{ inputs.stage }}
+        shell: bash
+        run: |
+          ROLE="$(cat expected-role.txt)"
+          jq -e --arg source "$SOURCE_REVISION" --arg stage "$STAGE" \
+            '.schema_version == 1 and .plan.source_revision == $source and
+             .plan.operation_id == ("issue-75-live-" + $stage + "-v1") and
+             .plan.plan_id != "" and .inspection.problems == []' \
+            "$STAGE-planning.json"
+          test "$(jq -r .role "$STAGE-input.json")" = "$ROLE"
+
+      - name: Retain credential-free input and planning evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-${{ inputs.stage }}-planning
+          path: |
+            ${{ inputs.stage }}-input.json
+            ${{ inputs.stage }}-planning.json
+            delivery-input/issue-75-delivery-input.json
+          if-no-files-found: warn
+          retention-days: 30

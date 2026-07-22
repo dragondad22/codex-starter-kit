@@ -1,0 +1,390 @@
+name: Issue 75 governed delivery candidate
+
+# Reviewed candidate for installation as
+# .github/workflows/issue-75-contract.yml in the isolated sandbox repository.
+# The composed --execute-step route requires observer and effect credentials in one job.
+# Before first use, an owner must explicitly create and protect the contract-delivery
+# environment and populate exactly its reconciler and seeder App private-key secrets. This
+# exposes the union of those two keys to the composed runner. Reviewer and rules credentials
+# remain in their existing isolated environments and are never supplied here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact 40-character reviewed codex-starter-kit commit
+        required: true
+        type: string
+      request_run_id:
+        description: Run containing the exact credential-free delivery request
+        required: true
+        type: string
+      request_artifact:
+        description: Artifact containing only delivery-request.json
+        required: true
+        type: string
+      mandate_run_id:
+        description: Run containing the exact bound active execution mandate
+        required: true
+        type: string
+      mandate_artifact:
+        description: Artifact containing only bound-work-mandate.json
+        required: true
+        type: string
+      prior_state_run_id:
+        description: Optional prior transition run containing exact lifecycle state
+        required: false
+        default: ""
+        type: string
+      prior_state_artifact:
+        description: Optional prior transition state artifact paired with its run ID
+        required: false
+        default: ""
+        type: string
+      combined_delivery_environment_authorized:
+        description: Owner confirms protected contract-delivery exists with exactly two approved App keys
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  envelope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Require an immutable exact source revision
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be an exact commit" >&2
+            exit 1
+          fi
+          test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
+          cmp .github/workflows/issue-75-contract.yml \
+            tool/docs/evidence/issue-75-contract.yml
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download exact request and mandate artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_RUN_ID: ${{ inputs.request_run_id }}
+          REQUEST_ARTIFACT: ${{ inputs.request_artifact }}
+          MANDATE_RUN_ID: ${{ inputs.mandate_run_id }}
+          MANDATE_ARTIFACT: ${{ inputs.mandate_artifact }}
+        shell: bash
+        run: |
+          if [[ ! "$REQUEST_RUN_ID" =~ ^[0-9]+$ ]] || \
+             [[ "$REQUEST_RUN_ID" != "$MANDATE_RUN_ID" ]] || \
+             [[ "$REQUEST_ARTIFACT" != "issue-75-delivery-request" ]] || \
+             [[ "$MANDATE_ARTIFACT" != "issue-75-delivery-mandate" ]]; then
+            echo "request and mandate must be the exact paired delivery-input artifacts" >&2
+            exit 1
+          fi
+          gh api \
+            "repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/$REQUEST_RUN_ID" \
+            --jq 'select(.event == "workflow_dispatch" and .path == ".github/workflows/issue-75-delivery-input.yml") | .id' \
+            | grep -qx "$REQUEST_RUN_ID"
+          gh run download "$REQUEST_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$REQUEST_ARTIFACT" --dir request
+          gh run download "$MANDATE_RUN_ID" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$MANDATE_ARTIFACT" --dir mandate
+          test -f request/delivery-request.json
+          test -f mandate/bound-work-mandate.json
+          test "$(find request -type f | wc -l)" -eq 1
+          test "$(find mandate -type f | wc -l)" -eq 1
+
+      - name: Build the exact reviewed contract envelope
+        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
+
+      - name: Validate exact request and mandate without credentials or effects
+        run: >-
+          ./issue75-contract
+          --source-revision "${{ inputs.source_revision }}"
+          --request-file request/delivery-request.json
+          --mandate-file mandate/bound-work-mandate.json
+          > issue-75-envelope.json
+
+      - name: Retain credential-free envelope evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-envelope
+          path: |
+            issue-75-envelope.json
+            request/delivery-request.json
+            mandate/bound-work-mandate.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  authority-gate:
+    needs: envelope
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require explicit combined-environment authority
+        env:
+          COMBINED_ENVIRONMENT_AUTHORIZED: ${{ inputs.combined_delivery_environment_authorized }}
+        shell: bash
+        run: |
+          if [[ "$COMBINED_ENVIRONMENT_AUTHORIZED" != "true" ]]; then
+            echo "Live issue 75 execution is not configured." >&2
+            echo "An owner must create and protect contract-delivery, then populate" >&2
+            echo "exactly CSK_RECONCILER_APP_PRIVATE_KEY and" >&2
+            echo "CSK_SEEDER_APP_PRIVATE_KEY before affirming this input." >&2
+            echo "The composed runner receives the union of those two keys." >&2
+            exit 1
+          fi
+
+  execute-one-transition:
+    needs: [envelope, authority-gate]
+    environment: contract-delivery
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Download validated credential-free envelope inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: issue-75-delivery-envelope
+          path: envelope
+
+      - name: Require paired prior-state inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+          PRIOR_STATE_ARTIFACT: ${{ inputs.prior_state_artifact }}
+        shell: bash
+        run: |
+          if { [[ -n "$PRIOR_STATE_RUN_ID" ]] && [[ -z "$PRIOR_STATE_ARTIFACT" ]]; } || \
+             { [[ -z "$PRIOR_STATE_RUN_ID" ]] && [[ -n "$PRIOR_STATE_ARTIFACT" ]]; }; then
+            echo "prior_state_run_id and prior_state_artifact must be supplied together" >&2
+            exit 1
+          fi
+          latest_run_id="$(
+            gh api --paginate \
+              'repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/workflows/issue-75-contract.yml/runs?event=workflow_dispatch&status=success&per_page=100' \
+              --jq '.workflow_runs[].id' | sort -nr | while read -r candidate; do
+                gh api \
+                  "repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/$candidate/artifacts" \
+                  --jq '.artifacts[] | select(.expired | not) |
+                    [.name, (.workflow_run.id | tostring)] | @tsv' \
+                  | grep -Fqx $'issue-75-delivery-state-'"$candidate"$'\t'"$candidate" || continue
+                printf '%s\n' "$candidate"
+                break
+              done
+          )"
+          if [[ -z "$PRIOR_STATE_RUN_ID" ]]; then
+            if [[ -n "$latest_run_id" ]]; then
+              echo "a current delivery episode head exists; initial-state replay is forbidden" >&2
+              exit 1
+            fi
+            exit 0
+          fi
+          if [[ ! "$PRIOR_STATE_RUN_ID" =~ ^[0-9]+$ ]] || \
+             [[ "$PRIOR_STATE_ARTIFACT" != "issue-75-delivery-state-$PRIOR_STATE_RUN_ID" ]] || \
+             [[ "$PRIOR_STATE_RUN_ID" != "$latest_run_id" ]]; then
+            echo "prior state must be the current canonical episode head" >&2
+            exit 1
+          fi
+          gh api \
+            "repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/$PRIOR_STATE_RUN_ID" \
+            --jq 'select(.event == "workflow_dispatch" and .path == ".github/workflows/issue-75-contract.yml") | .id' \
+            | grep -qx "$PRIOR_STATE_RUN_ID"
+
+      - name: Download prior lifecycle state
+        if: ${{ inputs.prior_state_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+          PRIOR_STATE_ARTIFACT: ${{ inputs.prior_state_artifact }}
+        run: >-
+          gh run download "$PRIOR_STATE_RUN_ID"
+          --repo codex-starter-kit-labs/codex-starter-kit-sandbox
+          --name "$PRIOR_STATE_ARTIFACT" --dir prior-state
+
+      - name: Restore only allowlisted integrity-protected state
+        if: ${{ inputs.prior_state_run_id != '' }}
+        shell: bash
+        run: |
+          if find prior-state -type l -print -quit | grep -q .; then
+            echo "prior state contains a symlink" >&2
+            exit 1
+          fi
+          while IFS= read -r path; do
+            relative="${path#prior-state/}"
+            case "$relative" in
+              .starter-kit/delivery/state.json|.starter-kit/work-manager/state.json|.starter-kit/work-mandates.json) ;;
+              issue-75-transition.json|issue-75-state-manifest.json) ;;
+              *) echo "unexpected prior-state file: $relative" >&2; exit 1 ;;
+            esac
+          done < <(find prior-state -type f -print)
+          if find prior-state ! -type d ! -type f -print -quit | grep -q .; then
+            echo "prior state contains an unsupported filesystem object" >&2
+            exit 1
+          fi
+          test -f prior-state/.starter-kit/delivery/state.json
+          test -f prior-state/issue-75-transition.json
+          test -f prior-state/issue-75-state-manifest.json
+          jq -e \
+            --arg source "${{ inputs.source_revision }}" \
+            --arg run_id "${{ inputs.prior_state_run_id }}" \
+            --arg mandate_id "$(jq -r .mandate_id envelope/issue-75-envelope.json)" \
+            --arg resource_digest "$(jq -r .delivery_resource_digest envelope/issue-75-envelope.json)" \
+            '.schema_version == 1 and .source_revision == $source and
+             .run_id == $run_id and .mandate_id == $mandate_id and
+             .delivery_resource_digest == $resource_digest and
+             (.files | type == "object") and
+             (.files[".starter-kit/delivery/state.json"] | test("^[0-9a-f]{64}$")) and
+             (.files["issue-75-transition.json"] | test("^[0-9a-f]{64}$")) and
+             ([.files | keys[]] - [".starter-kit/delivery/state.json",
+               ".starter-kit/work-manager/state.json", ".starter-kit/work-mandates.json",
+               "issue-75-transition.json"] | length == 0) and
+             ([.files[] | test("^[0-9a-f]{64}$")] | all)' \
+            prior-state/issue-75-state-manifest.json
+          jq -r '.files | to_entries[] | [.key, .value] | @tsv' \
+            prior-state/issue-75-state-manifest.json | while IFS=$'\t' read -r relative expected; do
+              test -f "prior-state/$relative"
+              test "$(sha256sum "prior-state/$relative" | cut -d ' ' -f 1)" = "$expected"
+            done
+          mkdir -p .starter-kit/delivery .starter-kit/work-manager
+          install -m 600 prior-state/.starter-kit/delivery/state.json .starter-kit/delivery/state.json
+          if [[ -f prior-state/.starter-kit/work-manager/state.json ]]; then
+            install -m 600 prior-state/.starter-kit/work-manager/state.json .starter-kit/work-manager/state.json
+          fi
+          if [[ -f prior-state/.starter-kit/work-mandates.json ]]; then
+            install -m 600 prior-state/.starter-kit/work-mandates.json .starter-kit/work-mandates.json
+          fi
+
+      - name: Require the exact validated source and inputs
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
+          test -f envelope/request/delivery-request.json
+          test -f envelope/mandate/bound-work-mandate.json
+
+      - name: Build the exact reviewed transition runner
+        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
+
+      - name: Execute one mandate-contained semantic transition
+        env:
+          CSK_RECONCILER_APP_PRIVATE_KEY: ${{ secrets.CSK_RECONCILER_APP_PRIVATE_KEY }}
+          CSK_SEEDER_APP_PRIVATE_KEY: ${{ secrets.CSK_SEEDER_APP_PRIVATE_KEY }}
+        run: >-
+          ./issue75-contract --execute-step
+          --source-revision "${{ inputs.source_revision }}"
+          --request-file envelope/request/delivery-request.json
+          --mandate-file envelope/mandate/bound-work-mandate.json
+          > issue-75-transition.json
+
+      - name: Retain credential-free transition evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-transition
+          path: issue-75-transition.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Require a well-formed live transition result
+        env:
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+        shell: bash
+        run: |
+          jq -e \
+            '.schema_version == 1 and .evidence_mode == "live" and
+            (.outcome == "pass" or .outcome == "needs-review") and
+            (.status.disposition | type == "string")' \
+            issue-75-transition.json
+          if [[ -z "$PRIOR_STATE_RUN_ID" ]]; then
+            jq -e \
+              '(.plan.effects | length) == 1 and
+               .plan.effects[0].kind == "create-branch"' \
+              issue-75-transition.json
+          fi
+
+      - name: Bind the next state to this episode head
+        if: ${{ hashFiles('.starter-kit/delivery/state.json') != '' }}
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          PRIOR_STATE_RUN_ID: ${{ inputs.prior_state_run_id }}
+        run: |
+          files="$(jq -n \
+            --arg delivery "$(sha256sum .starter-kit/delivery/state.json | cut -d ' ' -f 1)" \
+            --arg transition "$(sha256sum issue-75-transition.json | cut -d ' ' -f 1)" \
+            '{".starter-kit/delivery/state.json": $delivery,
+              "issue-75-transition.json": $transition}')"
+          if [[ -f .starter-kit/work-manager/state.json ]]; then
+            files="$(jq --arg digest "$(sha256sum .starter-kit/work-manager/state.json | cut -d ' ' -f 1)" \
+              '. + {".starter-kit/work-manager/state.json": $digest}' <<<"$files")"
+          fi
+          if [[ -f .starter-kit/work-mandates.json ]]; then
+            files="$(jq --arg digest "$(sha256sum .starter-kit/work-mandates.json | cut -d ' ' -f 1)" \
+              '. + {".starter-kit/work-mandates.json": $digest}' <<<"$files")"
+          fi
+          jq -n \
+            --arg source_revision "$SOURCE_REVISION" \
+            --arg run_id "${{ github.run_id }}" \
+            --arg predecessor_run_id "$PRIOR_STATE_RUN_ID" \
+            --arg mandate_id "$(jq -r .mandate_id envelope/issue-75-envelope.json)" \
+            --arg delivery_resource_digest "$(jq -r .delivery_resource_digest envelope/issue-75-envelope.json)" \
+            --argjson files "$files" \
+            '{schema_version: 1, source_revision: $source_revision, run_id: $run_id,
+              predecessor_run_id: $predecessor_run_id, mandate_id: $mandate_id,
+              delivery_resource_digest: $delivery_resource_digest, files: $files}' \
+            > issue-75-state-manifest.json
+
+      - name: Retain exact next lifecycle state
+        if: ${{ hashFiles('.starter-kit/delivery/state.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-state-${{ github.run_id }}
+          path: |
+            issue-75-transition.json
+            issue-75-state-manifest.json
+            .starter-kit/delivery/state.json
+            .starter-kit/work-manager/state.json
+            .starter-kit/work-mandates.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30

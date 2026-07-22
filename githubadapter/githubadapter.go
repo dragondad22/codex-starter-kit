@@ -1211,27 +1211,8 @@ func (adapter *Adapter) issueWebURL(number int) string {
 }
 
 func managedBody(desired engine.DesiredManagedTask, contract *engine.ExecutableIssueContract) string {
-	metadataDesired := desired
-	metadataDesired.Title = ""
-	metadataDesired.IssueType = ""
-	metadataDesired.Readiness = ""
-	metadataDesired.Status = ""
-	metadataDesired.Horizon = ""
-	metadataDesired.ParentHorizon = ""
-	metadataDesired.Closed = false
-	metadataDesired.ParentContext = nil
-	metadataDesired.Dependents = nil
-	encoded, _ := json.Marshal(metadataDesired)
-	metadata := base64.RawURLEncoding.EncodeToString(encoded)
-	machine := "<!-- starter-kit-managed:" + desired.ManagedID + " -->\n<!-- starter-kit-managed-metadata:" + metadata + " -->"
-	if contract == nil {
-		return machine
-	}
-	human, err := engine.RenderExecutableIssueContract(*contract)
-	if err != nil {
-		return machine
-	}
-	return human + "\n\n" + machine
+	body, _ := engine.RenderManagedIssueBody(desired, contract)
+	return body
 }
 
 func parseManagedMetadata(body string) (engine.DesiredManagedTask, bool) {

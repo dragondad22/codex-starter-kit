@@ -1,0 +1,208 @@
+name: Build exact Issue 75 governed delivery input
+
+# Reviewed credential-free candidate for installation in the isolated sandbox repository.
+# It creates no GitHub resource and reads no secret. The output is the exact bridge from
+# immutable fixture identities and final workflow bytes to governed issue bodies, delivery
+# request, and active DEC-0022 mandate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact 40-character reviewed codex-starter-kit commit
+        required: true
+        type: string
+      implemented_source_digest:
+        description: Canonical sha256 digest of the final fixture workflow bytes
+        required: true
+        type: string
+      approved_by:
+        description: Approving human identity
+        required: true
+        type: string
+      approval_id:
+        description: Durable approval record identity
+        required: true
+        type: string
+      approved_at:
+        description: Active approval time in RFC3339 format
+        required: true
+        type: string
+      expires_at:
+        description: Authority expiry in RFC3339 format
+        required: true
+        type: string
+      identities_json:
+        description: Exact parent, delivery, and dependent issue identities
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starter-kit-contract-sandbox
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sandbox
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check out exact reviewed Starter Kit candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: dragondad22/codex-starter-kit
+          ref: ${{ inputs.source_revision }}
+          path: tool
+
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.5
+          cache-dependency-path: tool/go.sum
+
+      - name: Validate exact source, workflow digest, and topology identities
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          IMPLEMENTED_SOURCE_DIGEST: ${{ inputs.implemented_source_digest }}
+          IDENTITIES_JSON: ${{ inputs.identities_json }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ "$(git -C tool rev-parse HEAD)" != "$SOURCE_REVISION" ]] || \
+             [[ ! "$IMPLEMENTED_SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "source or final workflow digest is not canonical" >&2
+            exit 1
+          fi
+          cmp .github/workflows/issue-75-delivery-input.yml \
+            tool/docs/evidence/issue-75-delivery-input.yml
+          jq -e '
+            type == "object" and
+            (keys | sort) == (["parent_number", "parent_id", "parent_node_id",
+              "delivery_number", "delivery_id", "delivery_node_id",
+              "dependent_number", "dependent_id", "dependent_node_id"] | sort) and
+            ([.[] | type] | all(. == "string")) and
+            ([.parent_number, .parent_id, .delivery_number, .delivery_id,
+              .dependent_number, .dependent_id] |
+              all(test("^[1-9][0-9]*$"))) and
+            ([.parent_number, .delivery_number, .dependent_number] | unique | length == 3) and
+            ([.parent_id, .delivery_id, .dependent_id] | unique | length == 3) and
+            ([.parent_node_id, .delivery_node_id, .dependent_node_id] |
+              (all(.[]; length > 0) and ((unique | length) == 3)))' <<<"$IDENTITIES_JSON"
+          printf '%s' "$IDENTITIES_JSON" > issue-identities.json
+
+      - name: Derive and require the exact final fixture workflow digest
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          IMPLEMENTED_SOURCE_DIGEST: ${{ inputs.implemented_source_digest }}
+          APPROVED_BY: ${{ inputs.approved_by }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+          APPROVED_AT: ${{ inputs.approved_at }}
+          EXPIRES_AT: ${{ inputs.expires_at }}
+        shell: bash
+        run: |
+          go -C tool run ./cmd/issue75-sandbox \
+            --stage file-stale --repository "${{ github.workspace }}" \
+            --source-revision "$SOURCE_REVISION" \
+            --approved-by "$APPROVED_BY" --approval-id "$APPROVAL_ID" \
+            --approved-at "$APPROVED_AT" --expires-at "$EXPIRES_AT" \
+            > file-stale-input.json
+          jq -e --arg source "$SOURCE_REVISION" --arg digest "$IMPLEMENTED_SOURCE_DIGEST" '
+            .request.manifest.source_revision == $source and
+            .request.manifest.operation_id == "issue-75-live-file-stale-v1" and
+            (.request.manifest.resources | length == 1) and
+            .request.manifest.resources[0].key == "file:delivery-check" and
+            .request.manifest.resources[0].attributes.content_sha256 == $digest' \
+            file-stale-input.json
+
+      - name: Generate full credential-free delivery input
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          IMPLEMENTED_SOURCE_DIGEST: ${{ inputs.implemented_source_digest }}
+          APPROVED_BY: ${{ inputs.approved_by }}
+          APPROVAL_ID: ${{ inputs.approval_id }}
+          APPROVED_AT: ${{ inputs.approved_at }}
+          EXPIRES_AT: ${{ inputs.expires_at }}
+        shell: bash
+        run: |
+          go -C tool run ./cmd/issue75-delivery \
+            --source-revision "$SOURCE_REVISION" \
+            --implemented-source-digest "$IMPLEMENTED_SOURCE_DIGEST" \
+            --approved-by "$APPROVED_BY" --approval-id "$APPROVAL_ID" \
+            --approved-at "$APPROVED_AT" --expires-at "$EXPIRES_AT" \
+            --parent-number "$(jq -r .parent_number issue-identities.json)" \
+            --parent-id "$(jq -r .parent_id issue-identities.json)" \
+            --parent-node-id "$(jq -r .parent_node_id issue-identities.json)" \
+            --delivery-number "$(jq -r .delivery_number issue-identities.json)" \
+            --delivery-id "$(jq -r .delivery_id issue-identities.json)" \
+            --delivery-node-id "$(jq -r .delivery_node_id issue-identities.json)" \
+            --dependent-number "$(jq -r .dependent_number issue-identities.json)" \
+            --dependent-id "$(jq -r .dependent_id issue-identities.json)" \
+            --dependent-node-id "$(jq -r .dependent_node_id issue-identities.json)" \
+            > issue-75-delivery-input.json
+
+      - name: Validate generated source, topology, and final workflow binding
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          IMPLEMENTED_SOURCE_DIGEST: ${{ inputs.implemented_source_digest }}
+        run: >-
+          jq -e --arg source "$SOURCE_REVISION"
+          --arg digest "$IMPLEMENTED_SOURCE_DIGEST"
+          '.request.repository == "." and
+          .request.intent.source_revision == $source and
+          .request.intent.delivery_claim.implemented_sources ==
+            [{"id":"fixture-check","path":".github/workflows/issue-75-fixture-check.yml","digest":$digest}] and
+          .artifact_contract.implemented_source.digest == $digest and
+          .mandate.mandate_id != "" and
+          .request.intent.managed_id == ("issue:" + (.artifact_contract.delivery.number | tostring))'
+          issue-75-delivery-input.json
+
+      - name: Split exact engine request and active mandate
+        run: |
+          jq -e '.request' issue-75-delivery-input.json > delivery-request.json
+          jq -e '.mandate' issue-75-delivery-input.json > bound-work-mandate.json
+
+      - name: Validate the credential-free execution envelope
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: >-
+          go -C tool run ./cmd/issue75-contract
+          --source-revision "$SOURCE_REVISION"
+          --request-file ../delivery-request.json
+          --mandate-file ../bound-work-mandate.json
+          > issue-75-delivery-envelope.json
+
+      - name: Retain full governed delivery input
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-input
+          path: issue-75-delivery-input.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain exact split delivery request
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-request
+          path: delivery-request.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain exact split execution mandate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-mandate
+          path: bound-work-mandate.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain credential-free envelope validation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: issue-75-delivery-envelope
+          path: issue-75-delivery-envelope.json
+          if-no-files-found: error
+          retention-days: 30
