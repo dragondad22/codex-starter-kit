@@ -310,6 +310,12 @@ verification and the second read-only plan refused convergence because GitHub ad
 The desired definition now includes those provider defaults explicitly so the installed
 state and content-addressed plan can converge without semantic relaxation.
 
+Because closed PR `#31` remains immutable timeline history for the first delivery branch,
+the recovered next episode uses `contract/issue-75-20260721-02`. The delivery issue and
+all other marker-owned fixture resources remain the same exact identities; the new branch
+name prevents the historical closed PR from being mistaken for the current episode
+without deleting or rewriting GitHub evidence.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact
