@@ -679,12 +679,25 @@ func (adapter *SandboxAdapter) observeFixtures(ctx context.Context, credential C
 					SHA string `json:"sha"`
 				} `json:"object"`
 			}
-			_, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/git/ref/heads/"+escapePath(desired.Name), nil, &ref)
-			if isResponseStatus(err, http.StatusNotFound) {
-				continue
+			branchAbsent := false
+			for attempt := 0; attempt < sandboxConsistencyReads; attempt++ {
+				_, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/git/ref/heads/"+escapePath(desired.Name), nil, &ref)
+				if isResponseStatus(err, http.StatusNotFound) {
+					branchAbsent = true
+					break
+				}
+				if err != nil {
+					return nil, err
+				}
+				if desired.DesiredState != engine.SandboxResourceAbsent || desired.Attributes["sha"] == "" || ref.Object.SHA != desired.Attributes["sha"] || attempt+1 == sandboxConsistencyReads {
+					break
+				}
+				if err := adapter.retryWait(ctx, sandboxRESTRetryBase*(1<<attempt)); err != nil {
+					return nil, err
+				}
 			}
-			if err != nil {
-				return nil, err
+			if branchAbsent {
+				continue
 			}
 			result = append(result, engine.SandboxObservedResource{Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: ref.Object.SHA, Marker: desired.Marker, Attributes: desiredAttributes(desired, map[string]string{"sha": ref.Object.SHA})})
 		case engine.SandboxResourceFixturePR:

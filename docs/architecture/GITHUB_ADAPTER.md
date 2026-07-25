@@ -133,6 +133,11 @@ successful create-branch state artifact, binds its receipt to the governed deliv
 and exact branch SHA, then requires an all-state, bounded PR lookup to return no history
 immediately before deletion. Any issue drift, head drift, PR, malformed or multi-page
 pagination, or lookup failure prevents deletion.
+Because GitHub may briefly return the approved ref after a successful delete, observation
+of an exact absent branch polls only that idempotent ref read within a bounded exponential
+budget. `404` proves absence, a different SHA surfaces immediately as drift, cancellation
+stops the poll, and an unchanged SHA after the budget remains an explicit residual failure;
+the DELETE is never retried.
 
 ## Observation and effects
 

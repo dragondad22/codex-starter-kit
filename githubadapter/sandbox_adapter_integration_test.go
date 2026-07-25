@@ -1581,7 +1581,9 @@ func TestSandboxAdapterProjectResourcesRetainIdentityAndInventoryReads(t *testin
 func TestSandboxAdapterExactFixtureCleanupConvergesAfterCloseAndDelete(t *testing.T) {
 	now := time.Date(2026, 7, 21, 13, 0, 0, 0, time.UTC)
 	marker := "starter-kit-contract:run-75"
-	issueOpen, pullOpen, branchPresent := true, true, true
+	issueOpen, pullOpen, branchDeleted := true, true, false
+	branchDeletes, staleBranchReads := 0, 2
+	waits := []time.Duration{}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/20":
@@ -1603,13 +1605,17 @@ func TestSandboxAdapterExactFixtureCleanupConvergesAfterCloseAndDelete(t *testin
 			pullOpen = false
 			response.WriteHeader(http.StatusOK)
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run-75":
-			if !branchPresent {
+			if branchDeleted && staleBranchReads == 0 {
 				http.NotFound(response, request)
 				return
 			}
+			if branchDeleted {
+				staleBranchReads--
+			}
 			json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": "head-sha"}})
 		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/git/refs/heads/contract/run-75":
-			branchPresent = false
+			branchDeleted = true
+			branchDeletes++
 			response.WriteHeader(http.StatusNoContent)
 		default:
 			t.Fatalf("unexpected cleanup request: %s %s", request.Method, request.URL.Path)
@@ -1623,7 +1629,17 @@ func TestSandboxAdapterExactFixtureCleanupConvergesAfterCloseAndDelete(t *testin
 		{Key: "cleanup:pr", Kind: engine.SandboxResourceFixturePR, Name: "pull", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"number": "21", "id": "201", "node_id": "PR_pull", "state": "closed", "head": "contract/run-75", "base": "main", "head_sha": "head-sha"}},
 		{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}},
 	}
-	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	adapter, err := githubadapter.NewSandboxRole(
+		config,
+		githubadapter.SandboxRoleSeeder,
+		sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+		server.Client(),
+		githubadapter.WithSandboxClock(func() time.Time { return now }),
+		githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+			waits = append(waits, delay)
+			return nil
+		}),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1640,11 +1656,214 @@ func TestSandboxAdapterExactFixtureCleanupConvergesAfterCloseAndDelete(t *testin
 	if len(observation.Resources) != 0 {
 		t.Fatalf("closed/deleted cleanup resources remained observed: %#v", observation.Resources)
 	}
+	if branchDeletes != 1 || !slices.Equal(waits, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}) {
+		t.Fatalf("branch deletion convergence = deletes:%d waits:%v", branchDeletes, waits)
+	}
 	for _, resource := range config.Resources {
 		result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
 		if err != nil || result.Outcome != "no-change" {
 			t.Fatalf("cleanup replay %s = %#v, %v", resource.Key, result, err)
 		}
+	}
+	if branchDeletes != 1 {
+		t.Fatalf("cleanup replay repeated branch delete: %d", branchDeletes)
+	}
+}
+
+func TestSandboxLifecycleConvergesAfterStaleBranchDeletionReadsAndReplaysWithoutEffects(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:run-75"
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	resource := engine.SandboxResourceSpec{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}}
+	deleted := false
+	deletes, staleReads := 0, 2
+	waits := []time.Duration{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run-75":
+			if deleted && staleReads == 0 {
+				http.NotFound(response, request)
+				return
+			}
+			if deleted {
+				staleReads--
+			}
+			json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": "head-sha"}})
+		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/git/refs/heads/contract/run-75":
+			deleted = true
+			deletes++
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected lifecycle cleanup request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	expectation := config.Roles[githubadapter.SandboxRoleSeeder]
+	adapter, err := githubadapter.NewSandboxRole(
+		config,
+		githubadapter.SandboxRoleSeeder,
+		sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+		server.Client(),
+		githubadapter.WithSandboxClock(func() time.Time { return now }),
+		githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+			waits = append(waits, delay)
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := engine.SandboxAuthorityProfile{
+		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleSeeder, expectation)},
+		Permissions:          []string{"seeder:contents:write", "seeder:workflows:write"},
+		EvidenceMode:         "simulated",
+		Compatibility:        "github.com:api.github.com:2026-03-10:native-rest-graphql",
+		DataClass:            "public-synthetic",
+		CostCeiling:          "zero-dollar",
+		Destructive:          "marker-scoped-cleanup",
+		Retention:            "30-days",
+	}
+	manifest := engine.SandboxManifest{
+		SchemaVersion: 1, OperationID: "eventual-branch-cleanup", SourceRevision: "source",
+		ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "owner",
+		ApprovedPlan: "approval-record", RecoveryOwner: "owner",
+		MarkerPrefix: marker, Target: target, Authority: authority,
+		Resources: []engine.SandboxResourceSpec{resource},
+	}
+	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-record",
+		ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour), Target: target,
+		Actors: []string{githubadapter.SandboxRoleSeeder}, MarkerPrefix: marker,
+		ResourceKinds: []string{engine.SandboxResourceFixtureBranch}, EffectKinds: []string{"remove-resource"}, MaxEffects: 1,
+		DataClass: authority.DataClass, CostCeiling: authority.CostCeiling, Destructive: authority.Destructive,
+		Retention: authority.Retention, RecoveryOwner: manifest.RecoveryOwner, Authority: authority,
+	}, resource)
+	lifecycle := engine.New(engine.WithClock(adapterFixedClock{now}), engine.WithSandboxAdapter(adapter))
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	inspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil || plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("cleanup plan = %#v, %v", plan, err)
+	}
+	waits = nil
+	apply, err := lifecycle.ApplySandbox(context.Background(), plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate})
+	if err != nil || apply.Status != engine.SandboxApplyApplied || len(apply.Receipts) != 1 || deletes != 1 {
+		t.Fatalf("cleanup apply = %#v, deletes=%d, err=%v", apply, deletes, err)
+	}
+	waits = nil
+	verification, err := lifecycle.VerifySandbox(context.Background(), manifest)
+	if err != nil || verification.OverallState != engine.ControlPass || !slices.Equal(waits, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}) {
+		t.Fatalf("cleanup verification = %#v, waits=%v, err=%v", verification, waits, err)
+	}
+	replayInspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayPlan, err := lifecycle.PlanSandbox(context.Background(), replayInspection)
+	if err != nil || !replayPlan.NoChange || len(replayPlan.Effects) != 0 || deletes != 1 {
+		t.Fatalf("cleanup replay = %#v, deletes=%d, err=%v", replayPlan, deletes, err)
+	}
+}
+
+func TestSandboxLifecyclePersistentStaleBranchFailsVerification(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	resource := engine.SandboxResourceSpec{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: "marker", DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}}
+	reads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/git/ref/heads/contract/run-75" {
+			t.Fatalf("unexpected persistent branch request: %s %s", request.Method, request.URL.Path)
+		}
+		reads++
+		json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": "head-sha"}})
+	}))
+	defer server.Close()
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := engine.SandboxManifest{SchemaVersion: 1, OperationID: "persistent-stale-branch", SourceRevision: "source", ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "owner", ApprovedPlan: "approval-record", RecoveryOwner: "owner", MarkerPrefix: resource.Marker, Target: target, Resources: []engine.SandboxResourceSpec{resource}}
+	lifecycle := engine.New(engine.WithClock(adapterFixedClock{now}), engine.WithSandboxAdapter(adapter))
+	verification, err := lifecycle.VerifySandbox(context.Background(), manifest)
+	if err != nil || verification.OverallState != engine.ControlFail || reads != 4 || !strings.Contains(verification.Controls[0].Rationale, "residual resource cleanup:branch") {
+		t.Fatalf("persistent stale verification = %#v, reads=%d, err=%v", verification, reads, err)
+	}
+}
+
+func TestSandboxAdapterAbsentBranchObservationBoundsSemanticRetries(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	tests := []struct {
+		name          string
+		heads         []string
+		cancelWait    bool
+		wantResources int
+		wantID        string
+		wantReads     int
+		wantWaits     []time.Duration
+		wantError     error
+	}{
+		{name: "persistent approved head remains residual", heads: []string{"head-sha", "head-sha", "head-sha", "head-sha"}, wantResources: 1, wantID: "head-sha", wantReads: 4, wantWaits: []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond}},
+		{name: "changed head returns immediately as drift", heads: []string{"changed-sha"}, wantResources: 1, wantID: "changed-sha", wantReads: 1},
+		{name: "canceled semantic wait stops observation", heads: []string{"head-sha"}, cancelWait: true, wantReads: 1, wantWaits: []time.Duration{100 * time.Millisecond}, wantError: context.Canceled},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reads := 0
+			waits := []time.Duration{}
+			observationContext := context.Background()
+			var cancel context.CancelFunc
+			if test.cancelWait {
+				observationContext, cancel = context.WithCancel(observationContext)
+				defer cancel()
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/git/ref/heads/contract/run-75" {
+					t.Fatalf("unexpected branch observation: %s %s", request.Method, request.URL.Path)
+				}
+				head := test.heads[min(reads, len(test.heads)-1)]
+				reads++
+				json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": head}})
+			}))
+			defer server.Close()
+			config := sandboxConfig(server, target)
+			config.Resources = []engine.SandboxResourceSpec{{Key: "cleanup:branch", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: "marker", DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{"sha": "head-sha"}}}
+			adapter, err := githubadapter.NewSandboxRole(
+				config,
+				githubadapter.SandboxRoleSeeder,
+				sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+				server.Client(),
+				githubadapter.WithSandboxClock(func() time.Time { return now }),
+				githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+					waits = append(waits, delay)
+					if test.cancelWait {
+						cancel()
+						return observationContext.Err()
+					}
+					return nil
+				}),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			observation, err := adapter.Observe(observationContext, target)
+			if !errors.Is(err, test.wantError) || len(observation.Resources) != test.wantResources || reads != test.wantReads || !slices.Equal(waits, test.wantWaits) {
+				t.Fatalf("observation = %#v, reads=%d, waits=%v, err=%v", observation, reads, waits, err)
+			}
+			if test.wantResources == 1 && observation.Resources[0].ID != test.wantID {
+				t.Fatalf("observed branch = %#v", observation.Resources[0])
+			}
+		})
 	}
 }
 

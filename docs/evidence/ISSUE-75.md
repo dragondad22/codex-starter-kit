@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; seven pre-effect, two provider-effect-attempt, and two
+**State:** Development candidate; seven pre-effect, two provider-effect-attempt, and three
 post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
@@ -230,8 +230,27 @@ history; and uses only seeder `contents:write`, `metadata:read`, and
 `pull-requests:read`.
 These stage and authority changes advance the explicit sandbox configuration revision to
 `issue-75-sandbox-config-v2`.
-Refreshed gates, independent review, native CI, workflow reinstallation, exact live orphan
-cleanup, and a newly source-bound journey remain pending.
+
+Source `466583879133ac2f54f0d0b8666b3d6f97c6f6d1` passed refreshed local gates, both
+independent reviews, and native CI run `30164196138`. Sandbox PR `#29` passed the required
+`contract-delivery` check and installed the three changed control workflows byte-for-byte
+in commit `ef20cadd7b8cb85500131f055ee7601e8ad44499`. Orphan-cleanup plan
+`30164330893` bound the exact successful branch-creation artifact, issue identity, branch
+SHA, source, and mandate and emitted one delete effect with no problems. Apply run
+`30164366716` issued that DELETE exactly once and retained an `applied` receipt, but its
+immediate verification and separate postcondition read briefly observed the deleted ref
+at the approved SHA. The exact ref subsequently returned `404`; read-only replay plan
+`30164462373` retained no problems, `no_change:true`, zero effects, and an empty
+observation.
+
+The candidate now treats that result as GitHub read-after-delete propagation lag rather
+than retrying the effect. Exact absent-branch observation polls only the idempotent ref GET
+within a bounded exponential budget. It stops on `404`, surfaces a different SHA
+immediately as drift, propagates cancellation, and retains the approved SHA as a residual
+failure after budget exhaustion. Lifecycle regressions prove one DELETE followed by
+bounded stale reads and convergence, effect-free replay, persistent-stale failure, changed
+head handling, and cancellation. Refreshed gates, independent review, native CI, workflow
+reinstallation, and a newly source-bound journey remain pending.
 
 ## Pending live qualification and completion
 

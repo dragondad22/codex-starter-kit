@@ -30,6 +30,7 @@ const (
 	sandboxRESTReadAttempts = 3
 	sandboxRESTRetryBase    = 100 * time.Millisecond
 	sandboxRESTRetryBudget  = 2 * time.Second
+	sandboxConsistencyReads = 4
 )
 
 var sandboxRoles = []string{SandboxRoleReconciler, SandboxRoleSeeder, SandboxRoleRules}
@@ -307,6 +308,9 @@ func (adapter *SandboxAdapter) Observe(ctx context.Context, target engine.Sandbo
 		}
 	}
 	repositoryResources, repositoryProblems := adapter.observeRepositoryResources(ctx)
+	if ctx.Err() != nil {
+		return observation, ctx.Err()
+	}
 	observation.Resources = append(observation.Resources, repositoryResources...)
 	observation.Problems = append(observation.Problems, repositoryProblems...)
 	sort.Slice(observation.Resources, func(i, j int) bool { return observation.Resources[i].Key < observation.Resources[j].Key })
