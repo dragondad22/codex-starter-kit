@@ -778,7 +778,17 @@ func sandboxResourceProblems(desired []SandboxResourceSpec, observed []SandboxOb
 }
 
 func sandboxResourceMatches(desired SandboxResourceSpec, observed SandboxObservedResource) bool {
-	return desired.Key == observed.Key && desired.Kind == observed.Kind && desired.Name == observed.Name && desired.Marker == observed.Marker && equalStringMap(sandboxEvidenceAttributes(desired.Attributes), observed.Attributes)
+	expectedAttributes := sandboxEvidenceAttributes(desired.Attributes)
+	observedAttributes := observed.Attributes
+	if desired.Kind == SandboxResourceFixtureIssue {
+		observedAttributes = cloneStringMap(observed.Attributes)
+		for _, key := range []string{"number", "id", "node_id"} {
+			if _, managed := expectedAttributes[key]; !managed {
+				delete(observedAttributes, key)
+			}
+		}
+	}
+	return desired.Key == observed.Key && desired.Kind == observed.Kind && desired.Name == observed.Name && desired.Marker == observed.Marker && equalStringMap(expectedAttributes, observedAttributes)
 }
 
 func sandboxEvidenceAttributes(attributes map[string]string) map[string]string {

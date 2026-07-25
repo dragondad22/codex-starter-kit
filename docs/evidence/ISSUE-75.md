@@ -6,9 +6,9 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; three pre-effect live-plan interoperability failures
-reproduced and remediated; refreshed local gates and reviews pass; native CI and live
-qualification pending
+**State:** Development candidate; three pre-effect and one post-effect live qualification
+failures reproduced and remediated; refreshed local gates and reviews pass; native CI and
+live qualification pending
 
 ## Implemented deterministic contract
 
@@ -121,6 +121,19 @@ and applies every emitted role-scoped mandate through the public sandbox lifecyc
 Refreshed local Python, Go, documentation, vet, and race gates and independent Standards
 and Spec reviews pass. Native CI and live retry remain pending at the resulting source
 revision.
+
+Role-bound apply run `30161155746` then created the three approved marker-owned issues
+exactly once as parent `#26`, delivery `#27`, and dependent `#28`, with three successful
+receipts. Immediate verification did not observe the new list entries, and a later
+read-only planning run `30161226802` observed all three exact native identities but still
+planned updates because the engine compared the desired attribute map to the richer
+identity handoff map exactly. No apply retry occurred. Sandbox matching now permits only
+the adapter-curated `number`, database `id`, and `node_id` additions for initial fixture
+issue identity handoff; any other unexpected observed attribute remains drift. A public
+lifecycle regression covers accepted initial native identities, rejected unrelated
+attributes, and drifted identities after those values become managed. Refreshed local
+Python, Go, documentation, vet, and race gates and independent Standards and Spec reviews
+pass. Native CI and live retry remain pending at the resulting source revision.
 
 ## Pending live qualification and completion
 

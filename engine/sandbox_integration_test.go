@@ -87,6 +87,75 @@ func TestSandboxLifecycleReconcilesMissingManagedResourceAndReplays(t *testing.T
 	}
 }
 
+func TestSandboxPlanAcceptsObservedNativeIdentityAttributes(t *testing.T) {
+	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
+	repository := newSandboxRepository(t)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	resource := SandboxResourceSpec{
+		Key: "fixture:issue:parent", Kind: SandboxResourceFixtureIssue, Name: "parent", Marker: "starter-kit-contract:run:issue:parent",
+		Attributes: map[string]string{"title": "Fixture parent", "state": "open", "input:labels": "contract-run,type:task"},
+	}
+	manifest := SandboxManifest{
+		SchemaVersion: 1, OperationID: "issue-75-identities", SourceRevision: "source", ConfigurationRevision: "config",
+		ApprovedBy: "owner", ApprovedPlan: "approved", RecoveryOwner: "owner", MarkerPrefix: "starter-kit-contract:", Target: target, Resources: []SandboxResourceSpec{resource},
+	}
+	observation := SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config", Resources: []SandboxObservedResource{{
+		Key: resource.Key, Kind: resource.Kind, Name: resource.Name, ID: "26", Marker: resource.Marker,
+		Attributes: map[string]string{"title": "Fixture parent", "state": "open", "number": "26", "id": "4976095186", "node_id": "I_parent"},
+	}}}
+	adapter := NewInMemorySandboxAdapter(
+		SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "seeder", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		observation,
+	)
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("native identity handoff was treated as drift: %#v", plan.Effects)
+	}
+
+	observation.Resources[0].Attributes["unexpected"] = "drift"
+	adapter.SetObservation(observation)
+	inspection, err = lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("unexpected observed attribute did not produce drift: %#v", plan)
+	}
+
+	managedResource := cloneSandboxResourceSpec(resource)
+	managedResource.Attributes["number"] = "26"
+	managedResource.Attributes["id"] = "4976095186"
+	managedResource.Attributes["node_id"] = "I_parent"
+	manifest.Resources = []SandboxResourceSpec{managedResource}
+	delete(observation.Resources[0].Attributes, "unexpected")
+	observation.Resources[0].Attributes["node_id"] = "I_changed"
+	adapter.SetObservation(observation)
+	inspection, err = lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("changed managed identity did not produce drift: %#v", plan)
+	}
+}
+
 func TestSandboxInspectionStopsOnUnrecognizedNameCollision(t *testing.T) {
 	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
 	repository := newSandboxRepository(t)
