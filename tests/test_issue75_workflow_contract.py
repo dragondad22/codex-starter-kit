@@ -45,6 +45,18 @@ class Issue75WorkflowContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('--branch-head-sha "$SOURCE_REVISION"', workflow)
 
+    def test_issue_identity_handoff_retains_the_postcondition_root(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (
+            root / "docs/evidence/issue-75-sandbox-stage-apply.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(". as $postcondition |", workflow)
+        self.assertIn(
+            "source_revision: $postcondition.plan.source_revision",
+            workflow,
+        )
+
     def test_delivery_episode_reset_uses_the_executable_historical_state_gate(
         self,
     ) -> None:

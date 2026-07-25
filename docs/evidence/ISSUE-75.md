@@ -352,6 +352,25 @@ The full local Python, documentation, Go, vet, and race gates pass, and independ
 Standards and Spec reviews report no findings. Completion reconciliation, cleanup,
 replay, and refreshed native CI remain pending.
 
+Native run `30175986968` passed Linux, macOS, Windows, equivalence, and aggregate
+validation for source `077f6ee768d645987acc537badea9f10c1307d8c`. Because the
+already-merged delivery state remains bound to its older source, recovery did not splice
+new executable code into that episode. Exact plan/apply cleanup runs
+`30176087976`/`30176116039`, `30176146257`/`30176168558`,
+`30176186118`/`30176213806`, `30176238345`/`30176264183`, and
+`30176291499`/`30176317018` removed the branch, ruleset, fixture workflow, native
+relationships, and open fixture state in dependency order; each independent postcondition
+was effect-free.
+
+Fresh issues-setup plan `30176339070` and apply `30176364005` then reconciled and
+independently verified the exact three fixture issues, but the post-effect handoff step
+failed because its jq pipeline attempted to read `.plan` after changing the active input
+to the issue-entry array. No create effect was retried. The always-retained postcondition
+artifact recovers the exact source and issue identities. The handoff now retains the
+postcondition root before deriving the issue map, and a workflow-contract regression
+guards that binding. Refreshed gates, review, workflow installation, and continuation
+from the recovered identities remain pending.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

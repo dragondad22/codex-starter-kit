@@ -333,6 +333,7 @@ jobs:
         shell: bash
         run: |
           jq '
+            . as $postcondition |
             [.inspection.observation.resources[] |
               select(.kind == "fixture-issue") |
               {key: .name, value: {
@@ -341,7 +342,7 @@ jobs:
                 node_id: .attributes.node_id
               }}] | from_entries as $issues |
             {schema_version: 1, stage: "issues-setup",
-             source_revision: .plan.source_revision,
+             source_revision: $postcondition.plan.source_revision,
              parent_number: $issues.parent.number,
              parent_id: $issues.parent.database_id,
              parent_node_id: $issues.parent.node_id,
