@@ -192,6 +192,56 @@ func TestSandboxCommandsApplyPlanContainedByApprovedMandate(t *testing.T) {
 	}
 }
 
+func TestSandboxLivePlanAcceptsGeneratorStageContract(t *testing.T) {
+	t.Setenv("CSK_APP_PRIVATE_KEY", "")
+	inputPath := filepath.Join(t.TempDir(), "sandbox-live-plan.json")
+	content := []byte(`{
+		"role": "seeder",
+		"stage_contract": {
+			"stage": "issues-setup",
+			"identity_requirements": [],
+			"identity_outputs": [
+				"parent_number",
+				"parent_id",
+				"parent_node_id",
+				"delivery_number",
+				"delivery_id",
+				"delivery_node_id",
+				"dependent_number",
+				"dependent_id",
+				"dependent_node_id"
+			]
+		},
+		"request": {},
+		"config": {},
+		"app": {},
+		"mandate": {}
+	}`)
+	if err := os.WriteFile(inputPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := cli.Run([]string{"sandbox-live-plan", "--input", inputPath}, &stdout, &stderr)
+
+	if exitCode != 1 || !strings.Contains(stderr.String(), "CSK_APP_PRIVATE_KEY is unavailable") {
+		t.Fatalf("generator-shaped input was not accepted: exit code = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+
+	unknownFieldPath := filepath.Join(t.TempDir(), "sandbox-live-plan-unknown.json")
+	content = bytes.Replace(content, []byte(`"identity_requirements": []`), []byte(`"unexpected": true, "identity_requirements": []`), 1)
+	if err := os.WriteFile(unknownFieldPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = cli.Run([]string{"sandbox-live-plan", "--input", unknownFieldPath}, &stdout, &stderr)
+	if exitCode != 1 || !strings.Contains(stderr.String(), `json: unknown field "unexpected"`) {
+		t.Fatalf("unknown stage-contract field was not rejected: exit code = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+}
+
 func TestCapabilitiesCommandReportsNonMutatingCompatibilityFacts(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

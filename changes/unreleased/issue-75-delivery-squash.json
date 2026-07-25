@@ -4,7 +4,7 @@
   "summary": "Deliver one governed Ready issue through exact-head gates, distinct review, mandated squash merge, and durable completion reconciliation.",
   "category": "added",
   "audiences": ["users", "operators", "developers", "stakeholders"],
-  "components": ["engine", "github", "github-workflow"],
+  "components": ["cli", "engine", "github", "github-workflow"],
   "issues": [75],
   "breaking": false,
   "internal_only": false

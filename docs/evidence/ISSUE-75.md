@@ -6,8 +6,9 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; local gates and final reviews pass; native CI and live
-qualification pending
+**State:** Development candidate; first live-plan interoperability failure reproduced and
+remediated; refreshed local gates and reviews pass; native CI and live qualification
+pending
 
 ## Implemented deterministic contract
 
@@ -86,8 +87,18 @@ independent Standards and Spec reviews found eight blockers, and subsequent audi
 credential-binding, exact-ruleset, and bypass-identity gaps. The branch now contains
 regression-covered remediation. Complete local Python/Go/documentation gates, Go vet and
 race tests, embedded workflow syntax validation, and final independent Standards and Spec
-reviews pass at the current candidate. GitHub Actions Linux/macOS/Windows results, the
-separate completing-product-PR review, and the live sandbox journey remain pending.
+reviews passed at source `21f6d653de102528f8491cdab5af5cb774c62424`; its native
+GitHub Actions checks also passed.
+
+The four reviewed workflows were then installed byte-for-byte in sandbox commit
+`854c2a95bbc045396ab99cd85d20aab676abb94e`. Approved planning run
+`30159572938` failed before any external effect because the strict `sandbox-live-plan`
+input interface rejected the generator-emitted `stage_contract` field. A public-CLI
+regression reproduces that exact schema mismatch, and the live-plan input now accepts the
+strictly typed stage contract without weakening unknown-field rejection. Refreshed gates,
+Go vet and race tests, and independent Standards and Spec repair reviews pass. Native CI,
+the separate completing-product-PR review, and the live sandbox journey remain pending at
+the resulting source revision.
 
 ## Pending live qualification and completion
 
