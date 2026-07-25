@@ -227,7 +227,7 @@ func (adapter *SandboxAdapter) Capability(ctx context.Context) (engine.SandboxCa
 				continue
 			}
 		}
-		if role == SandboxRoleReconciler {
+		if role == SandboxRoleReconciler && (adapter.hasProjectResource() || adapter.hasProjectAuthority(role)) {
 			if err := adapter.verifyProjectIdentity(ctx, credential); err != nil {
 				if isContextError(err) {
 					return capability, err
@@ -297,12 +297,14 @@ func (adapter *SandboxAdapter) Observe(ctx context.Context, target engine.Sandbo
 				}
 			}
 		}
-		projectResources, projectProblems := adapter.observeProject(ctx, credential)
-		if ctx.Err() != nil {
-			return observation, ctx.Err()
+		if adapter.hasProjectResource() {
+			projectResources, projectProblems := adapter.observeProject(ctx, credential)
+			if ctx.Err() != nil {
+				return observation, ctx.Err()
+			}
+			observation.Resources = append(observation.Resources, projectResources...)
+			observation.Problems = append(observation.Problems, projectProblems...)
 		}
-		observation.Resources = append(observation.Resources, projectResources...)
-		observation.Problems = append(observation.Problems, projectProblems...)
 	}
 	repositoryResources, repositoryProblems := adapter.observeRepositoryResources(ctx)
 	observation.Resources = append(observation.Resources, repositoryResources...)

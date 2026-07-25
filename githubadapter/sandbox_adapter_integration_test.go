@@ -1400,10 +1400,6 @@ func TestSandboxAdapterObservesExactNativeRelationshipsAndMarkerOwnedFile(t *tes
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/orgs/labs/projectsV2/1/fields":
-			json.NewEncoder(response).Encode([]any{})
-		case "/graphql":
-			json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"views": map[string]any{"nodes": []any{}}, "workflows": map[string]any{"nodes": []any{}}, "items": map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false}}}}})
 		case "/repos/labs/sandbox/issues/10":
 			if request.Header.Get("Authorization") != "Bearer reconciler-token" {
 				t.Fatalf("relationship authorization = %q", request.Header.Get("Authorization"))
@@ -1437,9 +1433,17 @@ func TestSandboxAdapterObservesExactNativeRelationshipsAndMarkerOwnedFile(t *tes
 		relationshipResource("blocker-dependent", marker, "12", "102", "I_blocker", "13", "103", "I_dependent"),
 	}
 	config.Resources = relationships
-	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, sandboxProviders(now)[githubadapter.SandboxRoleReconciler], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	config.Roles[githubadapter.SandboxRoleReconciler] = githubadapter.SandboxRoleExpectation{Mode: "app-installation", Actor: "reconciler", Account: "labs", AccountID: "owner-id", InstallationID: "1", RequiredPermissions: []string{"issues:write", "metadata:read"}}
+	relationshipProvider := githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
+		return githubadapter.Credential{Token: "reconciler-token", Mode: "app-installation", Actor: "reconciler", Account: "labs", AccountID: "owner-id", InstallationID: "1", Permissions: []string{"issues:write", "metadata:read"}, PermissionSource: "test", PermissionRevision: "permissions-1", ExpiresAt: now.Add(time.Hour)}, nil
+	})
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, relationshipProvider, server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
+	}
+	capability, err := adapter.Capability(context.Background())
+	if err != nil || !capability.Available {
+		t.Fatalf("relationship capability = %#v, %v", capability, err)
 	}
 	relationshipObservation, err := adapter.Observe(context.Background(), target)
 	if err != nil {
@@ -1460,6 +1464,61 @@ func TestSandboxAdapterObservesExactNativeRelationshipsAndMarkerOwnedFile(t *tes
 	}
 	if resources[0].ID != "blob-sha" || resources[1].ID != "102:103" || resources[2].ID != "100:101" {
 		t.Fatalf("stable native resource IDs = %#v", resources)
+	}
+}
+
+func TestSandboxAdapterProjectResourcesRetainIdentityAndInventoryReads(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 30, 0, 0, time.UTC)
+	kinds := []string{
+		engine.SandboxResourceProjectField,
+		engine.SandboxResourceProjectOption,
+		engine.SandboxResourceProjectView,
+		engine.SandboxResourceProjectItemField,
+		engine.SandboxResourceProjectWorkflow,
+		engine.SandboxResourceProjectItemProof,
+	}
+	for _, kind := range kinds {
+		t.Run(kind, func(t *testing.T) {
+			projectIdentityCalls, fieldCalls, graphQLCalls := 0, 0, 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/orgs/labs/projectsV2/1":
+					projectIdentityCalls++
+					json.NewEncoder(response).Encode(map[string]any{"node_id": "project-id", "number": 1, "owner": map[string]any{"login": "labs", "id": "owner-id", "type": "Organization"}})
+				case "/orgs/labs/projectsV2/1/fields":
+					fieldCalls++
+					json.NewEncoder(response).Encode([]any{})
+				case "/graphql":
+					graphQLCalls++
+					json.NewEncoder(response).Encode(map[string]any{"data": map[string]any{"node": map[string]any{
+						"views":     map[string]any{"nodes": []any{}},
+						"workflows": map[string]any{"nodes": []any{}},
+						"items":     map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false}},
+					}}})
+				default:
+					t.Fatalf("unexpected request: %s %s", request.Method, request.URL.String())
+				}
+			}))
+			defer server.Close()
+
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			config.Resources = []engine.SandboxResourceSpec{{Key: "project:test", Kind: kind, Name: "test", Attributes: map[string]string{}}}
+			adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleReconciler, sandboxProviders(now)[githubadapter.SandboxRoleReconciler], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			capability, err := adapter.Capability(context.Background())
+			if err != nil || !capability.Available {
+				t.Fatalf("capability = %#v, %v", capability, err)
+			}
+			if _, err := adapter.Observe(context.Background(), target); err != nil {
+				t.Fatal(err)
+			}
+			if projectIdentityCalls != 1 || fieldCalls != 1 || graphQLCalls != 1 {
+				t.Fatalf("Project reads = identity:%d fields:%d graphql:%d", projectIdentityCalls, fieldCalls, graphQLCalls)
+			}
+		})
 	}
 }
 

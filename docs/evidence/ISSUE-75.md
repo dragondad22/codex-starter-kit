@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; four pre-effect and one post-effect live qualification
+**State:** Development candidate; six pre-effect and one post-effect live qualification
 failures reproduced; current-source verification state is recorded below; live
 qualification pending
 
@@ -146,6 +146,22 @@ retained the delivery input at `planning/delivery-input/issue-75-delivery-input.
 while apply compared a nonexistent flattened path. The apply workflow now compares the
 actual retained artifact path. Refreshed gates, native CI, independent review, workflow
 reinstallation, and a newly source-bound live plan remain pending.
+
+The repaired, source-bound `issues-governed` apply run `30161897182` then updated all
+three issue contracts and converged with three receipts. Project setup apply run
+`30161966733` reconciled five required Status/Readiness values and also converged.
+Relationship planning runs `30161994402` and bounded read-only retry `30162029965` both
+stopped before effects because the reconciler adapter queried Project views and workflows
+even though the stage requested only issue relationships. The relationship token
+intentionally has only `issues:write` and `metadata:read`; undeclared Project read access
+is not added. Sandbox capability now queries Project identity only when Project resources
+are requested or the bound credential explicitly declares Project authority; observation
+queries Project inventory only for Project resources. The native relationship regression
+uses the production-equivalent narrow permission set and fails on any Project request,
+while a table regression requires identity and inventory reads for each of the six
+supported Project resource kinds. Refreshed local Python, Go, documentation, vet, and
+race gates pass. Final independent review, native CI, and a newly source-bound live plan
+remain pending.
 
 ## Pending live qualification and completion
 

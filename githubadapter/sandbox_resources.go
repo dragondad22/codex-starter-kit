@@ -1267,6 +1267,27 @@ func (adapter *SandboxAdapter) hasAnyResourceKind(kinds ...string) bool {
 	return false
 }
 
+func (adapter *SandboxAdapter) hasProjectResource() bool {
+	return adapter.hasAnyResourceKind(
+		engine.SandboxResourceProjectField,
+		engine.SandboxResourceProjectOption,
+		engine.SandboxResourceProjectView,
+		engine.SandboxResourceProjectItemField,
+		engine.SandboxResourceProjectWorkflow,
+		engine.SandboxResourceProjectItemProof,
+	)
+}
+
+func (adapter *SandboxAdapter) hasProjectAuthority(role string) bool {
+	for _, permission := range adapter.config.Roles[role].RequiredPermissions {
+		switch permission {
+		case "organization-projects:read", "organization-projects:write", "projects:read", "projects:write":
+			return true
+		}
+	}
+	return false
+}
+
 func (adapter *SandboxAdapter) repoPath() string {
 	return "/repos/" + url.PathEscape(adapter.config.RepositoryOwner) + "/" + url.PathEscape(adapter.config.RepositoryName)
 }

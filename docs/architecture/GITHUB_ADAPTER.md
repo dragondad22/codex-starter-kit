@@ -42,6 +42,13 @@ branch head, or contents SHA immediately before mutation and returns `needs-revi
 identity or content drift. It never treats a marker, branch name, or stale contents SHA by
 itself as deletion authority.
 
+Sandbox Project probing follows the requested resource and declared-authority boundary.
+Capability verifies Project identity when the resource set contains a Project resource or
+the bound role explicitly declares Project authority; observation inventories Project
+fields, views, workflows, and items only for Project resources. A repository-only
+relationship role still binds its exact App installation, repository, permissions, and
+expiry, but does not acquire or exercise Project read authority.
+
 #46 reuses that content-addressed external-resource lifecycle for a separately authorized
 operational Project configuration; it does not reuse sandbox authority. The retained v1
 type names are wire-compatibility labels. For a user-owned Project, the adapter binds the
@@ -69,7 +76,7 @@ not runtime dependencies.
 
 | Mode | Implemented deterministic contract | Current live result |
 |---|---|---|
-| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the organization-owned Project, selected repository, mint-response permissions, and expiry before effects | #73 qualified the three named App roles against the approved organization sandbox; the Work Adapter's multi-item reconciliation route remains unqualified live |
+| `app-installation` | Expected App slug and numeric installation/account are API-observed, then bound to the selected repository, mint-response permissions, expiry, and the organization-owned Project when Project resources or authority are selected | #73 qualified the three named App roles against the approved organization sandbox; the Work Adapter's multi-item reconciliation route remains unqualified live |
 | `user-token` | Expected API user, accepted owner route, selected repository/Project, permissions, expiry, and API actor are bound before effects | #46's separately approved external-resource lifecycle passed exact-head zero-effect observation, verification, and replay for the operational Phase catalog; the routine Work Adapter user-token route remains unqualified live |
 | `actions-job` | Repository actor and target can be inspected | `unsupported` for the Project route; repository-local authority is never promoted to Project or cross-repository authority |
 
@@ -95,6 +102,11 @@ credential-free facts:
 8. REST and GraphQL limit, used, remaining, and reset budgets, limitations,
    configuration digest, evidence mode, and
    freshness.
+
+The Work Adapter's Project route requires the complete Project handshake. For the
+SandboxAdapter, Project-specific items 4, 5, and 7 apply only when the resource set or
+explicit credential authority selects Project work; repository-only roles retain the
+remaining exact identity, target, permission, expiry, and compatibility checks.
 
 Wrong actor, account, installation, owner, immutable ID, permission, API version, expired
 credential, unsupported owner/mode combination, or unapproved live target stops before an
