@@ -48,6 +48,9 @@ merger transport for positive repository merge capability. It intersects multipl
 effective pull-request rules with the repository methods and treats an omitted repository
 setting as unknown, never as positive evidence. This preserves least authority without
 mistaking a ruleset restriction for proof that its method is enabled.
+The desired rule also names GitHub's canonical empty dismissal restriction and required
+reviewer list so post-apply normalization converges byte-for-byte instead of causing a
+perpetual reconcile.
 Cleanup re-reads the current relationship, issue, PR, branch head, or contents SHA
 immediately before mutation and returns `needs-review` on identity or content drift. It
 never treats a marker, branch name, or stale contents SHA by itself as deletion authority.

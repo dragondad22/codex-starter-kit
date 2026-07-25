@@ -303,6 +303,13 @@ head `f1ad09238895de4c483eb872fabdbd6430a7e108`; apply `30165989731` closed that
 unmerged draft, deleted only its exact branch, verified convergence, and retained an
 effect-free postcondition.
 
+Ruleset plan `30166184938` then approved exactly one reconciliation to add the squash-only
+pull-request rule. Apply run `30166211975` performed that effect, but immediate
+verification and the second read-only plan refused convergence because GitHub added empty
+`dismissal_restriction` and `required_reviewers` fields. The mutation was not retried.
+The desired definition now includes those provider defaults explicitly so the installed
+state and content-addressed plan can converge without semantic relaxation.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact
