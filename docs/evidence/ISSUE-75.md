@@ -371,6 +371,16 @@ postcondition root before deriving the issue map, and a workflow-contract regres
 guards that binding. Refreshed gates, review, workflow installation, and continuation
 from the recovered identities remain pending.
 
+Source `38befd79e665fbd9b0e9757cefe093da96806026` passed native run
+`30176448188`, and no-change issues runs `30176540032`/`30176566920` proved the
+repaired handoff before the governed-input and setup sequence resumed. Initial delivery
+run `30176875988` failed before an effect because historical merged PR `#32` still owns
+the same `contract/issue-75-20260721-02` head identity and its older claim cannot be
+treated as the new episode. The next fresh episode therefore rotates the exact delivery
+identity to `contract/issue-75-20260721-03`; tests bind both delivery and sandbox staging
+to that same branch. Refreshed gates, review, native CI, governed input, and continuation
+remain pending.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

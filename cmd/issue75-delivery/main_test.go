@@ -34,7 +34,7 @@ func TestRunEmitsDeterministicCredentialFreeBoundArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, mandate := result.Request, result.Mandate
-	if request.Repository != "." || request.Intent.ManagedID != "issue:102" || request.Intent.HeadBranch != deliveryBranch || deliveryBranch != "contract/issue-75-20260721-02" || request.Intent.MergeMethod != "squash" {
+	if request.Repository != "." || request.Intent.ManagedID != "issue:102" || request.Intent.HeadBranch != deliveryBranch || deliveryBranch != "contract/issue-75-20260721-03" || request.Intent.MergeMethod != "squash" {
 		t.Fatalf("unexpected exact delivery identity: %#v", request)
 	}
 	if !slices.Equal(request.Intent.RequiredChecks, []engine.DeliveryCheckIdentity{{Name: requiredCheck, IntegrationID: requiredCheckIntegrationID}}) || request.Intent.Review.Actor != reviewer || request.Intent.Review.Role == "" || request.Intent.Review.ReviewedSourceRevision != request.Intent.SourceRevision || request.Intent.Review.ImplementationContext != "codex-issue-75-delivery-implementation" || request.Intent.Review.ReviewContext == request.Intent.Review.ImplementationContext || request.Intent.Review.StrongerPolicyRequired {
