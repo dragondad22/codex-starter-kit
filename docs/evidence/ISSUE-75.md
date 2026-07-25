@@ -6,9 +6,9 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; three pre-effect and one post-effect live qualification
-failures reproduced and remediated; refreshed local gates and reviews pass; native CI and
-live qualification pending
+**State:** Development candidate; four pre-effect and one post-effect live qualification
+failures reproduced; current-source verification state is recorded below; live
+qualification pending
 
 ## Implemented deterministic contract
 
@@ -133,7 +133,19 @@ issue identity handoff; any other unexpected observed attribute remains drift. A
 lifecycle regression covers accepted initial native identities, rejected unrelated
 attributes, and drifted identities after those values become managed. Refreshed local
 Python, Go, documentation, vet, and race gates and independent Standards and Spec reviews
-pass. Native CI and live retry remain pending at the resulting source revision.
+pass. Native CI also passes at source
+`31fd061522388eeb6a6ef7b39035ca7af6036114`. Read-only planning run `30161491466`
+then observed all three issues as converged with zero effects.
+
+Credential-free delivery-input run `30161558471` bound those exact issue identities and
+the generator-derived final workflow digest to the governed request and mandate. Read-only
+`issues-governed` planning run `30161587926` emitted exactly three issue reconciliation
+effects with no inspection problems. Apply run `30161619161` stopped before regenerating
+the stage input or invoking any provider effect because the downloaded planning artifact
+retained the delivery input at `planning/delivery-input/issue-75-delivery-input.json`
+while apply compared a nonexistent flattened path. The apply workflow now compares the
+actual retained artifact path. Refreshed gates, native CI, independent review, workflow
+reinstallation, and a newly source-bound live plan remain pending.
 
 ## Pending live qualification and completion
 

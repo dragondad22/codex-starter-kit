@@ -156,7 +156,8 @@ jobs:
             --name "$artifact" --dir delivery-input
           test -f delivery-input/issue-75-delivery-input.json
           test "$(find delivery-input -type f | wc -l)" -eq 1
-          cmp delivery-input/issue-75-delivery-input.json planning/issue-75-delivery-input.json
+          cmp delivery-input/issue-75-delivery-input.json \
+            planning/delivery-input/issue-75-delivery-input.json
           jq -e --arg source "$SOURCE_REVISION" \
             --arg parent "$(jq -r '.parent_number // ""' identity-flags.json)" \
             --arg parent_id "$(jq -r '.parent_id // ""' identity-flags.json)" \
