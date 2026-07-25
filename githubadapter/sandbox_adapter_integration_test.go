@@ -1788,7 +1788,14 @@ func TestSandboxLifecyclePersistentStaleBranchFailsVerification(t *testing.T) {
 	defer server.Close()
 	config := sandboxConfig(server, target)
 	config.Resources = []engine.SandboxResourceSpec{resource}
-	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }))
+	adapter, err := githubadapter.NewSandboxRole(
+		config,
+		githubadapter.SandboxRoleSeeder,
+		sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+		server.Client(),
+		githubadapter.WithSandboxClock(func() time.Time { return now }),
+		githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error { return nil }),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
