@@ -257,9 +257,21 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 		t.Fatal(err)
 	}
 	pullBody := "Closes #75\n\n" + marker
+	allowSquash := true
+	includeSquashSetting := true
+	requireLastPushApproval := false
+	requiredReviewers := []any{}
+	pullRuleMethods := [][]string{{"merge", "squash"}, {"squash"}}
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
+		expectedAuthorization := "Bearer top-secret-token"
+		if request.URL.Path == "/repos/octocat/example" {
+			expectedAuthorization = "Bearer effect-token"
+		}
+		if request.Header.Get("Authorization") != expectedAuthorization {
+			t.Errorf("%s authorization = %q, want %q", request.URL.Path, request.Header.Get("Authorization"), expectedAuthorization)
+		}
 		switch request.URL.Path {
 		case "/repos/octocat/example/issues":
 			json.NewEncoder(writer).Encode([]any{map[string]any{"number": 75, "node_id": "I_75", "state": "open", "body": "<!-- starter-kit-managed:issue:75 -->"}})
@@ -276,9 +288,17 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 		case "/repos/octocat/example/pulls/101/reviews":
 			json.NewEncoder(writer).Encode([]any{map[string]any{"id": 501, "state": "APPROVED", "commit_id": "head-1", "user": map[string]any{"login": "reviewer"}}})
 		case "/repos/octocat/example/rules/branches/main":
-			json.NewEncoder(writer).Encode([]any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "foundation", "integration_id": 15368}}}}})
+			effective := []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "foundation", "integration_id": 15368}}}}}
+			for _, methods := range pullRuleMethods {
+				effective = append(effective, map[string]any{"type": "pull_request", "parameters": map[string]any{"allowed_merge_methods": methods, "required_approving_review_count": 0, "require_code_owner_review": false, "require_last_push_approval": requireLastPushApproval, "required_review_thread_resolution": false, "required_reviewers": requiredReviewers}})
+			}
+			json.NewEncoder(writer).Encode(effective)
 		case "/repos/octocat/example":
-			json.NewEncoder(writer).Encode(map[string]any{"node_id": "R_repo", "default_branch": "main", "allow_squash_merge": true})
+			repository := map[string]any{"node_id": "R_repo", "default_branch": "main"}
+			if includeSquashSetting {
+				repository["allow_squash_merge"] = allowSquash
+			}
+			json.NewEncoder(writer).Encode(repository)
 		case "/repos/octocat/example/branches/main":
 			json.NewEncoder(writer).Encode(map[string]any{"commit": map[string]any{"sha": "base-1"}})
 		default:
@@ -288,8 +308,17 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	defer server.Close()
 
 	base := newUserAdapter(t, server, now)
+	effectConfig := adapterConfig(server, "user-token", "merger", "user", "octocat", "example", "R_repo", "octocat", "user", "P_project")
+	effectPermissions := []string{"contents:write", "metadata:read", "pull-requests:write"}
+	effectConfig.RequiredPermissions = effectPermissions
+	effectBase, err := githubadapter.New(effectConfig, githubadapter.CredentialProviderFunc(func(context.Context) (githubadapter.Credential, error) {
+		return githubadapter.Credential{Token: "effect-token", Mode: "user-token", Actor: "merger", Permissions: effectPermissions, ExpiresAt: now.Add(time.Hour)}, nil
+	}), server.Client(), githubadapter.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
 	review := engine.DeliveryReviewDeclaration{Actor: "reviewer", Role: "delivery-reviewer", Capability: "governed-delivery-review", ReviewedSourceRevision: "source-1", ImplementationContext: "implementation-context", ReviewContext: "github-pull-request-review", ApprovalRoute: "github-pull-request-review", FindingsRoute: "github-pull-request-review-comments", Limitations: []string{"exact head only"}}
-	adapter, err := githubadapter.NewDeliveryAdapter(base, []githubadapter.DeliveryReviewerTrust{{Declaration: review}})
+	adapter, err := githubadapter.NewDeliveryAdapter(base, []githubadapter.DeliveryReviewerTrust{{Declaration: review}}, effectBase)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,9 +329,39 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || observation.PullRequest.ClosesIssueNumber != 75 || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || observation.Checks[0].IntegrationID != 15368 || len(observation.Reviews) != 1 || observation.Reviews[0].Capability != review.Capability || observation.Rules.Revision == "" {
+	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || observation.PullRequest.ClosesIssueNumber != 75 || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || observation.Checks[0].IntegrationID != 15368 || len(observation.Reviews) != 1 || observation.Reviews[0].Capability != review.Capability || observation.Rules.Revision == "" || !slices.Equal(observation.Rules.MergeMethods, []string{"squash"}) {
 		t.Fatalf("delivery observation = %#v", observation)
 	}
+	pullRuleMethods = [][]string{{"squash"}, {"merge"}}
+	conflicting, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || len(conflicting.Rules.MergeMethods) != 0 {
+		t.Fatalf("conflicting effective merge restrictions = %#v, %v", conflicting.Rules, err)
+	}
+	pullRuleMethods = [][]string{{"squash"}}
+	allowSquash = false
+	disabled, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || len(disabled.Rules.MergeMethods) != 0 {
+		t.Fatalf("repository-disabled squash was accepted: %#v, %v", disabled.Rules, err)
+	}
+	allowSquash = true
+	includeSquashSetting = false
+	omitted, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || len(omitted.Rules.MergeMethods) != 0 || len(omitted.Rules.Problems) == 0 {
+		t.Fatalf("omitted repository merge capability was accepted: %#v, %v", omitted.Rules, err)
+	}
+	includeSquashSetting = true
+	requireLastPushApproval = true
+	stronger, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || len(stronger.Rules.Problems) == 0 {
+		t.Fatalf("last-push approval rule was accepted: %#v, %v", stronger.Rules, err)
+	}
+	requireLastPushApproval = false
+	requiredReviewers = []any{map[string]any{"file_patterns": []string{"*"}}}
+	stronger, err = adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || len(stronger.Rules.Problems) == 0 {
+		t.Fatalf("required-reviewer rule was accepted: %#v, %v", stronger.Rules, err)
+	}
+	requiredReviewers = []any{}
 	pullBody = marker
 	unlinked, err := adapter.ObserveDelivery(context.Background(), engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: "deliver-75", SourceRevision: "source-1", OperatingProfileRevision: "profile-1", ManagedID: "issue:75", Title: "Deliver issue 75", Target: managedTarget(),

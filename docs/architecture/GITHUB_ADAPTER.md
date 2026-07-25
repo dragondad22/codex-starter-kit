@@ -39,9 +39,15 @@ issues by number, database ID, and node ID and route only through the reconciler
 resources bind path, branch, canonical content digest, and marker-bearing approved content
 and route only through the seeder. Workflow-path file stages bind the App token's
 `contents:write`, `metadata:read`, and `workflows:write` permissions; ordinary repository
-files do not infer workflow authority. The marker-owned required-check ruleset explicitly
-binds GitHub's canonical `do_not_enforce_on_create: false` value alongside strict checks,
-the check context/integration identity, active enforcement, and an empty bypass list.
+files do not infer workflow authority. The marker-owned delivery ruleset explicitly binds
+GitHub's canonical `do_not_enforce_on_create: false` value alongside strict checks, the
+check context/integration identity, active enforcement, an empty bypass list, and a
+pull-request rule whose only allowed merge method is `squash`. Delivery observation uses
+the read-side reconciler for effective rule restrictions and the already-authorized
+merger transport for positive repository merge capability. It intersects multiple
+effective pull-request rules with the repository methods and treats an omitted repository
+setting as unknown, never as positive evidence. This preserves least authority without
+mistaking a ruleset restriction for proof that its method is enabled.
 Cleanup re-reads the current relationship, issue, PR, branch head, or contents SHA
 immediately before mutation and returns `needs-review` on identity or content drift. It
 never treats a marker, branch name, or stale contents SHA by itself as deletion authority.

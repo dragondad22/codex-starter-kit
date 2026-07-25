@@ -232,7 +232,13 @@ func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T)
 		Rules []struct {
 			Type       string `json:"type"`
 			Parameters struct {
-				DoNotEnforceOnCreate *bool `json:"do_not_enforce_on_create"`
+				DoNotEnforceOnCreate *bool    `json:"do_not_enforce_on_create"`
+				AllowedMergeMethods  []string `json:"allowed_merge_methods"`
+				RequiredApprovals    *int     `json:"required_approving_review_count"`
+				RequireCodeOwner     *bool    `json:"require_code_owner_review"`
+				RequireLastPush      *bool    `json:"require_last_push_approval"`
+				RequireResolution    *bool    `json:"required_review_thread_resolution"`
+				DismissStale         *bool    `json:"dismiss_stale_reviews_on_push"`
 				Required             []struct {
 					Context       string `json:"context"`
 					IntegrationID int64  `json:"integration_id"`
@@ -243,7 +249,7 @@ func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T)
 	if err := json.Unmarshal([]byte(setup.Attributes["input:definition"]), &definition); err != nil {
 		t.Fatal(err)
 	}
-	if definition.BypassActors == nil || len(definition.BypassActors) != 0 || definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 1 || definition.Rules[0].Type != "required_status_checks" || definition.Rules[0].Parameters.DoNotEnforceOnCreate == nil || *definition.Rules[0].Parameters.DoNotEnforceOnCreate || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID {
+	if definition.BypassActors == nil || len(definition.BypassActors) != 0 || definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 2 || definition.Rules[0].Type != "required_status_checks" || definition.Rules[0].Parameters.DoNotEnforceOnCreate == nil || *definition.Rules[0].Parameters.DoNotEnforceOnCreate || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID || definition.Rules[1].Type != "pull_request" || !slices.Equal(definition.Rules[1].Parameters.AllowedMergeMethods, []string{"squash"}) || definition.Rules[1].Parameters.RequiredApprovals == nil || *definition.Rules[1].Parameters.RequiredApprovals != 0 || definition.Rules[1].Parameters.RequireCodeOwner == nil || *definition.Rules[1].Parameters.RequireCodeOwner || definition.Rules[1].Parameters.RequireLastPush == nil || *definition.Rules[1].Parameters.RequireLastPush || definition.Rules[1].Parameters.RequireResolution == nil || *definition.Rules[1].Parameters.RequireResolution || definition.Rules[1].Parameters.DismissStale == nil || *definition.Rules[1].Parameters.DismissStale {
 		t.Fatalf("rules definition = %#v", definition)
 	}
 	if cleanup.DesiredState != engine.SandboxResourceAbsent || cleanup.Name != setup.Name || cleanup.Attributes["input:definition"] != setup.Attributes["input:definition"] {

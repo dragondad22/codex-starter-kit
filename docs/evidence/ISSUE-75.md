@@ -276,8 +276,32 @@ observation and also stops. Deterministic tests cover matching-state rejection, 
 historical identity dimension, missing/malformed/extra/symlinked/hash-invalid artifacts,
 unpaired mode flags, and zero/multiple/non-branch initial plans. This does not rewrite or
 discard historical evidence and does not permit two heads for the same exact episode.
-Refreshed gates, independent review, native CI, exact workflow reinstallation, and a newly
-source-bound journey remain pending.
+
+Source `a7961b59e314eb1d37d2ba33864da67dde1f847f` passed refreshed native CI run
+`30165323279`. Sandbox PR `#30` passed `contract-delivery`, squash-merged the exact
+contract workflow bytes as `ea58fa9b4f9a7e160ef82108f011762120bb3485`, and removed
+its temporary branch. Delivery-input run `30165488626` then bound the new source,
+topology, workflow digest, and active mandate. Transition run `30165513269` created only
+the exact branch and retained its next state; separately planned/applied runs
+`30165569364` and `30165599439` advanced that branch to candidate head
+`f1ad09238895de4c483eb872fabdbd6430a7e108` with converged postconditions. Transition
+run `30165630120` created draft sandbox PR `#31`; its exact-head `contract-delivery`
+check passed.
+
+The following transition `30165686763` stopped before effects because delivery
+observation could not prove the governed squash method. The least-authority reconciler
+App's repository response had not supplied positive repository-setting evidence, while
+the installed effective ruleset declared only the required check. The candidate now
+places `allowed_merge_methods: ["squash"]` in a marker-owned pull-request rule and derives
+the effective restriction through the reconciler while the already-authorized merger App
+supplies positive repository capability. Multiple effective rules are intersected with
+the repository methods; omission, explicit disablement, conflicting restrictions,
+last-push approval, and beta required-reviewer gates all fail closed. Refreshed gates,
+independent review, ruleset reinstallation, and a newly source-bound journey remain
+pending. Recovery plan `30165901548` bound exact PR `#31`, REST/GraphQL identities, and
+head `f1ad09238895de4c483eb872fabdbd6430a7e108`; apply `30165989731` closed that
+unmerged draft, deleted only its exact branch, verified convergence, and retained an
+effect-free postcondition.
 
 ## Pending live qualification and completion
 
@@ -315,7 +339,8 @@ executable contracts; `project-setup` then consumes their node IDs to set exact 
 Status/Readiness; `relationships-setup` consumes the same issue handoff; `file-initial`
 installs the check workflow on unprotected `main`; `rules-setup` then installs one
 marker-owned active ruleset requiring the `contract-delivery` context from GitHub Actions
-App integration `15368`; the delivery engine creates the issue-named branch;
+App integration `15368` and allowing only squash merge; the delivery engine creates the
+issue-named branch;
 `file-candidate` binds the successful branch-creation state artifact and exact branch head
 before creating the intermediate PR candidate; and, only after candidate-head check and
 review evidence, `file-stale` binds that candidate head before updating the delivery head

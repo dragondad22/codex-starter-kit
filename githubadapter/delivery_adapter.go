@@ -87,7 +87,11 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	}
 	issue := issues[0]
 	observation.Issue = engine.DeliveryIssueObservation{ManagedID: intent.ManagedID, Number: issue.Number, State: strings.ToLower(issue.State)}
-	rules, err := adapter.observeDeliveryRules(ctx, credential, intent.BaseBranch)
+	effectCredential, err := adapter.effectBase.credential(ctx)
+	if err != nil {
+		return engine.DeliveryObservation{}, err
+	}
+	rules, err := adapter.observeDeliveryRules(ctx, credential, effectCredential, intent.BaseBranch)
 	if err != nil {
 		return engine.DeliveryObservation{}, err
 	}
@@ -355,7 +359,7 @@ func (adapter *DeliveryAdapter) observeDeliveryReviews(ctx context.Context, cred
 	return result, approvals, nil
 }
 
-func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, credential Credential, branch string) (engine.DeliveryRulesObservation, error) {
+func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, credential, effectCredential Credential, branch string) (engine.DeliveryRulesObservation, error) {
 	var rules []struct {
 		Type       string `json:"type"`
 		Parameters struct {
@@ -363,9 +367,12 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 				Context       string `json:"context"`
 				IntegrationID int64  `json:"integration_id"`
 			} `json:"required_status_checks"`
-			RequiredApprovals             int  `json:"required_approving_review_count"`
-			RequireCodeOwner              bool `json:"require_code_owner_review"`
-			RequireConversationResolution bool `json:"required_review_thread_resolution"`
+			RequiredApprovals             int      `json:"required_approving_review_count"`
+			RequireCodeOwner              bool     `json:"require_code_owner_review"`
+			RequireLastPushApproval       bool     `json:"require_last_push_approval"`
+			RequireConversationResolution bool     `json:"required_review_thread_resolution"`
+			AllowedMergeMethods           []string `json:"allowed_merge_methods"`
+			RequiredReviewers             []any    `json:"required_reviewers"`
 		} `json:"parameters"`
 	}
 	path := adapter.base.repoPath() + "/rules/branches/" + escapePath(branch)
@@ -373,6 +380,8 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 		return engine.DeliveryRulesObservation{}, err
 	}
 	required := []engine.DeliveryCheckIdentity{}
+	var ruleMethods []string
+	havePullRequestRule := false
 	problems := []string{}
 	for _, rule := range rules {
 		switch rule.Type {
@@ -381,8 +390,20 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 				required = append(required, engine.DeliveryCheckIdentity{Name: check.Context, IntegrationID: check.IntegrationID})
 			}
 		case "pull_request":
-			if rule.Parameters.RequiredApprovals > 1 || rule.Parameters.RequireCodeOwner || rule.Parameters.RequireConversationResolution {
+			if rule.Parameters.RequiredApprovals > 1 || rule.Parameters.RequireCodeOwner || rule.Parameters.RequireLastPushApproval || rule.Parameters.RequireConversationResolution || len(rule.Parameters.RequiredReviewers) != 0 {
 				problems = append(problems, "effective pull-request rules require unsupported stronger approval evidence")
+			}
+			if len(rule.Parameters.AllowedMergeMethods) == 0 {
+				problems = append(problems, "effective pull-request rules do not declare allowed merge methods")
+			}
+			current := slices.Clone(rule.Parameters.AllowedMergeMethods)
+			slices.Sort(current)
+			current = slices.Compact(current)
+			if !havePullRequestRule {
+				ruleMethods = current
+				havePullRequestRule = true
+			} else {
+				ruleMethods = intersectStrings(ruleMethods, current)
 			}
 		case "merge_queue", "required_deployments", "required_code_scanning":
 			problems = append(problems, "effective branch rules include unsupported merge gate: "+rule.Type)
@@ -401,14 +422,20 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 	var repository struct {
 		NodeID           string `json:"node_id"`
 		DefaultBranch    string `json:"default_branch"`
-		AllowSquashMerge bool   `json:"allow_squash_merge"`
+		AllowSquashMerge *bool  `json:"allow_squash_merge"`
 	}
-	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, adapter.base.repoPath(), nil, &repository); err != nil {
+	if _, err := adapter.effectBase.rest(ctx, effectCredential, http.MethodGet, adapter.base.repoPath(), nil, &repository); err != nil {
 		return engine.DeliveryRulesObservation{}, err
 	}
-	methods := []string{}
-	if repository.NodeID == adapter.base.config.RepositoryID && repository.DefaultBranch == branch && repository.AllowSquashMerge {
-		methods = append(methods, "squash")
+	repositoryMethods := []string{}
+	if repository.NodeID != adapter.base.config.RepositoryID || repository.DefaultBranch != branch || repository.AllowSquashMerge == nil {
+		problems = append(problems, "repository merge capability is unavailable")
+	} else if *repository.AllowSquashMerge {
+		repositoryMethods = append(repositoryMethods, "squash")
+	}
+	methods := repositoryMethods
+	if havePullRequestRule {
+		methods = intersectStrings(repositoryMethods, ruleMethods)
 	}
 	var base struct {
 		Commit struct {
@@ -423,6 +450,17 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 		Repository any
 		Base       any
 	}{rules, repository, base}), BaseRevision: base.Commit.SHA, RequiredChecks: required, MergeMethods: methods, Problems: problems}, nil
+}
+
+func intersectStrings(left, right []string) []string {
+	result := []string{}
+	for _, value := range left {
+		if slices.Contains(right, value) {
+			result = append(result, value)
+		}
+	}
+	slices.Sort(result)
+	return slices.Compact(result)
 }
 
 func deliveryClaimMatches(body string, expected engine.WorkDeliveryClaim) bool {
