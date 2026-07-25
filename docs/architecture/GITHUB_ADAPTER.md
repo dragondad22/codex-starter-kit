@@ -126,6 +126,14 @@ credential, unsupported owner/mode combination, or unapproved live target stops 
 effect. Reconnect reacquires the explicitly selected mode and repeats the handshake; it
 does not broaden authority or switch credentials.
 
+Repository-file effects may bind an exact branch-head precondition. The adapter re-reads
+that ref immediately before the Contents mutation and returns `needs-review` on drift.
+Marker-scoped orphan-branch recovery additionally consumes the integrity-checked
+successful create-branch state artifact, binds its receipt to the governed delivery issue
+and exact branch SHA, then requires an all-state, bounded PR lookup to return no history
+immediately before deletion. Any issue drift, head drift, PR, malformed or multi-page
+pagination, or lookup failure prevents deletion.
+
 ## Observation and effects
 
 Observation follows bounded REST `Link` pages and GraphQL Project-item cursors, matches

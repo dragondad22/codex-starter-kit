@@ -37,10 +37,12 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 		{"relationships-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, false},
 		{"rules-setup", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, false},
 		{"file-initial", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
+		{"file-candidate", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
 		{"file-stale", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
 		{"cleanup-relationships", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, true},
 		{"cleanup-rules", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, true},
 		{"cleanup-file", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, true},
+		{"cleanup-orphan-branch", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureBranch, 1, []string{"contents:write", "metadata:read", "pull-requests:read"}, true},
 		{"cleanup-delivery", githubadapter.SandboxRoleSeeder, "", 2, []string{"contents:write", "metadata:read", "pull-requests:write"}, true},
 		{"cleanup-issues", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, true},
 	}
@@ -134,12 +136,24 @@ func TestStageContractDeclaresIdentityHandoffAndDeliveryCleanup(t *testing.T) {
 	if !slices.Equal(cleanup.StageContract.IdentityRequirements, []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}) {
 		t.Fatalf("delivery cleanup contract = %#v", cleanup.StageContract)
 	}
+	candidate := mustBuild(t, "file-candidate")
+	if !slices.Equal(candidate.StageContract.IdentityRequirements, []string{"delivery_number", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}) {
+		t.Fatalf("file candidate contract = %#v", candidate.StageContract)
+	}
 	resources := cleanup.Request.Manifest.Resources
 	if len(resources) != 2 || resources[0].Kind != engine.SandboxResourceFixturePR || resources[1].Kind != engine.SandboxResourceFixtureBranch {
 		t.Fatalf("delivery cleanup ordering = %#v", resources)
 	}
 	if resources[0].Marker != "Closes #12" || resources[0].Attributes["number"] != "17" || resources[0].Attributes["id"] != "117" || resources[0].Attributes["node_id"] != "PR_delivery" || resources[0].Attributes["head_sha"] != strings.Repeat("b", 40) || resources[0].Attributes["head"] != deliveryHeadBranch || resources[1].Attributes["sha"] != strings.Repeat("b", 40) || resources[1].Name != deliveryHeadBranch {
 		t.Fatalf("delivery cleanup identities = %#v", resources)
+	}
+	orphan := mustBuild(t, "cleanup-orphan-branch")
+	if !slices.Equal(orphan.StageContract.IdentityRequirements, []string{"delivery_number", "delivery_id", "delivery_node_id", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}) || len(orphan.Request.Manifest.Resources) != 1 {
+		t.Fatalf("orphan branch cleanup contract = %#v / %#v", orphan.StageContract, orphan.Request.Manifest.Resources)
+	}
+	branch := orphan.Request.Manifest.Resources[0]
+	if branch.Kind != engine.SandboxResourceFixtureBranch || branch.Name != deliveryHeadBranch || branch.Attributes["sha"] != strings.Repeat("b", 40) || branch.Attributes["input:delivery_number"] != "12" || branch.Attributes["input:delivery_id"] != "102" || branch.Attributes["input:delivery_node_id"] != "I_delivery" || branch.Attributes["input:no_pull_requests"] != "true" || branch.Attributes["input:delivery_state_run_id"] != "30163549727" || branch.DesiredState != engine.SandboxResourceAbsent {
+		t.Fatalf("orphan branch cleanup identity = %#v", branch)
 	}
 }
 
@@ -168,21 +182,33 @@ func TestIssueFixturesAndRelationshipsCarryExactOrganicTopology(t *testing.T) {
 
 func TestWorkflowStagesBindChangedHeadContentAndExactFinalCleanup(t *testing.T) {
 	initial := mustBuild(t, "file-initial").Request.Manifest.Resources[0]
+	candidate := mustBuild(t, "file-candidate").Request.Manifest.Resources[0]
 	stale := mustBuild(t, "file-stale").Request.Manifest.Resources[0]
 	cleanup := mustBuild(t, "cleanup-file").Request.Manifest.Resources[0]
-	if initial.Attributes["branch"] != "main" || stale.Attributes["branch"] != deliveryHeadBranch || cleanup.Attributes["branch"] != "main" {
-		t.Fatalf("workflow branches = %q/%q/%q", initial.Attributes["branch"], stale.Attributes["branch"], cleanup.Attributes["branch"])
+	if initial.Attributes["branch"] != "main" || candidate.Attributes["branch"] != deliveryHeadBranch || stale.Attributes["branch"] != deliveryHeadBranch || cleanup.Attributes["branch"] != "main" {
+		t.Fatalf("workflow branches = %q/%q/%q/%q", initial.Attributes["branch"], candidate.Attributes["branch"], stale.Attributes["branch"], cleanup.Attributes["branch"])
 	}
 	if initial.Attributes["path"] != ".github/workflows/issue-75-fixture-check.yml" {
 		t.Fatalf("fixture check would overwrite a control workflow: %#v", initial.Attributes)
 	}
-	if initial.Attributes["input:content"] == stale.Attributes["input:content"] || initial.Attributes["content_sha256"] == stale.Attributes["content_sha256"] {
-		t.Fatal("stale stage must create a new approved head revision")
+	contents := []string{initial.Attributes["input:content"], candidate.Attributes["input:content"], stale.Attributes["input:content"]}
+	digests := []string{initial.Attributes["content_sha256"], candidate.Attributes["content_sha256"], stale.Attributes["content_sha256"]}
+	if contents[0] == contents[1] || contents[0] == contents[2] || contents[1] == contents[2] || digests[0] == digests[1] || digests[0] == digests[2] || digests[1] == digests[2] {
+		t.Fatal("initial, candidate, and stale stages must create three distinct approved revisions")
+	}
+	if candidate.Attributes["input:branch_head_sha"] != strings.Repeat("b", 40) {
+		t.Fatalf("candidate predecessor = %#v", candidate.Attributes)
+	}
+	if candidate.Attributes["input:delivery_state_run_id"] != "30163549727" || candidate.Attributes["input:delivery_transition_sha256"] == "" {
+		t.Fatalf("candidate branch evidence = %#v", candidate.Attributes)
+	}
+	if stale.Attributes["input:branch_head_sha"] != strings.Repeat("b", 40) {
+		t.Fatalf("stale predecessor = %#v", stale.Attributes)
 	}
 	if cleanup.Attributes["input:content"] != stale.Attributes["input:content"] || cleanup.Attributes["content_sha256"] != stale.Attributes["content_sha256"] || cleanup.DesiredState != engine.SandboxResourceAbsent {
 		t.Fatalf("cleanup is not bound to final approved content: %#v", cleanup)
 	}
-	for _, content := range []string{initial.Attributes["input:content"], stale.Attributes["input:content"]} {
+	for _, content := range contents {
 		if !strings.Contains(content, runMarker) || !strings.Contains(content, "pull_request:") || !strings.Contains(content, "contract-delivery:") {
 			t.Fatalf("workflow content = %q", content)
 		}
@@ -271,6 +297,15 @@ func TestRunRejectsUnapprovedOrAmbiguousInputs(t *testing.T) {
 		{"cleanup delivery pull node required", withoutFlag(validArgs("cleanup-delivery"), "--pull-node-id"), fixedNow},
 		{"cleanup delivery sha required", withoutFlag(validArgs("cleanup-delivery"), "--branch-head-sha"), fixedNow},
 		{"cleanup delivery sha exact", replaceFlag(validArgs("cleanup-delivery"), "--branch-head-sha", "main"), fixedNow},
+		{"candidate branch sha required", withoutFlag(validArgs("file-candidate"), "--branch-head-sha"), fixedNow},
+		{"candidate branch sha exact", replaceFlag(validArgs("file-candidate"), "--branch-head-sha", "main"), fixedNow},
+		{"candidate state required", validArgs("file-candidate"), fixedNow},
+		{"stale branch sha required", withoutFlag(validArgs("file-stale"), "--branch-head-sha"), fixedNow},
+		{"stale branch sha exact", replaceFlag(validArgs("file-stale"), "--branch-head-sha", "main"), fixedNow},
+		{"orphan cleanup delivery required", withoutFlag(validArgs("cleanup-orphan-branch"), "--delivery-id"), fixedNow},
+		{"orphan cleanup sha required", withoutFlag(validArgs("cleanup-orphan-branch"), "--branch-head-sha"), fixedNow},
+		{"orphan cleanup sha exact", replaceFlag(validArgs("cleanup-orphan-branch"), "--branch-head-sha", "main"), fixedNow},
+		{"orphan cleanup state required", validArgs("cleanup-orphan-branch"), fixedNow},
 		{"positional argument", append(validArgs("issues-setup"), "unexpected"), fixedNow},
 	}
 	for _, test := range tests {
@@ -288,6 +323,13 @@ func mustBuild(t *testing.T, stage string) planInput {
 	if stage == "issues-governed" {
 		args = append(args, "--delivery-input-file", governedDeliveryInput(t))
 	}
+	if stage == "file-candidate" || stage == "cleanup-orphan-branch" {
+		args = append(args,
+			"--delivery-state-file", branchCreationTransition(t),
+			"--delivery-state-run-id", "30163549727",
+			"--delivery-state-artifact", "issue-75-delivery-state-30163549727",
+		)
+	}
 	var output bytes.Buffer
 	if err := run(args, fixedNow, &output); err != nil {
 		t.Fatal(err)
@@ -297,6 +339,45 @@ func mustBuild(t *testing.T, stage string) planInput {
 		t.Fatal(err)
 	}
 	return input
+}
+
+func branchCreationTransition(t *testing.T) string {
+	t.Helper()
+	source := strings.Repeat("a", 40)
+	head := strings.Repeat("b", 40)
+	effect := engine.DeliveryEffect{ID: "effect-create-branch", Kind: engine.DeliveryEffectCreateBranch, Branch: deliveryHeadBranch, BaseBranch: "main", HeadRevision: head}
+	receipt := engine.DeliveryEffectReceipt{
+		SchemaVersion: 1, PlanID: "plan-create-branch", EffectID: effect.ID, EffectKind: effect.Kind,
+		ManagedID: "issue:12", HeadRevision: head, Actor: "codex-starter-kit-labs-seeder",
+		CredentialMode: "app-installation", MandateID: "mandate-create-branch", SourceRevision: source,
+		ObservationRevision: "observation-create-branch", Outcome: "applied", RecordedAt: fixedNow,
+	}
+	evidence := map[string]any{
+		"schema_version": 1,
+		"evidence_mode":  "live",
+		"outcome":        "pass",
+		"inspection":     engine.DeliveryInspection{},
+		"plan": engine.DeliveryPlan{
+			SchemaVersion: 1, ID: receipt.PlanID,
+			Intent:  engine.DeliveryIntent{ManagedID: receipt.ManagedID, SourceRevision: source, HeadBranch: deliveryHeadBranch},
+			Effects: []engine.DeliveryEffect{effect},
+		},
+		"apply": engine.DeliveryApplyResult{
+			SchemaVersion: 1, PlanID: receipt.PlanID, Status: engine.WorkApplyApplied,
+			Results: []engine.DeliveryEffectResult{{Outcome: "applied"}}, Receipts: []engine.DeliveryEffectReceipt{receipt},
+		},
+		"verification": engine.DeliveryVerification{SchemaVersion: 1, OverallState: engine.ControlPass},
+		"status":       engine.DeliveryStatusResult{SchemaVersion: 1, Disposition: engine.DeliveryDispositionPullRequestAbsent, Receipts: []engine.DeliveryEffectReceipt{receipt}},
+	}
+	path := filepath.Join(t.TempDir(), "issue-75-transition.json")
+	content, err := json.MarshalIndent(evidence, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func governedDeliveryInput(t *testing.T) string {

@@ -1148,24 +1148,27 @@ func (adapter *Adapter) configurationRevision(permissions []string) string {
 }
 
 func (adapter *Adapter) nextRESTPath(link string) (string, error) {
+	return nextRESTPath(link, adapter.config.RESTBaseURL)
+}
+
+func nextRESTPath(link, restBaseURL string) (string, error) {
 	if link == "" {
 		return "", nil
 	}
 	for _, part := range strings.Split(link, ",") {
-		if !strings.Contains(part, `rel="next"`) {
-			continue
-		}
 		left := strings.Index(part, "<")
 		right := strings.Index(part, ">")
-		if left < 0 || right <= left {
+		if left < 0 || right <= left || !strings.Contains(part[right+1:], `rel="`) {
 			return "", errors.New("GitHub REST pagination link is invalid")
 		}
 		next, err := url.Parse(part[left+1 : right])
-		base, baseErr := url.Parse(adapter.config.RESTBaseURL)
+		base, baseErr := url.Parse(restBaseURL)
 		if err != nil || baseErr != nil || next.Scheme != base.Scheme || next.Host != base.Host {
 			return "", errors.New("GitHub REST pagination escaped the configured host")
 		}
-		return next.RequestURI(), nil
+		if strings.Contains(part[right+1:], `rel="next"`) {
+			return next.RequestURI(), nil
+		}
 	}
 	return "", nil
 }

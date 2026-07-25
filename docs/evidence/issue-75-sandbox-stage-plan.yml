@@ -21,8 +21,10 @@ on:
           - project-setup
           - relationships-setup
           - file-initial
+          - file-candidate
           - rules-setup
           - file-stale
+          - cleanup-orphan-branch
           - cleanup-delivery
           - cleanup-rules
           - cleanup-file
@@ -106,7 +108,7 @@ jobs:
           case "$STAGE" in
             rules-setup|cleanup-rules) ROLE=rules ;;
             project-setup|relationships-setup|cleanup-relationships) ROLE=reconciler ;;
-            issues-setup|issues-governed|file-initial|file-stale|cleanup-delivery|cleanup-file|cleanup-issues) ROLE=seeder ;;
+            issues-setup|issues-governed|file-initial|file-candidate|file-stale|cleanup-orphan-branch|cleanup-delivery|cleanup-file|cleanup-issues) ROLE=seeder ;;
             *) echo "unsupported Issue 75 stage" >&2; exit 1 ;;
           esac
           jq -e '
@@ -114,7 +116,8 @@ jobs:
             ([keys[]] - ["parent_number", "parent_id", "parent_node_id",
               "delivery_number", "delivery_id", "delivery_node_id",
               "dependent_number", "dependent_id", "dependent_node_id",
-              "pull_number", "pull_id", "pull_node_id", "branch_head_sha"] | length == 0) and
+              "pull_number", "pull_id", "pull_node_id", "branch_head_sha",
+              "delivery_state_run_id", "delivery_state_artifact"] | length == 0) and
             ([.[] | type] | all(. == "string"))' \
             <<<"$IDENTITY_FLAGS_JSON"
           printf '%s' "$IDENTITY_FLAGS_JSON" > identity-flags.json
@@ -173,6 +176,55 @@ jobs:
               .request.intent.target.project_id == "PVT_kwDOEjyyNM4Bdm9F"' \
             delivery-input/issue-75-delivery-input.json
 
+      - name: Download and validate exact branch-creation state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE: ${{ inputs.stage }}
+        shell: bash
+        run: |
+          run_id="$(jq -r '.delivery_state_run_id // ""' identity-flags.json)"
+          artifact="$(jq -r '.delivery_state_artifact // ""' identity-flags.json)"
+          if [[ "$STAGE" != "file-candidate" && "$STAGE" != "cleanup-orphan-branch" ]]; then
+            test -z "$run_id"
+            test -z "$artifact"
+            exit 0
+          fi
+          if [[ ! "$run_id" =~ ^[1-9][0-9]*$ ]] || \
+             [[ "$artifact" != "issue-75-delivery-state-$run_id" ]]; then
+            echo "branch stage requires exact delivery state provenance" >&2
+            exit 1
+          fi
+          gh api \
+            "repos/codex-starter-kit-labs/codex-starter-kit-sandbox/actions/runs/$run_id" \
+            --jq 'select(.event == "workflow_dispatch" and
+              .path == ".github/workflows/issue-75-contract.yml" and
+              .conclusion == "success") | .id' \
+            | grep -qx "$run_id"
+          gh run download "$run_id" \
+            --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+            --name "$artifact" --dir delivery-state
+          test -f delivery-state/issue-75-state-manifest.json
+          test -f delivery-state/issue-75-transition.json
+          test "$(find delivery-state -type f | wc -l)" -eq 4
+          test -z "$(find delivery-state -type l -print -quit)"
+          jq -e --arg run "$run_id" '
+            .schema_version == 1 and .run_id == $run and .predecessor_run_id == "" and
+            (.source_revision | test("^[0-9a-f]{40}$")) and
+            (.files | keys | sort) ==
+              ([".starter-kit/delivery/state.json",
+                ".starter-kit/work-mandates.json",
+                "issue-75-transition.json"] | sort)' \
+            delivery-state/issue-75-state-manifest.json
+          jq -r '.files | to_entries[] | [.value, .key] | @tsv' \
+            delivery-state/issue-75-state-manifest.json |
+            while IFS=$'\t' read -r digest path; do
+              test "$(sha256sum "delivery-state/$path" | cut -d' ' -f1)" = "$digest"
+            done
+          jq -e --slurpfile transition delivery-state/issue-75-transition.json '
+            .source_revision == $transition[0].plan.intent.source_revision and
+            .mandate_id == $transition[0].apply.receipts[0].mandate_id' \
+            delivery-state/issue-75-state-manifest.json
+
       - name: Generate exact credential-free stage input
         env:
           SOURCE_REVISION: ${{ inputs.source_revision }}
@@ -186,6 +238,14 @@ jobs:
           DELIVERY_ARG=()
           if [[ "$STAGE" == "issues-governed" ]]; then
             DELIVERY_ARG=(--delivery-input-file "../delivery-input/issue-75-delivery-input.json")
+          fi
+          STATE_ARG=()
+          if [[ "$STAGE" == "file-candidate" || "$STAGE" == "cleanup-orphan-branch" ]]; then
+            STATE_ARG=(
+              --delivery-state-file "../delivery-state/issue-75-transition.json"
+              --delivery-state-run-id "$(jq -r .delivery_state_run_id identity-flags.json)"
+              --delivery-state-artifact "$(jq -r .delivery_state_artifact identity-flags.json)"
+            )
           fi
           go -C tool run ./cmd/issue75-sandbox \
             --stage "$STAGE" --repository "${{ github.workspace }}" \
@@ -206,6 +266,7 @@ jobs:
             --pull-node-id "$(jq -r '.pull_node_id // ""' identity-flags.json)" \
             --branch-head-sha "$(jq -r '.branch_head_sha // ""' identity-flags.json)" \
             "${DELIVERY_ARG[@]}" \
+            "${STATE_ARG[@]}" \
             > "$STAGE-input.json"
 
       - name: Require exact generated stage identity
@@ -255,5 +316,7 @@ jobs:
             ${{ inputs.stage }}-input.json
             ${{ inputs.stage }}-planning.json
             delivery-input/issue-75-delivery-input.json
+            delivery-state/issue-75-state-manifest.json
+            delivery-state/issue-75-transition.json
           if-no-files-found: warn
           retention-days: 30

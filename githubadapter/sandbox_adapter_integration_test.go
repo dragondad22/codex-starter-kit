@@ -1845,6 +1845,128 @@ func TestSandboxAdapterDoesNotDeleteUnownedRepositoryFile(t *testing.T) {
 	}
 }
 
+func TestSandboxAdapterRepositoryFileRequiresExactApprovedBranchHead(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:issue-75"
+	for _, test := range []struct {
+		name       string
+		observed   string
+		outcome    string
+		wantUpdate bool
+	}{
+		{"exact", "approved-head", "applied", true},
+		{"changed", "changed-head", "needs-review", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			updated := false
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch {
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/contents/.github/workflows/check.yml":
+					json.NewEncoder(response).Encode(map[string]any{"sha": "old-content", "content": base64.StdEncoding.EncodeToString([]byte(marker + "\nold\n"))})
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run-75":
+					json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": test.observed}})
+				case request.Method == http.MethodPut && request.URL.Path == "/repos/labs/sandbox/contents/.github/workflows/check.yml":
+					updated = true
+					json.NewEncoder(response).Encode(map[string]any{"content": map[string]any{"sha": "new-content"}})
+				default:
+					t.Fatalf("unexpected file request: %s %s", request.Method, request.URL.String())
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := marker + "\nnew\n"
+			resource := engine.SandboxResourceSpec{Key: "file:check", Kind: engine.SandboxResourceRepositoryFile, Name: "check.yml", Marker: marker, Attributes: map[string]string{
+				"path": ".github/workflows/check.yml", "branch": "contract/run-75", "content_sha256": testSandboxSHA256(content), "input:content": content, "input:branch_head_sha": "approved-head",
+			}}
+			result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "reconcile-resource", Resource: resource})
+			if err != nil || result.Outcome != test.outcome || updated != test.wantUpdate {
+				t.Fatalf("result = %#v, updated=%v, err=%v", result, updated, err)
+			}
+		})
+	}
+}
+
+func TestSandboxAdapterOrphanBranchCleanupRequiresExactIssueHeadAndNoPullHistory(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:issue-75-20260721-01"
+	tests := []struct {
+		name          string
+		issueID       int64
+		head          string
+		pulls         []any
+		linkMode      string
+		lookupFailure bool
+		branchAbsent  bool
+		outcome       string
+		wantDelete    bool
+		wantError     bool
+	}{
+		{name: "exact orphan", issueID: 102, head: "approved-head", pulls: []any{}, outcome: "applied", wantDelete: true},
+		{name: "absent replay", issueID: 102, branchAbsent: true, outcome: "no-change"},
+		{name: "issue drift", issueID: 999, head: "approved-head", pulls: []any{}, outcome: "needs-review"},
+		{name: "head drift", issueID: 102, head: "changed-head", pulls: []any{}, outcome: "needs-review"},
+		{name: "closed pull exists", issueID: 102, head: "approved-head", pulls: []any{map[string]any{"number": 17, "state": "closed"}}, outcome: "needs-review"},
+		{name: "pull lookup paginates", issueID: 102, head: "approved-head", pulls: []any{}, linkMode: "next", outcome: "needs-review"},
+		{name: "pull lookup link malformed", issueID: 102, head: "approved-head", pulls: []any{}, linkMode: "malformed", outcome: "needs-review"},
+		{name: "pull lookup fails", issueID: 102, head: "approved-head", lookupFailure: true, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			deleted := false
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				switch {
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/issues/12":
+					json.NewEncoder(response).Encode(map[string]any{"id": test.issueID, "number": 12, "node_id": "I_delivery", "body": marker})
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/git/ref/heads/contract/run-75":
+					if test.branchAbsent {
+						http.NotFound(response, request)
+						return
+					}
+					json.NewEncoder(response).Encode(map[string]any{"object": map[string]any{"sha": test.head}})
+				case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/pulls":
+					if request.URL.Query().Get("state") != "all" || request.URL.Query().Get("head") != "labs:contract/run-75" {
+						t.Fatalf("pull query = %s", request.URL.RawQuery)
+					}
+					if test.lookupFailure {
+						response.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					if test.linkMode == "next" {
+						response.Header().Set("Link", "<http://"+request.Host+`/repos/labs/sandbox/pulls?page=2>; rel="next"`)
+					} else if test.linkMode == "malformed" {
+						response.Header().Set("Link", `<broken; rel="next"`)
+					}
+					json.NewEncoder(response).Encode(test.pulls)
+				case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/git/refs/heads/contract/run-75":
+					deleted = true
+					response.WriteHeader(http.StatusNoContent)
+				default:
+					t.Fatalf("unexpected orphan cleanup request: %s %s", request.Method, request.URL.String())
+				}
+			}))
+			defer server.Close()
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleSeeder, sandboxProviders(now)[githubadapter.SandboxRoleSeeder], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resource := engine.SandboxResourceSpec{Key: "fixture:branch:delivery", Kind: engine.SandboxResourceFixtureBranch, Name: "contract/run-75", Marker: marker, DesiredState: engine.SandboxResourceAbsent, Attributes: map[string]string{
+				"sha": "approved-head", "input:no_pull_requests": "true", "input:delivery_number": "12", "input:delivery_id": "102", "input:delivery_node_id": "I_delivery",
+			}}
+			result, err := adapter.Apply(context.Background(), engine.SandboxEffect{Kind: "remove-resource", Resource: resource})
+			if (err != nil) != test.wantError || !test.wantError && result.Outcome != test.outcome || deleted != test.wantDelete {
+				t.Fatalf("result = %#v, deleted=%v, err=%v", result, deleted, err)
+			}
+		})
+	}
+}
+
 func TestSandboxAdapterDoesNotMutateUnownedIssueRelationship(t *testing.T) {
 	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	marker := "starter-kit-contract:run-75"

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -30,7 +31,7 @@ const (
 	sandboxRepository          = "codex-starter-kit-labs/codex-starter-kit-sandbox"
 	sandboxOwner               = "codex-starter-kit-labs"
 	sandboxName                = "codex-starter-kit-sandbox"
-	configuration              = "issue-75-sandbox-config-v1"
+	configuration              = "issue-75-sandbox-config-v2"
 	runMarker                  = "starter-kit-contract:issue-75-20260721-01"
 	deliveryHeadBranch         = "contract/issue-75-20260721-01"
 	workflowPath               = ".github/workflows/issue-75-fixture-check.yml"
@@ -78,6 +79,9 @@ type options struct {
 	delivery       issueIdentity
 	dependent      issueIdentity
 	deliveryInput  string
+	deliveryState  string
+	stateRunID     string
+	stateArtifact  string
 	pullNumber     string
 	pullID         string
 	pullNodeID     string
@@ -94,7 +98,7 @@ func main() {
 func run(args []string, now time.Time, output io.Writer) error {
 	flags := flag.NewFlagSet("issue75-sandbox", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	stage := flags.String("stage", "", "issues-setup, issues-governed, project-setup, relationships-setup, rules-setup, file-initial, file-stale, cleanup-relationships, cleanup-rules, cleanup-file, cleanup-delivery, or cleanup-issues")
+	stage := flags.String("stage", "", "issues-setup, issues-governed, project-setup, relationships-setup, rules-setup, file-initial, file-candidate, file-stale, cleanup-relationships, cleanup-rules, cleanup-file, cleanup-orphan-branch, cleanup-delivery, or cleanup-issues")
 	repository := flags.String("repository", ".", "local evidence repository")
 	source := flags.String("source-revision", "", "exact starter-kit source revision")
 	approvedBy := flags.String("approved-by", "", "approving human identity")
@@ -111,6 +115,9 @@ func run(args []string, now time.Time, output io.Writer) error {
 	dependentID := flags.String("dependent-id", "", "exact fixture dependent database ID")
 	dependentNodeID := flags.String("dependent-node-id", "", "exact fixture dependent node ID")
 	deliveryInput := flags.String("delivery-input-file", "", "exact issue75-delivery artifact used by issues-governed")
+	deliveryState := flags.String("delivery-state-file", "", "exact successful create-branch transition artifact")
+	stateRunID := flags.String("delivery-state-run-id", "", "exact successful create-branch workflow run")
+	stateArtifact := flags.String("delivery-state-artifact", "", "exact successful create-branch state artifact")
 	pullNumber := flags.String("pull-number", "", "exact delivery pull request number")
 	pullID := flags.String("pull-id", "", "exact delivery pull request database ID")
 	pullNodeID := flags.String("pull-node-id", "", "exact delivery pull request node ID")
@@ -129,7 +136,8 @@ func run(args []string, now time.Time, output io.Writer) error {
 		delivery:      issueIdentity{Number: *deliveryNumber, ID: *deliveryID, NodeID: *deliveryNodeID},
 		dependent:     issueIdentity{Number: *dependentNumber, ID: *dependentID, NodeID: *dependentNodeID},
 		deliveryInput: *deliveryInput,
-		pullNumber:    *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, branchHeadSHA: *branchHeadSHA,
+		deliveryState: *deliveryState, stateRunID: *stateRunID, stateArtifact: *stateArtifact,
+		pullNumber: *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, branchHeadSHA: *branchHeadSHA,
 	}
 	input, err := buildPlanInput(value)
 	if err != nil {
@@ -235,8 +243,27 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 		return githubadapter.SandboxRoleRules, resources, nil
 	case "file-initial":
 		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource("main", initialWorkflow(), false)}, nil
+	case "file-candidate":
+		if !commitPattern.MatchString(value.branchHeadSHA) {
+			return "", nil, errors.New("file-candidate requires a lowercase 40-character branch-head-sha")
+		}
+		evidence, err := branchCreationEvidence(value)
+		if err != nil {
+			return "", nil, err
+		}
+		candidate := workflowResource(deliveryHeadBranch, candidateWorkflow(), false)
+		candidate.Attributes["input:branch_head_sha"] = value.branchHeadSHA
+		for key, fact := range evidence {
+			candidate.Attributes[key] = fact
+		}
+		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{candidate}, nil
 	case "file-stale":
-		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource(deliveryHeadBranch, finalWorkflow(), false)}, nil
+		if !commitPattern.MatchString(value.branchHeadSHA) {
+			return "", nil, errors.New("file-stale requires a lowercase 40-character branch-head-sha")
+		}
+		stale := workflowResource(deliveryHeadBranch, finalWorkflow(), false)
+		stale.Attributes["input:branch_head_sha"] = value.branchHeadSHA
+		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{stale}, nil
 	case "cleanup-file":
 		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource("main", finalWorkflow(), true)}, nil
 	case "cleanup-delivery":
@@ -244,6 +271,15 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 			return "", nil, errors.New("cleanup-delivery requires exact delivery and pull request identities plus a lowercase 40-character branch-head-sha")
 		}
 		return githubadapter.SandboxRoleSeeder, cleanupDeliveryResources(value), nil
+	case "cleanup-orphan-branch":
+		if !positiveDecimal(value.delivery.Number) || !positiveDecimal(value.delivery.ID) || strings.TrimSpace(value.delivery.NodeID) == "" || !commitPattern.MatchString(value.branchHeadSHA) {
+			return "", nil, errors.New("cleanup-orphan-branch requires exact delivery issue identity and a lowercase 40-character branch-head-sha")
+		}
+		evidence, err := branchCreationEvidence(value)
+		if err != nil {
+			return "", nil, err
+		}
+		return githubadapter.SandboxRoleSeeder, cleanupOrphanBranchResources(value, evidence), nil
 	case "cleanup-issues":
 		if err := validateIssueIdentities(value.parent, value.delivery, value.dependent); err != nil {
 			return "", nil, err
@@ -264,6 +300,12 @@ func contractForStage(stage string) stageContract {
 		contract.IdentityRequirements = issueIdentities
 	case "cleanup-delivery":
 		contract.IdentityRequirements = []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}
+	case "file-candidate":
+		contract.IdentityRequirements = []string{"delivery_number", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}
+	case "file-stale":
+		contract.IdentityRequirements = []string{"branch_head_sha"}
+	case "cleanup-orphan-branch":
+		contract.IdentityRequirements = []string{"delivery_number", "delivery_id", "delivery_node_id", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}
 	}
 	return contract
 }
@@ -429,6 +471,81 @@ func cleanupDeliveryResources(value options) []engine.SandboxResourceSpec {
 	return []engine.SandboxResourceSpec{pull, branch}
 }
 
+func cleanupOrphanBranchResources(value options, evidence map[string]string) []engine.SandboxResourceSpec {
+	branch := resource(
+		"fixture:branch:delivery",
+		engine.SandboxResourceFixtureBranch,
+		deliveryHeadBranch,
+		runMarker,
+		map[string]string{
+			"sha":                    value.branchHeadSHA,
+			"input:no_pull_requests": "true",
+			"input:delivery_number":  value.delivery.Number,
+			"input:delivery_id":      value.delivery.ID,
+			"input:delivery_node_id": value.delivery.NodeID,
+		},
+		true,
+	)
+	for key, fact := range evidence {
+		branch.Attributes[key] = fact
+	}
+	return []engine.SandboxResourceSpec{branch}
+}
+
+func branchCreationEvidence(value options) (map[string]string, error) {
+	if !positiveDecimal(value.stateRunID) || value.stateArtifact != "issue-75-delivery-state-"+value.stateRunID || strings.TrimSpace(value.deliveryState) == "" {
+		return nil, errors.New("branch recovery requires an exact delivery state run and artifact")
+	}
+	content, err := os.ReadFile(value.deliveryState)
+	if err != nil || len(content) == 0 || len(content) > 1<<20 {
+		return nil, errors.New("branch creation transition evidence is unavailable")
+	}
+	var evidence struct {
+		SchemaVersion int                         `json:"schema_version"`
+		EvidenceMode  string                      `json:"evidence_mode"`
+		Outcome       string                      `json:"outcome"`
+		Inspection    engine.DeliveryInspection   `json:"inspection"`
+		Plan          engine.DeliveryPlan         `json:"plan"`
+		Apply         engine.DeliveryApplyResult  `json:"apply"`
+		Verification  engine.DeliveryVerification `json:"verification"`
+		Status        engine.DeliveryStatusResult `json:"status"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&evidence); err != nil {
+		return nil, errors.New("branch creation transition evidence is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("branch creation transition evidence contains trailing JSON")
+	}
+	if evidence.SchemaVersion != 1 || evidence.EvidenceMode != "live" || evidence.Outcome != "pass" || evidence.Verification.OverallState != engine.ControlPass || len(evidence.Plan.Effects) != 1 || len(evidence.Apply.Receipts) != 1 || evidence.Status.Disposition != engine.DeliveryDispositionPullRequestAbsent {
+		return nil, errors.New("branch creation transition did not converge")
+	}
+	effect := evidence.Plan.Effects[0]
+	receipt := evidence.Apply.Receipts[0]
+	if evidence.Plan.Intent.ManagedID != "issue:"+value.delivery.Number || evidence.Plan.Intent.HeadBranch != deliveryHeadBranch ||
+		evidence.Plan.Intent.SourceRevision != receipt.SourceRevision || evidence.Apply.Status != engine.WorkApplyApplied ||
+		len(evidence.Apply.Results) != 1 || evidence.Apply.Results[0].Outcome != "applied" ||
+		effect.Kind != engine.DeliveryEffectCreateBranch || effect.Branch != deliveryHeadBranch || effect.HeadRevision != value.branchHeadSHA ||
+		receipt.EffectID != effect.ID || receipt.PlanID != evidence.Plan.ID || receipt.EffectKind != engine.DeliveryEffectCreateBranch ||
+		receipt.ManagedID != "issue:"+value.delivery.Number || receipt.HeadRevision != value.branchHeadSHA ||
+		receipt.Actor != "codex-starter-kit-labs-seeder" || receipt.CredentialMode != "app-installation" ||
+		receipt.Outcome != "applied" || receipt.Recoverable || !commitPattern.MatchString(receipt.SourceRevision) ||
+		len(evidence.Status.Receipts) != 1 || evidence.Status.Receipts[0].EffectID != receipt.EffectID {
+		return nil, errors.New("branch creation receipt does not match the requested recovery branch")
+	}
+	digest := sha256.Sum256(content)
+	return map[string]string{
+		"input:delivery_state_run_id":      value.stateRunID,
+		"input:delivery_state_artifact":    value.stateArtifact,
+		"input:delivery_transition_sha256": "sha256:" + hex.EncodeToString(digest[:]),
+		"input:branch_source_revision":     receipt.SourceRevision,
+		"input:branch_mandate_id":          receipt.MandateID,
+		"input:branch_effect_id":           receipt.EffectID,
+	}, nil
+}
+
 func relationship(key, name, kind string, source, target issueIdentity) engine.SandboxResourceSpec {
 	return resource(key, engine.SandboxResourceIssueRelationship, name, runMarker, map[string]string{
 		"relationship":  kind,
@@ -451,6 +568,10 @@ func rulesResources() []engine.SandboxResourceSpec {
 
 func initialWorkflow() string {
 	return "# " + runMarker + "\nname: Issue 75 contract\non:\n  pull_request:\njobs:\n  contract-delivery:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo initial-head\n"
+}
+
+func candidateWorkflow() string {
+	return "# " + runMarker + "\nname: Issue 75 contract\non:\n  pull_request:\njobs:\n  contract-delivery:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo candidate-head\n"
 }
 
 func finalWorkflow() string {
@@ -489,9 +610,12 @@ func roleConfiguration(role, stage string) (githubadapter.SandboxRoleExpectation
 		actor, appID, installationID = "codex-starter-kit-labs-rules", "4319800", "147094473"
 		permissions = []string{"administration:write", "metadata:read"}
 		tokenPermissions = map[string]string{"administration": "write", "metadata": "read"}
-	} else if slices.Contains([]string{"file-initial", "file-stale", "cleanup-file"}, stage) {
+	} else if slices.Contains([]string{"file-initial", "file-candidate", "file-stale", "cleanup-file"}, stage) {
 		permissions = []string{"contents:write", "metadata:read", "workflows:write"}
 		tokenPermissions = map[string]string{"contents": "write", "metadata": "read", "workflows": "write"}
+	} else if stage == "cleanup-orphan-branch" {
+		permissions = []string{"contents:write", "metadata:read", "pull-requests:read"}
+		tokenPermissions = map[string]string{"contents": "write", "metadata": "read", "pull_requests": "read"}
 	} else if stage == "cleanup-delivery" {
 		permissions = []string{"contents:write", "metadata:read", "pull-requests:write"}
 		tokenPermissions = map[string]string{"contents": "write", "metadata": "read", "pull_requests": "write"}

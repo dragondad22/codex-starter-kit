@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; seven pre-effect, one provider-effect-attempt, and two
+**State:** Development candidate; seven pre-effect, two provider-effect-attempt, and two
 post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
@@ -205,6 +205,34 @@ independent changed-credential rejection remains unchanged. Refreshed gates, ind
 review, native CI, and a newly source-bound delivery input remain pending before another
 first transition.
 
+Source `c5523d46f6c63e03d1693625ea5e9243fdf70252` then passed local gates, both
+independent reviews, and native CI run `30163400672`. Delivery-input run `30163525467`
+bound that exact source, and transition run `30163549727` created the exact issue-named
+branch from sandbox `main` and converged at `pull-request-absent`. The next transition
+run `30163603727` reached GitHub's create-PR endpoint but received 422; the retained
+transition artifact is empty, no PR exists for the branch, and the branch remains at the
+approved creation head. No POST retry occurred. The fixture had seeded the initial
+workflow on `main` before branch creation, leaving no head-only commit from which GitHub
+could create a PR.
+
+The candidate now adds a predecessor-bound `file-candidate` stage after branch creation.
+It consumes the integrity-checked successful create-branch state artifact and creates one
+distinct intermediate workflow commit so draft-PR creation is meaningful. The existing
+`file-stale` stage now binds the exact candidate head and remains later, after
+candidate-head check and review evidence, to invalidate both against a new final head.
+Repository-file apply rechecks the exact approved branch head immediately before its
+Contents effect. A separate
+`cleanup-orphan-branch` recovery stage does not weaken PR-bound `cleanup-delivery`: it
+requires the integrity-checked successful create-branch state artifact, exact delivery
+issue identity, and branch SHA; rechecks issue identity/marker, head, and all-state PR
+absence immediately before deletion; refuses malformed or multi-page results and any PR
+history; and uses only seeder `contents:write`, `metadata:read`, and
+`pull-requests:read`.
+These stage and authority changes advance the explicit sandbox configuration revision to
+`issue-75-sandbox-config-v2`.
+Refreshed gates, independent review, native CI, workflow reinstallation, exact live orphan
+cleanup, and a newly source-bound journey remain pending.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact
@@ -241,8 +269,11 @@ executable contracts; `project-setup` then consumes their node IDs to set exact 
 Status/Readiness; `relationships-setup` consumes the same issue handoff; `file-initial`
 installs the check workflow on unprotected `main`; `rules-setup` then installs one
 marker-owned active ruleset requiring the `contract-delivery` context from GitHub Actions
-App integration `15368`; and `file-stale` updates the delivery head to exercise
-invalidation. Seeder stages use only
+App integration `15368`; the delivery engine creates the issue-named branch;
+`file-candidate` binds the successful branch-creation state artifact and exact branch head
+before creating the intermediate PR candidate; and, only after candidate-head check and
+review evidence, `file-stale` binds that candidate head before updating the delivery head
+to exercise invalidation. Seeder stages use only
 `contract-seeder`; Project/relationship stages use only `contract-reconciler`; ruleset
 stages use only `contract-rules`. Apply
 regenerates and byte-compares the credential-free input, binds the downloaded plan to its
@@ -258,6 +289,8 @@ verification, and effect-free postcondition converge. This keeps every private k
 existing protected role environment, stops dependent cleanup after an exact-identity or
 drift refusal, and retains each stage's active mandate and receipts. This is a reviewed
 executable candidate, not evidence that cleanup or any other live effect occurred.
+If branch creation succeeds but no PR can be created, `cleanup-orphan-branch` is the
+exclusive recovery route for that branch; it is not combined with `cleanup-delivery`.
 
 Each later dispatch must supply the prior run and exact state artifact. The workflow
 rejects symlinks and every payload path except the prior transition receipt and
@@ -273,9 +306,8 @@ admissible. Completing the journey therefore requires repeated dispatches plus e
 check and distinct-review perturbations; one workflow run is one transition, not live
 qualification.
 
-One human authority action remains before the live workflow is configured: create and
-protect a `contract-delivery` environment and populate exactly
-`CSK_RECONCILER_APP_PRIVATE_KEY` and `CSK_SEEDER_APP_PRIVATE_KEY`. The current composed
-runner exposes the union of those two keys within that job. Dispatch therefore requires an
-explicit owner assertion that the environment exists and is approved. Reviewer and rules
-secrets remain absent from that environment and retain their separate protected routes.
+The owner configured and protected the `contract-delivery` environment with exactly
+`CSK_RECONCILER_APP_PRIVATE_KEY` and `CSK_SEEDER_APP_PRIVATE_KEY`. The composed runner
+exposes the union of those two keys only within that job and requires an explicit owner
+assertion on every dispatch. Reviewer and rules secrets remain absent from that
+environment and retain their separate protected routes.

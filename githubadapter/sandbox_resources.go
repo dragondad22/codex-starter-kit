@@ -956,6 +956,20 @@ func (adapter *SandboxAdapter) applyRepositoryFile(ctx context.Context, credenti
 	if found {
 		body["sha"] = existing.SHA
 	}
+	if expected := effect.Resource.Attributes["input:branch_head_sha"]; expected != "" {
+		var ref struct {
+			Object struct {
+				SHA string `json:"sha"`
+			} `json:"object"`
+		}
+		refPath := adapter.repoPath() + "/git/ref/heads/" + escapePath(effect.Resource.Attributes["branch"])
+		if _, err := adapter.rest(ctx, credential, http.MethodGet, refPath, nil, &ref); err != nil {
+			return engine.SandboxEffectResult{}, err
+		}
+		if ref.Object.SHA != expected {
+			return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: ref.Object.SHA, Detail: "repository branch head changed after file approval"}, nil
+		}
+	}
 	var response struct {
 		Content struct {
 			SHA string `json:"sha"`
@@ -1005,6 +1019,15 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 		path := adapter.repoPath() + "/git/refs"
 		if effect.Kind == "remove-resource" {
 			path = adapter.repoPath() + "/git/refs/heads/" + escapePath(effect.Resource.Name)
+			if effect.Resource.Attributes["input:no_pull_requests"] == "true" {
+				issue, found, err := adapter.readFixtureIssue(ctx, credential, effect.Resource.Attributes["input:delivery_number"])
+				if err != nil {
+					return engine.SandboxEffectResult{}, err
+				}
+				if !found || strconv.FormatInt(issue.ID, 10) != effect.Resource.Attributes["input:delivery_id"] || issue.NodeID != effect.Resource.Attributes["input:delivery_node_id"] || issue.PullRequest != nil || !strings.Contains(issue.Body, effect.Resource.Marker) {
+					return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "orphan branch delivery issue identity or marker ownership changed"}, nil
+				}
+			}
 			if expected := effect.Resource.Attributes["sha"]; expected != "" {
 				var ref struct {
 					Object struct {
@@ -1019,6 +1042,21 @@ func (adapter *SandboxAdapter) applyFixture(ctx context.Context, credential Cred
 				}
 				if ref.Object.SHA != expected {
 					return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: ref.Object.SHA, Detail: "fixture branch head changed after cleanup approval"}, nil
+				}
+			}
+			if effect.Resource.Attributes["input:no_pull_requests"] == "true" {
+				var pulls []sandboxPullRequest
+				head := url.QueryEscape(adapter.config.RepositoryOwner + ":" + effect.Resource.Name)
+				response, err := adapter.rest(ctx, credential, http.MethodGet, adapter.repoPath()+"/pulls?state=all&head="+head+"&per_page=100", nil, &pulls)
+				if err != nil {
+					return engine.SandboxEffectResult{}, err
+				}
+				next, nextErr := nextRESTPath(response.Header.Get("Link"), adapter.config.RESTBaseURL)
+				if nextErr != nil || next != "" {
+					return engine.SandboxEffectResult{Outcome: "needs-review", Detail: "orphan branch pull request lookup is incomplete or ambiguous"}, nil
+				}
+				if len(pulls) != 0 {
+					return engine.SandboxEffectResult{Outcome: "needs-review", ResourceID: strconv.Itoa(pulls[0].Number), Detail: "orphan branch has pull request history and will not be deleted"}, nil
 				}
 			}
 			if _, err := adapter.rest(ctx, credential, http.MethodDelete, path, nil, nil); err != nil && !isResponseStatus(err, http.StatusNotFound) {
