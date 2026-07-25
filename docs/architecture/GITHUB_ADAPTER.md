@@ -76,6 +76,15 @@ desired intent, capability output, observations, plans, receipts, durable state,
 diagnostics. GitHub CLI, a shell, keychain discovery, and automatic account selection are
 not runtime dependencies.
 
+One App provider reuses its exact validated installation credential in memory until that
+credential expires. This keeps capability planning and apply bound to the same token
+identity and expiry instead of minting a semantically different token between the two
+checks. Every retrieval signs a current short-lived App JWT for any non-mutating identity
+query; the shorter-lived JWT is not reused as long as the installation token. At
+installation-token expiry the provider drops the cached secret before repeating App and
+installation identity validation and minting a new repository- and permission-scoped
+credential. No token is written to durable state.
+
 ## Supported identity roles
 
 | Mode | Implemented deterministic contract | Current live result |

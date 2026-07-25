@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,6 +61,8 @@ type AppInstallationProvider struct {
 	keys   PrivateKeyProvider
 	client *http.Client
 	now    func() time.Time
+	mu     sync.Mutex
+	cached Credential
 }
 
 func NewAppInstallationProvider(config AppInstallationConfig, keys PrivateKeyProvider, client *http.Client, options ...AppCredentialOption) (*AppInstallationProvider, error) {
@@ -99,19 +102,49 @@ func NewAppInstallationProvider(config AppInstallationConfig, keys PrivateKeyPro
 }
 
 func (provider *AppInstallationProvider) Credential(ctx context.Context) (Credential, error) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	now := provider.now()
+	if provider.cached.Token != "" && now.Before(provider.cached.ExpiresAt) {
+		jwt, err := provider.identityToken(ctx, now)
+		if err != nil {
+			return Credential{}, err
+		}
+		credential := cloneCredential(provider.cached)
+		credential.IdentityToken = jwt
+		return credential, nil
+	}
+	provider.cached = Credential{}
+	jwt, err := provider.identityToken(ctx, now)
+	if err != nil {
+		return Credential{}, err
+	}
+	credential, err := provider.mintCredential(ctx, now, jwt)
+	if err != nil {
+		return Credential{}, err
+	}
+	provider.cached = cloneCredential(credential)
+	provider.cached.IdentityToken = ""
+	return cloneCredential(credential), nil
+}
+
+func (provider *AppInstallationProvider) identityToken(ctx context.Context, now time.Time) (string, error) {
 	keyBytes, err := provider.keys.PrivateKey(ctx)
 	if err != nil {
-		return Credential{}, errors.New("GitHub App private key is unavailable")
+		return "", errors.New("GitHub App private key is unavailable")
 	}
 	key, err := parseRSAPrivateKey(keyBytes)
 	if err != nil {
-		return Credential{}, errors.New("GitHub App private key is invalid")
+		return "", errors.New("GitHub App private key is invalid")
 	}
-	now := provider.now()
 	jwt, err := signAppJWT(key, provider.config.AppID, now)
 	if err != nil {
-		return Credential{}, errors.New("GitHub App identity token could not be signed")
+		return "", errors.New("GitHub App identity token could not be signed")
 	}
+	return jwt, nil
+}
+
+func (provider *AppInstallationProvider) mintCredential(ctx context.Context, now time.Time, jwt string) (Credential, error) {
 	var app struct {
 		ID    int64  `json:"id"`
 		Slug  string `json:"slug"`
@@ -190,6 +223,11 @@ func (provider *AppInstallationProvider) Credential(ctx context.Context) (Creden
 	}
 	sort.Strings(permissions)
 	return Credential{Token: minted.Token, IdentityToken: jwt, Mode: "app-installation", Actor: app.Slug, Account: installation.Account.Login, AccountID: strconv.FormatInt(installation.Account.ID, 10), InstallationID: provider.config.InstallationID, Permissions: permissions, PermissionSource: "installation-token-response", PermissionRevision: sandboxDigest(minted.Permissions), ExpiresAt: minted.ExpiresAt}, nil
+}
+
+func cloneCredential(credential Credential) Credential {
+	credential.Permissions = append([]string(nil), credential.Permissions...)
+	return credential
 }
 
 func clonePermissionMap(input map[string]string) map[string]string {

@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; six pre-effect, one provider-effect-attempt, and two
+**State:** Development candidate; seven pre-effect, one provider-effect-attempt, and two
 post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
@@ -188,6 +188,22 @@ canonical observed definition to plan no change with zero effects. Refreshed loc
 Go, documentation, vet, and race gates pass. Final independent review, native CI, and a
 newly source-bound read-only plan remain pending; that plan must recognize ruleset
 `19734893` without an update effect.
+
+The first governed-delivery transition run `30163177714` passed its credential-free
+envelope and explicit combined-authority gates, then stopped before its planned
+`create-branch` effect with `delivery capability changed before apply`. The App provider
+had minted a second repository- and permission-scoped installation token between
+capability planning and apply; GitHub assigned the second token a different expiry, so
+the engine correctly treated it as a changed authority. No branch was created and the
+retained transition artifact was empty. The provider now reuses one validated,
+in-memory-only installation credential until its exact expiry while signing a fresh
+short-lived App JWT for later identity queries. It drops the expired cached secret before
+revalidating App and installation identity and minting a replacement. A concurrent
+regression proves one mint, isolated returned permission data, App-JWT renewal before the
+installation token expires, and installation-token replacement at expiry; the adapter's
+independent changed-credential rejection remains unchanged. Refreshed gates, independent
+review, native CI, and a newly source-bound delivery input remain pending before another
+first transition.
 
 ## Pending live qualification and completion
 

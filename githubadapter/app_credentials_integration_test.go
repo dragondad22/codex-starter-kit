@@ -9,7 +9,10 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,5 +112,79 @@ func TestAppInstallationProviderMintsExactRepositoryAndPermissionSubset(t *testi
 	joined := strings.Join(credential.Permissions, " ")
 	if credential.Token != "down-scoped-secret" || !strings.Contains(joined, "contents:write") || !strings.Contains(joined, "pull-requests:write") || strings.Contains(joined, "issues:write") || strings.Contains(joined, "workflows:write") {
 		t.Fatalf("credential = %#v", credential)
+	}
+}
+
+func TestAppInstallationProviderReusesOneLiveCredentialUntilExpiry(t *testing.T) {
+	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
+	current := now
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	var mints atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		permissions := map[string]string{"contents": "write", "metadata": "read"}
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/app":
+			json.NewEncoder(response).Encode(map[string]any{"id": 4319735, "slug": "codex-starter-kit-labs-seeder", "owner": map[string]any{"login": "codex-starter-kit-labs", "id": 305967668}})
+		case request.Method == http.MethodGet && request.URL.Path == "/app/installations/147094309":
+			json.NewEncoder(response).Encode(map[string]any{"id": 147094309, "app_id": 4319735, "app_slug": "codex-starter-kit-labs-seeder", "account": map[string]any{"login": "codex-starter-kit-labs", "id": 305967668}, "permissions": permissions})
+		case request.Method == http.MethodPost && request.URL.Path == "/app/installations/147094309/access_tokens":
+			mint := mints.Add(1)
+			json.NewEncoder(response).Encode(map[string]any{"token": "token-" + strconv.Itoa(int(mint)), "expires_at": current.Add(time.Hour).Format(time.RFC3339), "permissions": permissions})
+		default:
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	provider, err := githubadapter.NewAppInstallationProvider(githubadapter.AppInstallationConfig{
+		RESTBaseURL: server.URL, APIVersion: "2026-03-10", AppID: "4319735", InstallationID: "147094309",
+		Actor: "codex-starter-kit-labs-seeder", Account: "codex-starter-kit-labs", AccountID: "305967668",
+	}, githubadapter.PrivateKeyProviderFunc(func(context.Context) ([]byte, error) { return privateKey, nil }), server.Client(), githubadapter.WithAppCredentialClock(func() time.Time { return current }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := make([]githubadapter.Credential, 8)
+	errors := make([]error, len(results))
+	var group sync.WaitGroup
+	for index := range results {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			results[index], errors[index] = provider.Credential(context.Background())
+		}()
+	}
+	group.Wait()
+	first := results[0]
+	for index, credential := range results {
+		if errors[index] != nil || credential.Token != first.Token || !credential.ExpiresAt.Equal(first.ExpiresAt) {
+			t.Fatalf("concurrent credential %d = %#v, err=%v", index, credential, errors[index])
+		}
+	}
+	if mints.Load() != 1 {
+		t.Fatalf("concurrent requests minted %d credentials", mints.Load())
+	}
+	results[0].Permissions[0] = "mutated:write"
+	if results[1].Permissions[0] == "mutated:write" {
+		t.Fatal("returned credential permissions share mutable storage")
+	}
+	current = now.Add(10 * time.Minute)
+	reused, err := provider.Credential(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mints.Load() != 1 || reused.Token != first.Token || !reused.ExpiresAt.Equal(first.ExpiresAt) || reused.IdentityToken == first.IdentityToken {
+		t.Fatalf("live installation token or refreshed App identity is wrong: mints=%d first=%#v reused=%#v", mints.Load(), first, reused)
+	}
+	current = first.ExpiresAt
+	refreshed, err := provider.Credential(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mints.Load() != 2 || refreshed.Token == first.Token || !refreshed.ExpiresAt.After(first.ExpiresAt) {
+		t.Fatalf("expired credential was not refreshed: mints=%d first=%#v refreshed=%#v", mints.Load(), first, refreshed)
 	}
 }

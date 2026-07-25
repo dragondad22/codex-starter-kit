@@ -60,6 +60,13 @@ and permissions, and token creation may narrow them further. Installation tokens
 after one hour and can be minted again from the app identity; they should never be stored
 as durable configuration.
 
+Within one process, a validated installation credential may be reused in memory until its
+exact expiry. This is necessary when planning and effect application bind the same
+credential identity and expiry; minting another token between those steps creates a new
+capability even when its repository and permission scope is identical. The provider must
+still sign a current App JWT for identity queries because that JWT expires sooner than the
+installation token.
+
 The App registration and installation are separately privileged effects. An organization
 owner may be required, and an administrator can restrict installation. The private key
 and webhook secret introduce rotation, storage, and incident-response obligations. App
