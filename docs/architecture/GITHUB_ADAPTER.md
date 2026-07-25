@@ -48,6 +48,10 @@ merger transport for positive repository merge capability. It intersects multipl
 effective pull-request rules with the repository methods and treats an omitted repository
 setting as unknown, never as positive evidence. This preserves least authority without
 mistaking a ruleset restriction for proof that its method is enabled.
+Repository-file observation tolerates GitHub's short read-after-write propagation window
+with bounded retries of the idempotent Contents `GET`. It never retries the preceding
+Contents mutation; cancellation interrupts the wait, and exhaustion remains an explicit
+missing or drifted postcondition.
 The desired rule also names GitHub's canonical empty dismissal restriction and required
 reviewer list so post-apply normalization converges byte-for-byte instead of causing a
 perpetual reconcile.

@@ -2117,6 +2117,275 @@ func TestSandboxAdapterRepositoryFileRequiresExactApprovedBranchHead(t *testing.
 	}
 }
 
+func TestSandboxAdapterRepositoryFileObservationRetriesStaleContent(t *testing.T) {
+	now := time.Date(2026, 7, 25, 21, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:issue-75"
+	want := marker + "\nstale-head-qualified\n"
+	reads := 0
+	waits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/contents/.github/workflows/check.yml" {
+			t.Fatalf("unexpected file request: %s %s", request.Method, request.URL.String())
+		}
+		reads++
+		content := marker + "\ncandidate-head\n"
+		if reads == 2 {
+			content = want
+		}
+		json.NewEncoder(response).Encode(map[string]any{
+			"sha":     fmt.Sprintf("content-%d", reads),
+			"content": base64.StdEncoding.EncodeToString([]byte(content)),
+		})
+	}))
+	defer server.Close()
+
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{{
+		Key: "file:check", Kind: engine.SandboxResourceRepositoryFile, Name: "check.yml", Marker: marker,
+		Attributes: map[string]string{
+			"path": ".github/workflows/check.yml", "branch": "contract/run-75",
+			"content_sha256": testSandboxSHA256(want), "input:content": want,
+		},
+	}}
+	adapter, err := githubadapter.NewSandboxRole(
+		config,
+		githubadapter.SandboxRoleSeeder,
+		sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+		server.Client(),
+		githubadapter.WithSandboxClock(func() time.Time { return now }),
+		githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+			waits++
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := adapter.Observe(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 2 || waits != 1 || len(observation.Resources) != 1 || observation.Resources[0].ID != "content-2" {
+		t.Fatalf("reads=%d waits=%d resources=%#v", reads, waits, observation.Resources)
+	}
+}
+
+func TestSandboxAdapterRepositoryFileObservationPollsDesiredAbsence(t *testing.T) {
+	now := time.Date(2026, 7, 25, 21, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:issue-75"
+	owned := marker + "\nfinal\n"
+	for _, test := range []struct {
+		name          string
+		responses     []string
+		cancelWait    bool
+		wantReads     int
+		wantWaits     int
+		wantResources int
+		wantMarker    string
+		wantCanceled  bool
+	}{
+		{name: "stale then absent", responses: []string{owned, ""}, wantReads: 2, wantWaits: 1},
+		{name: "already absent", responses: []string{""}, wantReads: 1},
+		{name: "persistent stale", responses: []string{owned}, wantReads: 4, wantWaits: 3, wantResources: 1, wantMarker: marker},
+		{name: "unowned drift", responses: []string{"human content\n"}, wantReads: 1, wantResources: 1},
+		{name: "cancellation", responses: []string{owned}, cancelWait: true, wantReads: 1, wantWaits: 1, wantCanceled: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reads := 0
+			waits := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodGet || request.URL.Path != "/repos/labs/sandbox/contents/.github/workflows/check.yml" {
+					t.Fatalf("unexpected file request: %s %s", request.Method, request.URL.String())
+				}
+				index := reads
+				reads++
+				if index >= len(test.responses) {
+					index = len(test.responses) - 1
+				}
+				content := test.responses[index]
+				if content == "" {
+					http.NotFound(response, request)
+					return
+				}
+				json.NewEncoder(response).Encode(map[string]any{
+					"sha": "content-sha", "content": base64.StdEncoding.EncodeToString([]byte(content)),
+				})
+			}))
+			defer server.Close()
+
+			target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+			config := sandboxConfig(server, target)
+			config.Resources = []engine.SandboxResourceSpec{{
+				Key: "file:check", Kind: engine.SandboxResourceRepositoryFile, Name: "check.yml", Marker: marker,
+				DesiredState: engine.SandboxResourceAbsent,
+				Attributes: map[string]string{
+					"path": ".github/workflows/check.yml", "branch": "contract/run-75",
+					"content_sha256": testSandboxSHA256(owned), "input:content": owned,
+				},
+			}}
+			var ctx context.Context = context.Background()
+			cancel := func() {}
+			if test.cancelWait {
+				ctx, cancel = context.WithCancel(ctx)
+			}
+			defer cancel()
+			adapter, err := githubadapter.NewSandboxRole(
+				config,
+				githubadapter.SandboxRoleSeeder,
+				sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+				server.Client(),
+				githubadapter.WithSandboxClock(func() time.Time { return now }),
+				githubadapter.WithSandboxRetryWait(func(context.Context, time.Duration) error {
+					waits++
+					if test.cancelWait {
+						cancel()
+						return ctx.Err()
+					}
+					return nil
+				}),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			observation, err := adapter.Observe(ctx, target)
+			if test.wantCanceled {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("error = %v", err)
+				}
+				if reads != test.wantReads || waits != test.wantWaits {
+					t.Fatalf("reads=%d waits=%d", reads, waits)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if reads != test.wantReads || waits != test.wantWaits || len(observation.Resources) != test.wantResources {
+				t.Fatalf("reads=%d waits=%d resources=%#v", reads, waits, observation.Resources)
+			}
+			if test.wantResources == 1 && observation.Resources[0].Marker != test.wantMarker {
+				t.Fatalf("marker = %q", observation.Resources[0].Marker)
+			}
+		})
+	}
+}
+
+func TestSandboxLifecycleConvergesAfterStaleRepositoryFileDeletionReadsWithoutRepeatingDelete(t *testing.T) {
+	now := time.Date(2026, 7, 25, 21, 0, 0, 0, time.UTC)
+	marker := "starter-kit-contract:issue-75"
+	content := marker + "\nfinal\n"
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	resource := engine.SandboxResourceSpec{
+		Key: "file:check", Kind: engine.SandboxResourceRepositoryFile, Name: "check.yml", Marker: marker,
+		DesiredState: engine.SandboxResourceAbsent,
+		Attributes: map[string]string{
+			"path": ".github/workflows/check.yml", "branch": "contract/run-75",
+			"content_sha256": testSandboxSHA256(content), "input:content": content,
+		},
+	}
+	deleted := false
+	deletes := 0
+	staleReads := 2
+	waits := []time.Duration{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/contents/.github/workflows/check.yml":
+			if deleted && staleReads == 0 {
+				http.NotFound(response, request)
+				return
+			}
+			if deleted {
+				staleReads--
+			}
+			json.NewEncoder(response).Encode(map[string]any{
+				"sha": "content-sha", "content": base64.StdEncoding.EncodeToString([]byte(content)),
+			})
+		case request.Method == http.MethodDelete && request.URL.Path == "/repos/labs/sandbox/contents/.github/workflows/check.yml":
+			deleted = true
+			deletes++
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected lifecycle file request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	expectation := config.Roles[githubadapter.SandboxRoleSeeder]
+	adapter, err := githubadapter.NewSandboxRole(
+		config,
+		githubadapter.SandboxRoleSeeder,
+		sandboxProviders(now)[githubadapter.SandboxRoleSeeder],
+		server.Client(),
+		githubadapter.WithSandboxClock(func() time.Time { return now }),
+		githubadapter.WithSandboxRetryWait(func(_ context.Context, delay time.Duration) error {
+			waits = append(waits, delay)
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := engine.SandboxAuthorityProfile{
+		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleSeeder, expectation)},
+		Permissions:          []string{"seeder:contents:write", "seeder:workflows:write"},
+		EvidenceMode:         "simulated",
+		Compatibility:        "github.com:api.github.com:2026-03-10:native-rest-graphql",
+		DataClass:            "public-synthetic",
+		CostCeiling:          "zero-dollar",
+		Destructive:          "marker-scoped-cleanup",
+		Retention:            "30-days",
+	}
+	manifest := engine.SandboxManifest{
+		SchemaVersion: 1, OperationID: "eventual-file-cleanup", SourceRevision: "source",
+		ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "owner",
+		ApprovedPlan: "approval-record", RecoveryOwner: "owner",
+		MarkerPrefix: marker, Target: target, Authority: authority,
+		Resources: []engine.SandboxResourceSpec{resource},
+	}
+	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-record",
+		ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour), Target: target,
+		Actors: []string{githubadapter.SandboxRoleSeeder}, MarkerPrefix: marker,
+		ResourceKinds: []string{engine.SandboxResourceRepositoryFile}, EffectKinds: []string{"remove-resource"}, MaxEffects: 1,
+		DataClass: authority.DataClass, CostCeiling: authority.CostCeiling, Destructive: authority.Destructive,
+		Retention: authority.Retention, RecoveryOwner: manifest.RecoveryOwner, Authority: authority,
+	}, resource)
+	lifecycle := engine.New(engine.WithClock(adapterFixedClock{now}), engine.WithSandboxAdapter(adapter))
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	inspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil || plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("cleanup plan = %#v, %v", plan, err)
+	}
+	waits = nil
+	apply, err := lifecycle.ApplySandbox(context.Background(), plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &mandate})
+	if err != nil || apply.Status != engine.SandboxApplyApplied || len(apply.Receipts) != 1 || deletes != 1 {
+		t.Fatalf("cleanup apply = %#v, deletes=%d, err=%v", apply, deletes, err)
+	}
+	waits = nil
+	verification, err := lifecycle.VerifySandbox(context.Background(), manifest)
+	if err != nil || verification.OverallState != engine.ControlPass || !slices.Equal(waits, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}) {
+		t.Fatalf("cleanup verification = %#v, waits=%v, err=%v", verification, waits, err)
+	}
+	replayInspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayPlan, err := lifecycle.PlanSandbox(context.Background(), replayInspection)
+	if err != nil || !replayPlan.NoChange || len(replayPlan.Effects) != 0 || deletes != 1 {
+		t.Fatalf("cleanup replay = %#v, deletes=%d, err=%v", replayPlan, deletes, err)
+	}
+}
+
 func TestSandboxAdapterOrphanBranchCleanupRequiresExactIssueHeadAndNoPullHistory(t *testing.T) {
 	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
 	marker := "starter-kit-contract:issue-75-20260721-01"

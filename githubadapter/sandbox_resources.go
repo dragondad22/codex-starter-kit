@@ -857,15 +857,40 @@ func (adapter *SandboxAdapter) observeRepositoryFiles(ctx context.Context, crede
 		if desired.Kind != engine.SandboxResourceRepositoryFile {
 			continue
 		}
-		content, found, err := adapter.readRepositoryFile(ctx, credential, desired)
-		if err != nil {
-			return nil, err
+		var content sandboxRepositoryContent
+		found := false
+		for attempt := 0; attempt < sandboxConsistencyReads; attempt++ {
+			var err error
+			content, found, err = adapter.readRepositoryFile(ctx, credential, desired)
+			if err != nil {
+				return nil, err
+			}
+			exact := found &&
+				strings.Contains(content.Decoded, desired.Marker) &&
+				sandboxContentDigest(content.Decoded) == desired.Attributes["content_sha256"]
+			absent := desired.DesiredState == engine.SandboxResourceAbsent
+			if !found && absent || exact && !absent {
+				break
+			}
+			if found && !strings.Contains(content.Decoded, desired.Marker) {
+				break
+			}
+			if attempt+1 == sandboxConsistencyReads {
+				break
+			}
+			if err := adapter.retryWait(ctx, sandboxRESTRetryBase*(1<<attempt)); err != nil {
+				return nil, err
+			}
 		}
-		if !found || !strings.Contains(content.Decoded, desired.Marker) || sandboxContentDigest(content.Decoded) != desired.Attributes["content_sha256"] {
+		if !found {
 			continue
 		}
+		marker := ""
+		if strings.Contains(content.Decoded, desired.Marker) {
+			marker = desired.Marker
+		}
 		result = append(result, engine.SandboxObservedResource{
-			Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: content.SHA, Marker: desired.Marker,
+			Key: desired.Key, Kind: desired.Kind, Name: desired.Name, ID: content.SHA, Marker: marker,
 			Attributes: desiredAttributes(desired, map[string]string{"path": desired.Attributes["path"], "branch": desired.Attributes["branch"], "content_sha256": sandboxContentDigest(content.Decoded)}),
 		})
 	}

@@ -316,6 +316,29 @@ all other marker-owned fixture resources remain the same exact identities; the n
 name prevents the historical closed PR from being mistaken for the current episode
 without deleting or rewriting GitHub evidence.
 
+Source `5f4b4788488a4eb3040a0d0c456b1c484358dde9` passed native CI run
+`30166529683`. Delivery-input run `30167069149` bound that exact source and active
+mandate. Transition `30167102252` created the rotated branch, and separately
+planned/applied file runs `30167164594` and `30167192034` advanced it to candidate head
+`6a9f54483f4cbd3330dbfdb20c47e65d3c58977c`. Transition `30167639726` created
+draft PR `#32`; its exact candidate-head check passed. Transitions `30167693525` and
+`30167747472` marked it ready and requested the configured reviewer. The distinct
+`american-dragon-designs` review approved that exact candidate commit.
+
+Stale-head plan `30174902363` then bound the approved candidate SHA and emitted one
+repository-file effect. Apply run `30174931678` issued that Contents update exactly once
+and retained its applied receipt. The immediate in-process verification briefly read the
+prior candidate content and reported the file missing, while the following independent
+postcondition already observed the exact final content with `no_change:true` and zero
+effects. No mutation retry occurred. Repository-file observation now retries only the
+idempotent Contents read within the existing bounded consistency budget, propagates
+cancellation, and leaves persistent absence or drift non-pass. A regression reproduces a
+stale first read followed by the exact new content. Cleanup regressions poll stale
+approved content until `404`, retain persistent or unowned content as residual drift,
+propagate cancellation, and prove one DELETE plus effect-free replay. Refreshed gates,
+independent review, workflow reinstallation, and continuation from the already-created
+exact final head remain pending.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact
