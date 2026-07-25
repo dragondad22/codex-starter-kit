@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; two pre-effect live-plan interoperability failures
+**State:** Development candidate; three pre-effect live-plan interoperability failures
 reproduced and remediated; refreshed local gates and reviews pass; native CI and live
 qualification pending
 
@@ -108,6 +108,19 @@ accept only an omitted, null, or empty problems field while rejecting wrong type
 retained problem. Refreshed local Python, Go, documentation, vet, race, YAML, and assertion
 checks and independent Standards and Spec reviews pass. Native CI and live retry remain
 pending at the resulting source revision.
+
+Planning retry `30160878551` passed with the strict assertions. Apply run `30160902136`
+regenerated and bound that exact plan, then returned `non_pass` before any provider effect:
+zero receipts were emitted and read-only inspection confirmed that no marker-owned issue
+was created. The generator had authorized the App slug as the mandate actor while the
+role-scoped adapter correctly reports the logical actor `seeder`; exact App identity
+already remains separately bound through the authority credential identity. Generated
+mandates now authorize the logical stage role and retain the exact App installation,
+account, permissions, and compatibility in authority. The stage generator test now plans
+and applies every emitted role-scoped mandate through the public sandbox lifecycle seam.
+Refreshed local Python, Go, documentation, vet, and race gates and independent Standards
+and Spec reviews pass. Native CI and live retry remain pending at the resulting source
+revision.
 
 ## Pending live qualification and completion
 

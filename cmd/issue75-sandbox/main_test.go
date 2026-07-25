@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,6 +17,10 @@ import (
 )
 
 var fixedNow = time.Date(2026, 7, 21, 18, 0, 0, 0, time.UTC)
+
+type fixedClock struct{ now time.Time }
+
+func (clock fixedClock) Now() time.Time { return clock.now }
 
 func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 	tests := []struct {
@@ -72,7 +77,7 @@ func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
 				expectedEffect = []string{"remove-resource"}
 				expectedDestructive = "marker-scoped-fixture-cleanup-only"
 			}
-			if input.Mandate.ID == "" || len(input.Mandate.ResourceDigests) != test.count || input.Mandate.MaxEffects != test.count || !slices.Equal(input.Mandate.EffectKinds, expectedEffect) || input.Mandate.Destructive != expectedDestructive || !slices.Equal(input.Mandate.Actors, []string{expectation.Actor}) {
+			if input.Mandate.ID == "" || len(input.Mandate.ResourceDigests) != test.count || input.Mandate.MaxEffects != test.count || !slices.Equal(input.Mandate.EffectKinds, expectedEffect) || input.Mandate.Destructive != expectedDestructive || !slices.Equal(input.Mandate.Actors, []string{test.role}) {
 				t.Fatalf("mandate = %#v", input.Mandate)
 			}
 			validateManifest(t, input)
@@ -356,15 +361,25 @@ func identitiesOmitted(args []string) []string {
 func validateManifest(t *testing.T, input planInput) {
 	t.Helper()
 	repository := t.TempDir()
-	if err := os.Mkdir(repository+"/.git", 0o755); err != nil {
-		t.Fatal(err)
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("initialize test repository: %v: %s", err, output)
 	}
 	request := input.Request
 	request.Repository = repository
-	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: input.Config.Roles[input.Role].Actor, EvidenceMode: "live", Target: input.Config.Target, Permissions: input.Mandate.Authority.Permissions, CredentialIdentities: input.Mandate.Authority.CredentialIdentities, Compatibility: input.Mandate.Authority.Compatibility, ConfigurationRevision: configuration, ObservedAt: fixedNow, ExpiresAt: fixedNow.Add(time.Hour)}
+	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: input.Role, EvidenceMode: "live", Target: input.Config.Target, Permissions: input.Mandate.Authority.Permissions, CredentialIdentities: input.Mandate.Authority.CredentialIdentities, Compatibility: input.Mandate.Authority.Compatibility, ConfigurationRevision: configuration, ObservedAt: fixedNow, ExpiresAt: fixedNow.Add(time.Hour)}
 	observation := engine.SandboxObservation{SchemaVersion: 1, Target: input.Config.Target, ConfigurationRevision: configuration}
 	adapter := engine.NewInMemorySandboxAdapter(capability, observation)
-	if _, err := engine.New(engine.WithSandboxAdapter(adapter)).InspectSandbox(context.Background(), request); err != nil {
+	lifecycle := engine.New(engine.WithClock(fixedClock{fixedNow}), engine.WithSandboxAdapter(adapter))
+	inspection, err := lifecycle.InspectSandbox(context.Background(), request)
+	if err != nil {
 		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := lifecycle.ApplySandbox(context.Background(), plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &input.Mandate})
+	if err != nil || result.Status == engine.SandboxApplyNonPass {
+		t.Fatalf("generated mandate does not contain its live role capability: %#v, %v", result, err)
 	}
 }

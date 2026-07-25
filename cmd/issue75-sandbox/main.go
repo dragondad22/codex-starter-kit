@@ -196,7 +196,7 @@ func buildPlanInput(value options) (planInput, error) {
 	sort.Strings(kinds)
 	mandate := engine.BindSandboxExecutionMandate(engine.SandboxExecutionMandate{
 		SchemaVersion: 1, ApprovedBy: value.approvedBy, ApprovalID: value.approvalID, ApprovedAt: value.approvedAt, ExpiresAt: value.expiresAt,
-		Target: target, Actors: []string{expectation.Actor}, MarkerPrefix: markerPrefix, UnmarkedKeys: []string{}, ResourceKinds: kinds, EffectKinds: effects, MaxEffects: len(resources),
+		Target: target, Actors: []string{role}, MarkerPrefix: markerPrefix, UnmarkedKeys: []string{}, ResourceKinds: kinds, EffectKinds: effects, MaxEffects: len(resources),
 		DataClass: authority.DataClass, CostCeiling: authority.CostCeiling, Destructive: authority.Destructive, Retention: authority.Retention,
 		RecoveryOwner: value.approvedBy, Authority: authority,
 	}, resources...)
