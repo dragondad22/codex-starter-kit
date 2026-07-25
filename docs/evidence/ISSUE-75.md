@@ -6,9 +6,9 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; six pre-effect and one post-effect live qualification
-failures reproduced; current-source verification state is recorded below; live
-qualification pending
+**State:** Development candidate; six pre-effect, one provider-effect-attempt, and one
+post-effect live qualification failure reproduced; current-source verification state is
+recorded below; live qualification pending
 
 ## Implemented deterministic contract
 
@@ -162,6 +162,19 @@ while a table regression requires identity and inventory reads for each of the s
 supported Project resource kinds. Refreshed local Python, Go, documentation, vet, and
 race gates pass. Final independent review, native CI, and a newly source-bound live plan
 remain pending.
+
+Source-bound relationship plan `30162446037` then emitted exactly the two approved native
+relationship effects without Project access, and apply run `30162478736` converged with
+both relationships present. File plan `30162511940` emitted the one expected
+marker-owned workflow effect. Apply run `30162538860` reached the provider but retained an
+`error` receipt, no file, and a failed missing-resource verification; no effect retry
+occurred. The generated file-stage token requested only `contents:write` and
+`metadata:read`, while a Contents API mutation under `.github/workflows/` also requires
+`workflows:write`. Installation `147094309` currently exposes that owner-added permission,
+so file create, update, and cleanup stages now request and bind the exact
+`workflows:write` permission rather than broadening to another credential. Refreshed local
+Python, Go, documentation, vet, and race gates pass. Final Standards review, native CI,
+and a newly source-bound live plan remain pending.
 
 ## Pending live qualification and completion
 

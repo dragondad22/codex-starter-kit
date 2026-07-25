@@ -490,8 +490,8 @@ func roleConfiguration(role, stage string) (githubadapter.SandboxRoleExpectation
 		permissions = []string{"administration:write", "metadata:read"}
 		tokenPermissions = map[string]string{"administration": "write", "metadata": "read"}
 	} else if slices.Contains([]string{"file-initial", "file-stale", "cleanup-file"}, stage) {
-		permissions = []string{"contents:write", "metadata:read"}
-		tokenPermissions = map[string]string{"contents": "write", "metadata": "read"}
+		permissions = []string{"contents:write", "metadata:read", "workflows:write"}
+		tokenPermissions = map[string]string{"contents": "write", "metadata": "read", "workflows": "write"}
 	} else if stage == "cleanup-delivery" {
 		permissions = []string{"contents:write", "metadata:read", "pull-requests:write"}
 		tokenPermissions = map[string]string{"contents": "write", "metadata": "read", "pull_requests": "write"}

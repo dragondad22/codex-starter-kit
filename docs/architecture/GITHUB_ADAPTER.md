@@ -37,10 +37,12 @@ Issue #75 extends that sandbox seam with exact native issue relationships and
 marker-owned repository files. Parent/sub-issue and blocker/dependent resources bind both
 issues by number, database ID, and node ID and route only through the reconciler. File
 resources bind path, branch, canonical content digest, and marker-bearing approved content
-and route only through the seeder. Cleanup re-reads the current relationship, issue, PR,
-branch head, or contents SHA immediately before mutation and returns `needs-review` on
-identity or content drift. It never treats a marker, branch name, or stale contents SHA by
-itself as deletion authority.
+and route only through the seeder. Workflow-path file stages bind the App token's
+`contents:write`, `metadata:read`, and `workflows:write` permissions; ordinary repository
+files do not infer workflow authority. Cleanup re-reads the current relationship, issue,
+PR, branch head, or contents SHA immediately before mutation and returns `needs-review`
+on identity or content drift. It never treats a marker, branch name, or stale contents SHA
+by itself as deletion authority.
 
 Sandbox Project probing follows the requested resource and declared-authority boundary.
 Capability verifies Project identity when the resource set contains a Project resource or
