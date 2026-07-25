@@ -141,7 +141,12 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	if intent.Claim == nil || !deliveryClaimMatches(pull.Body, *intent.Claim) {
 		observation.Problems = append(observation.Problems, "pull request delivery claim does not match governed intent")
 	} else if pull.Merged && pull.MergedAt != nil {
-		current := githubPullRequest{Number: pull.Number, Body: pull.Body, Merged: pull.Merged, MergedAt: pull.MergedAt, MergeCommitSHA: pull.MergeCommitSHA}
+		mergeRevision, resolveErr := adapter.base.currentDeliveryMergeRevision(ctx, credential, pull.NodeID, pull.MergeCommitSHA)
+		if resolveErr != nil {
+			return engine.DeliveryObservation{}, resolveErr
+		}
+		observation.PullRequest.MergeRevision = mergeRevision
+		current := githubPullRequest{Number: pull.Number, NodeID: pull.NodeID, Body: pull.Body, Merged: pull.Merged, MergedAt: pull.MergedAt, MergeCommitSHA: mergeRevision}
 		current.Base.Ref = pull.Base.Ref
 		current.Base.Repository.NodeID = pull.Base.Repo.NodeID
 		reachable, _, verifyErr := adapter.base.verifyCurrentDelivery(ctx, credential, current, *intent.Claim)

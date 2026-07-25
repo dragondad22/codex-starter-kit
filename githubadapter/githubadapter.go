@@ -335,6 +335,11 @@ func (adapter *Adapter) observeRelatedDelivery(ctx context.Context, credential C
 		}
 		delivery.Evidence = append(delivery.Evidence, evidence)
 		if pull.Merged && pull.MergedAt != nil {
+			mergeRevision, resolveErr := adapter.currentDeliveryMergeRevision(ctx, credential, pull.NodeID, pull.MergeCommitSHA)
+			if resolveErr != nil {
+				return engine.WorkDeliveryObservation{}, resolveErr
+			}
+			pull.MergeCommitSHA = mergeRevision
 			current, repositoryRevision, currentErr := adapter.verifyCurrentDelivery(ctx, credential, pull, claim)
 			if currentErr != nil {
 				return engine.WorkDeliveryObservation{}, currentErr
@@ -359,6 +364,48 @@ func (adapter *Adapter) observeRelatedDelivery(ctx context.Context, credential C
 		delivery.State = "partial"
 	}
 	return delivery, nil
+}
+
+func (adapter *Adapter) currentDeliveryMergeRevision(ctx context.Context, credential Credential, pullNodeID, restRevision string) (string, error) {
+	if pullNodeID == "" {
+		return restRevision, nil
+	}
+	const query = `query CurrentDeliveryMerge($id: ID!) {
+  node(id: $id) {
+    ... on PullRequest {
+      id
+      mergeCommit { oid }
+    }
+  }
+}`
+	var response struct {
+		Data struct {
+			Node struct {
+				ID          string `json:"id"`
+				MergeCommit *struct {
+					OID string `json:"oid"`
+				} `json:"mergeCommit"`
+			} `json:"node"`
+		} `json:"data"`
+		Errors []graphQLError `json:"errors"`
+	}
+	if err := adapter.graphql(ctx, credential, query, map[string]any{"id": pullNodeID}, &response); err != nil {
+		return "", err
+	}
+	if len(response.Errors) != 0 {
+		return "", errors.New("GitHub current-delivery merge query returned errors")
+	}
+	if response.Data.Node.ID != pullNodeID || response.Data.Node.MergeCommit == nil {
+		return restRevision, nil
+	}
+	revision := response.Data.Node.MergeCommit.OID
+	if restRevision != "" && revision != "" && restRevision != revision {
+		return "", errors.New("GitHub pull request merge revisions conflict")
+	}
+	if revision == "" {
+		return restRevision, nil
+	}
+	return revision, nil
 }
 
 func (adapter *Adapter) verifyCurrentDelivery(ctx context.Context, credential Credential, pull githubPullRequest, claim engine.WorkDeliveryClaim) (bool, string, error) {
@@ -1029,6 +1076,7 @@ func (adapter *Adapter) observePromotionBacklink(ctx context.Context, credential
 
 type githubPullRequest struct {
 	Number         int        `json:"number"`
+	NodeID         string     `json:"node_id"`
 	Body           string     `json:"body"`
 	HTMLURL        string     `json:"html_url"`
 	Merged         bool       `json:"merged"`

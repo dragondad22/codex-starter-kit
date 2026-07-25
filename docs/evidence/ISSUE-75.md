@@ -339,6 +339,19 @@ propagate cancellation, and prove one DELETE plus effect-free replay. Refreshed 
 independent review, workflow reinstallation, and continuation from the already-created
 exact final head remain pending.
 
+The refreshed transition sequence then re-requested review for exact final head
+`cbabcf3327451eaaa179dd6c46c4ae67e8cdd654` and squash-merged PR `#32` as
+`9ac43a00f9807f223d4a2835dcb5b1dae327c1dd`. Post-merge observation initially remained
+non-plannable because GitHub REST `2026-03-10` intentionally omits
+`merge_commit_sha` from pull-request payloads. Live REST comparison and content reads
+proved the merge and implemented bytes were current, while GraphQL resolved the immutable
+PR node's `mergeCommit.oid` to the exact retained squash receipt. The adapter now uses
+that GraphQL identity for both governed-work and delivery-lifecycle observation, retains
+older-version REST conflict detection, and regression tests omit the retired REST field.
+The full local Python, documentation, Go, vet, and race gates pass, and independent
+Standards and Spec reviews report no findings. Completion reconciliation, cleanup,
+replay, and refreshed native CI remain pending.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

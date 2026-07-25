@@ -238,6 +238,9 @@ recover only when a fresh exact observation proves the intended postcondition. T
 response must affirm a merge and supply its immutable merge SHA. Because GitHub does not
 reliably expose retrospective merge method, subsequent qualification composes current
 default-branch reachability with the engine's matching retained squash-effect receipt.
+REST version `2026-03-10` removes `merge_commit_sha` from pull-request payloads, so
+retrospective observation resolves the immutable PR node's `mergeCommit.oid` through
+GraphQL and rejects a conflict with any version-retained REST value.
 Completion reconciliation itself is engine-owned and reuses Work Manager rather than
 adding broader Project effects to this adapter.
 

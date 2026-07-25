@@ -1408,7 +1408,7 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 		if fixture.deliveryWrongBase {
 			base = "release"
 		}
-		writeFixtureJSON(writer, map[string]any{"number": 91, "body": fixture.deliveryClaim, "html_url": "https://github.example/pull/91", "merged": fixture.deliveryMergedAt != nil, "merged_at": fixture.deliveryMergedAt, "merge_commit_sha": "merge-91", "base": map[string]any{"ref": base, "repo": map[string]any{"node_id": repositoryID}}})
+		writeFixtureJSON(writer, map[string]any{"number": 91, "node_id": "PR_91", "body": fixture.deliveryClaim, "html_url": "https://github.example/pull/91", "merged": fixture.deliveryMergedAt != nil, "merged_at": fixture.deliveryMergedAt, "base": map[string]any{"ref": base, "repo": map[string]any{"node_id": repositoryID}}})
 	case request.Method == http.MethodGet && request.URL.Path == "/repos/"+repositoryOwner+"/example/pulls/91/files":
 		files := []any{}
 		if !fixture.deliveryNoFiles {
@@ -1488,6 +1488,8 @@ func (fixture *lifecycleFixture) serveHTTP(writer http.ResponseWriter, request *
 		}
 		_ = json.NewDecoder(request.Body).Decode(&input)
 		switch {
+		case strings.Contains(input.Query, "CurrentDeliveryMerge"):
+			writeFixtureJSON(writer, map[string]any{"data": map[string]any{"node": map[string]any{"id": "PR_91", "mergeCommit": map[string]any{"oid": "merge-91"}}}})
 		case strings.Contains(input.Query, "ManagedTaskProject"):
 			ownerKind := "User"
 			if fixture.app {

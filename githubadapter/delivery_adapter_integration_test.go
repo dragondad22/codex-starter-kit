@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -395,6 +396,7 @@ func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	restMergeRevision := ""
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -406,7 +408,13 @@ func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing
 		case "/repos/octocat/example/git/ref/heads/task/75-delivery-squash-completion":
 			http.NotFound(writer, request)
 		case "/repos/octocat/example/pulls/101":
-			json.NewEncoder(writer).Encode(map[string]any{"number": 101, "node_id": "PR_101", "state": "closed", "merged": true, "merged_at": now, "merge_commit_sha": "merge-1", "body": "Closes #75\n\n" + marker, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}})
+			payload := map[string]any{"number": 101, "node_id": "PR_101", "state": "closed", "merged": true, "merged_at": now, "body": "Closes #75\n\n" + marker, "head": map[string]any{"ref": "task/75-delivery-squash-completion", "sha": "head-1"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"node_id": "R_repo"}}}
+			if restMergeRevision != "" {
+				payload["merge_commit_sha"] = restMergeRevision
+			}
+			json.NewEncoder(writer).Encode(payload)
+		case "/graphql":
+			json.NewEncoder(writer).Encode(map[string]any{"data": map[string]any{"node": map[string]any{"id": "PR_101", "mergeCommit": map[string]any{"oid": "merge-1"}}}})
 		case "/repos/octocat/example/pulls/101/files":
 			json.NewEncoder(writer).Encode([]any{map[string]any{"filename": "docs/implementation.md", "status": "modified"}})
 		case "/repos/octocat/example/commits/head-1/check-runs":
@@ -443,5 +451,9 @@ func TestDeliveryAdapterVerifiesMergedDeliveryAfterHeadBranchDeletion(t *testing
 	}
 	if len(observation.Problems) != 0 || !observation.PullRequest.Merged || !observation.PullRequest.DefaultReachable || observation.Branch.Revision != "head-1" || observation.PullRequest.MergeMethod != "" {
 		t.Fatalf("merged observation = %#v", observation)
+	}
+	restMergeRevision = "conflicting-rest-merge"
+	if _, err := adapter.ObserveDelivery(context.Background(), intent); err == nil || !strings.Contains(err.Error(), "merge revisions conflict") {
+		t.Fatalf("REST/GraphQL merge conflict was accepted: %v", err)
 	}
 }
