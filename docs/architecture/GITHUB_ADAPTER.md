@@ -39,10 +39,12 @@ issues by number, database ID, and node ID and route only through the reconciler
 resources bind path, branch, canonical content digest, and marker-bearing approved content
 and route only through the seeder. Workflow-path file stages bind the App token's
 `contents:write`, `metadata:read`, and `workflows:write` permissions; ordinary repository
-files do not infer workflow authority. Cleanup re-reads the current relationship, issue,
-PR, branch head, or contents SHA immediately before mutation and returns `needs-review`
-on identity or content drift. It never treats a marker, branch name, or stale contents SHA
-by itself as deletion authority.
+files do not infer workflow authority. The marker-owned required-check ruleset explicitly
+binds GitHub's canonical `do_not_enforce_on_create: false` value alongside strict checks,
+the check context/integration identity, active enforcement, and an empty bypass list.
+Cleanup re-reads the current relationship, issue, PR, branch head, or contents SHA
+immediately before mutation and returns `needs-review` on identity or content drift. It
+never treats a marker, branch name, or stale contents SHA by itself as deletion authority.
 
 Sandbox Project probing follows the requested resource and declared-authority boundary.
 Capability verifies Project identity when the resource set contains a Project resource or

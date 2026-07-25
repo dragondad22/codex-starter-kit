@@ -267,7 +267,7 @@ func TestSandboxRulesetCleanupRefusesDefinitionDrift(t *testing.T) {
 }
 
 func deliveryRulesetResource(absent bool) engine.SandboxResourceSpec {
-	definition := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"required_status_checks":[{"context":"contract-delivery","integration_id":15368}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`
+	definition := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["refs/heads/main"]}},"enforcement":"active","rules":[{"parameters":{"do_not_enforce_on_create":false,"required_status_checks":[{"context":"contract-delivery","integration_id":15368}],"strict_required_status_checks_policy":true},"type":"required_status_checks"}],"target":"branch"}`
 	resource := engine.SandboxResourceSpec{Key: "ruleset:delivery", Kind: engine.SandboxResourceRuleset, Name: "starter-kit-contract:issue-75:rules", Marker: "starter-kit-contract:issue-75", Attributes: map[string]string{"enforcement": "active", "target": "branch", "definition": definition, "definition_sha256": testSandboxSHA256(definition), "input:definition": definition}}
 	if absent {
 		resource.DesiredState = engine.SandboxResourceAbsent
@@ -280,7 +280,63 @@ func rulesetHTTPDefinition(id int64, name string, strict bool, integrationID int
 	if bypassActor {
 		bypassActors = append(bypassActors, map[string]any{"actor_id": 4, "actor_type": "Integration", "bypass_mode": "always"})
 	}
-	return map[string]any{"id": id, "name": name, "enforcement": "active", "target": "branch", "bypass_actors": bypassActors, "conditions": map[string]any{"ref_name": map[string]any{"exclude": []any{}, "include": []string{"refs/heads/main"}}}, "rules": []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "contract-delivery", "integration_id": integrationID}}, "strict_required_status_checks_policy": strict}}}}
+	return map[string]any{"id": id, "name": name, "enforcement": "active", "target": "branch", "bypass_actors": bypassActors, "conditions": map[string]any{"ref_name": map[string]any{"exclude": []any{}, "include": []string{"refs/heads/main"}}}, "rules": []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"do_not_enforce_on_create": false, "required_status_checks": []any{map[string]any{"context": "contract-delivery", "integration_id": integrationID}}, "strict_required_status_checks_policy": strict}}}}
+}
+
+func TestSandboxRulesetCanonicalFalsePlansNoChange(t *testing.T) {
+	now := time.Date(2026, 7, 21, 22, 30, 0, 0, time.UTC)
+	resource := deliveryRulesetResource(false)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets":
+			json.NewEncoder(response).Encode([]any{map[string]any{"id": 44, "name": resource.Name, "enforcement": "active", "target": "branch"}})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/labs/sandbox/rulesets/44":
+			json.NewEncoder(response).Encode(rulesetHTTPDefinition(44, resource.Name, true, 15368, false))
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	target := engine.SandboxTarget{Host: "github.com", OwnerID: "owner-id", RepositoryID: "repo-id", ProjectID: "project-id", RepositoryName: "labs/sandbox"}
+	config := sandboxConfig(server, target)
+	config.Resources = []engine.SandboxResourceSpec{resource}
+	expectation := config.Roles[githubadapter.SandboxRoleRules]
+	adapter, err := githubadapter.NewSandboxRole(config, githubadapter.SandboxRoleRules, sandboxProviders(now)[githubadapter.SandboxRoleRules], server.Client(), githubadapter.WithSandboxClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := engine.SandboxAuthorityProfile{
+		CredentialIdentities: []string{githubadapter.SandboxCredentialIdentity(githubadapter.SandboxRoleRules, expectation)},
+		Permissions:          []string{"rules:administration:write"},
+		EvidenceMode:         "simulated",
+		Compatibility:        "github.com:api.github.com:2026-03-10:native-rest-graphql",
+		DataClass:            "public-synthetic",
+		CostCeiling:          "zero-dollar",
+		Destructive:          "no-delete",
+		Retention:            "30-days",
+	}
+	manifest := engine.SandboxManifest{
+		SchemaVersion: 1, OperationID: "canonical-ruleset", SourceRevision: "source",
+		ConfigurationRevision: config.ConfigurationRevision, ApprovedBy: "owner",
+		ApprovedPlan: "approval-record", RecoveryOwner: "owner",
+		MarkerPrefix: resource.Marker, Target: target, Authority: authority,
+		Resources: []engine.SandboxResourceSpec{resource},
+	}
+	lifecycle := engine.New(engine.WithClock(adapterFixedClock{now}), engine.WithSandboxAdapter(adapter))
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	inspection, err := lifecycle.InspectSandbox(context.Background(), engine.SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil || !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("canonical ruleset plan = %#v, %v", plan, err)
+	}
 }
 
 func TestSandboxAdapterClaimsFixtureWorkflowOnlyWhenContentExactlyMatches(t *testing.T) {

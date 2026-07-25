@@ -206,7 +206,8 @@ func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T)
 		Rules []struct {
 			Type       string `json:"type"`
 			Parameters struct {
-				Required []struct {
+				DoNotEnforceOnCreate *bool `json:"do_not_enforce_on_create"`
+				Required             []struct {
 					Context       string `json:"context"`
 					IntegrationID int64  `json:"integration_id"`
 				} `json:"required_status_checks"`
@@ -216,7 +217,7 @@ func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T)
 	if err := json.Unmarshal([]byte(setup.Attributes["input:definition"]), &definition); err != nil {
 		t.Fatal(err)
 	}
-	if definition.BypassActors == nil || len(definition.BypassActors) != 0 || definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 1 || definition.Rules[0].Type != "required_status_checks" || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID {
+	if definition.BypassActors == nil || len(definition.BypassActors) != 0 || definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 1 || definition.Rules[0].Type != "required_status_checks" || definition.Rules[0].Parameters.DoNotEnforceOnCreate == nil || *definition.Rules[0].Parameters.DoNotEnforceOnCreate || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID {
 		t.Fatalf("rules definition = %#v", definition)
 	}
 	if cleanup.DesiredState != engine.SandboxResourceAbsent || cleanup.Name != setup.Name || cleanup.Attributes["input:definition"] != setup.Attributes["input:definition"] {

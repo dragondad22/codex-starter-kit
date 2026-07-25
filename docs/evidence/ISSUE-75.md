@@ -6,8 +6,8 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; six pre-effect, one provider-effect-attempt, and one
-post-effect live qualification failure reproduced; current-source verification state is
+**State:** Development candidate; six pre-effect, one provider-effect-attempt, and two
+post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
 ## Implemented deterministic contract
@@ -175,6 +175,19 @@ so file create, update, and cleanup stages now request and bind the exact
 `workflows:write` permission rather than broadening to another credential. Refreshed local
 Python, Go, documentation, vet, and race gates pass. Final Standards review, native CI,
 and a newly source-bound live plan remain pending.
+
+The permission-corrected file apply `30162829001` then created and verified the exact
+workflow and converged. Ruleset apply `30162880623` created marker-owned ruleset
+`19734893` exactly once, but verification reported drift: GitHub returns
+`do_not_enforce_on_create:false` in the required-check parameters when the request omits
+that default. No ruleset apply retry occurred. The fixture now declares the canonical
+false value explicitly, preserving active enforcement, strict current-head checks,
+GitHub Actions integration `15368`, and an empty bypass list. A regression requires the
+field to be present and false, and a native public-lifecycle regression requires the
+canonical observed definition to plan no change with zero effects. Refreshed local Python,
+Go, documentation, vet, and race gates pass. Final independent review, native CI, and a
+newly source-bound read-only plan remain pending; that plan must recognize ruleset
+`19734893` without an update effect.
 
 ## Pending live qualification and completion
 
