@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:6fbc92e6e69fb85a8fe6e1c01cf67692312c6e1a7392333492e78c5f4f7e0401 -->
+<!-- source-digest: sha256:9a38e641e468b73fb921db93e25bcc8d7890e8e842fe13724f4d07718a1c2bb4 -->
 
 ## [Unreleased]
 
