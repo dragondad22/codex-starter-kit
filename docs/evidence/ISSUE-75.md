@@ -6,9 +6,9 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; first live-plan interoperability failure reproduced and
-remediated; refreshed local gates and reviews pass; native CI and live qualification
-pending
+**State:** Development candidate; two pre-effect live-plan interoperability failures
+reproduced and remediated; refreshed local gates and reviews pass; native CI and live
+qualification pending
 
 ## Implemented deterministic contract
 
@@ -99,6 +99,15 @@ strictly typed stage contract without weakening unknown-field rejection. Refresh
 Go vet and race tests, and independent Standards and Spec repair reviews pass. Native CI,
 the separate completing-product-PR review, and the live sandbox journey remain pending at
 the resulting source revision.
+
+Replacement planning run `30160621400` then completed credentialed inspection and emitted
+the expected immutable three-effect plan, but the workflow rejected the envelope because
+an omitted empty `inspection.problems` slice serializes as `null` rather than literal
+`[]`. No apply workflow was dispatched. The plan and apply postcondition assertions now
+accept only an omitted, null, or empty problems field while rejecting wrong types and any
+retained problem. Refreshed local Python, Go, documentation, vet, race, YAML, and assertion
+checks and independent Standards and Spec reviews pass. Native CI and live retry remain
+pending at the resulting source revision.
 
 ## Pending live qualification and completion
 

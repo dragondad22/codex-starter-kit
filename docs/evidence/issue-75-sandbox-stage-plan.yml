@@ -241,7 +241,8 @@ jobs:
           jq -e --arg source "$SOURCE_REVISION" --arg stage "$STAGE" \
             '.schema_version == 1 and .plan.source_revision == $source and
              .plan.operation_id == ("issue-75-live-" + $stage + "-v1") and
-             .plan.plan_id != "" and .inspection.problems == []' \
+             .plan.plan_id != "" and
+             ((.inspection.problems == null) or (.inspection.problems == []))' \
             "$STAGE-planning.json"
           test "$(jq -r .role "$STAGE-input.json")" = "$ROLE"
 
