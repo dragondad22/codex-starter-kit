@@ -186,6 +186,14 @@ PR are clean lifecycle states; multiple matching PRs, pagination exhaustion, mis
 claim/head/base, missing open head, conflicting effective evidence, and unsupported
 stronger rules are explicit non-passes.
 
+Delivery episode continuity is scoped by exact source, mandate, and delivery-resource
+digest. A matching retained state requires its exact latest predecessor. A fully
+integrity-checked state with a different episode identity remains history; a new episode
+may start without restoring it, but the executable runner then requires the live plan to
+contain exactly one branch-creation effect before Apply. The engine re-observes immediately
+before Apply, so neither an existing branch nor a branch created during the plan/apply
+window can advance to another effect.
+
 Check observations bind context, GitHub App integration ID where rules require one,
 evidence identity, exact commit, and observation time. A same-named legacy status cannot
 satisfy or replace an App-bound check. Review observations bind actor, exact commit,

@@ -45,6 +45,26 @@ class Issue75WorkflowContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('--branch-head-sha "$SOURCE_REVISION"', workflow)
 
+    def test_delivery_episode_reset_uses_the_executable_historical_state_gate(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (
+            root / "docs/evidence/issue-75-contract.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            '--name "issue-75-delivery-state-$latest_run_id" --dir latest-state',
+            workflow,
+        )
+        self.assertIn("--historical-state-directory latest-state", workflow)
+        self.assertIn('--historical-state-run-id "$latest_run_id"', workflow)
+        self.assertNotIn("ref_response=", workflow)
+        self.assertLess(
+            workflow.index("Build the exact reviewed transition runner"),
+            workflow.index("Require paired prior-state inputs"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

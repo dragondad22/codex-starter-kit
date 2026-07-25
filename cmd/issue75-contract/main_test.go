@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -138,8 +140,97 @@ func TestFirstLiveTransitionRequiresCreateBranchWithoutPriorState(t *testing.T) 
 	if validFirstLivePlan(false, engine.DeliveryPlan{Effects: []engine.DeliveryEffect{{Kind: engine.DeliveryEffectCreatePullRequest}}}) {
 		t.Fatal("first live transition admitted a non-branch effect")
 	}
+	if validFirstLivePlan(false, engine.DeliveryPlan{NoChange: true}) || validFirstLivePlan(false, engine.DeliveryPlan{Effects: []engine.DeliveryEffect{{Kind: engine.DeliveryEffectCreateBranch}, {Kind: engine.DeliveryEffectCreatePullRequest}}}) {
+		t.Fatal("first live transition admitted no effect or multiple effects")
+	}
 	if !validFirstLivePlan(false, engine.DeliveryPlan{Effects: []engine.DeliveryEffect{{Kind: engine.DeliveryEffectCreateBranch}}}) || !validFirstLivePlan(true, engine.DeliveryPlan{NoChange: true}) {
 		t.Fatal("valid first or retained-state transition was rejected")
+	}
+}
+
+func TestHistoricalEpisodeStateRequiresIntegrityAndDifferentEpisodeIdentity(t *testing.T) {
+	request, mandate := contractFixture(t)
+	source := request.Intent.SourceRevision
+	tests := []struct {
+		name    string
+		mutate  func(*testing.T, string, *deliveryStateManifest)
+		wantErr bool
+	}{
+		{name: "different source is historical", mutate: func(_ *testing.T, _ string, manifest *deliveryStateManifest) {
+			manifest.SourceRevision = strings.Repeat("b", 40)
+		}},
+		{name: "different mandate is historical", mutate: func(_ *testing.T, _ string, manifest *deliveryStateManifest) {
+			manifest.MandateID = "sha256:" + strings.Repeat("c", 64)
+		}},
+		{name: "different resource is historical", mutate: func(_ *testing.T, _ string, manifest *deliveryStateManifest) {
+			manifest.DeliveryResourceDigest = "sha256:" + strings.Repeat("d", 64)
+		}},
+		{name: "matching episode requires predecessor", wantErr: true},
+		{name: "wrong run", mutate: func(_ *testing.T, _ string, manifest *deliveryStateManifest) { manifest.RunID = "999" }, wantErr: true},
+		{name: "missing file", mutate: func(t *testing.T, directory string, manifest *deliveryStateManifest) {
+			manifest.SourceRevision = strings.Repeat("b", 40)
+			if err := os.Remove(filepath.Join(directory, "issue-75-transition.json")); err != nil {
+				t.Fatal(err)
+			}
+		}, wantErr: true},
+		{name: "digest mismatch", mutate: func(t *testing.T, directory string, manifest *deliveryStateManifest) {
+			manifest.SourceRevision = strings.Repeat("b", 40)
+			if err := os.WriteFile(filepath.Join(directory, "issue-75-transition.json"), []byte("changed"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, wantErr: true},
+		{name: "extra file", mutate: func(t *testing.T, directory string, manifest *deliveryStateManifest) {
+			manifest.SourceRevision = strings.Repeat("b", 40)
+			if err := os.WriteFile(filepath.Join(directory, "extra.json"), []byte("{}"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, wantErr: true},
+		{name: "symlink", mutate: func(t *testing.T, directory string, manifest *deliveryStateManifest) {
+			manifest.SourceRevision = strings.Repeat("b", 40)
+			if err := os.Symlink("issue-75-transition.json", filepath.Join(directory, "linked.json")); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+		}, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			directory, manifest := historicalStateFixture(t, request, mandate, "30163549727")
+			if test.mutate != nil {
+				test.mutate(t, directory, &manifest)
+				writeJSONAt(t, filepath.Join(directory, "issue-75-state-manifest.json"), manifest)
+			}
+			err := validateHistoricalEpisodeState(directory, "30163549727", request, mandate, source)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("historical state error = %v", err)
+			}
+		})
+	}
+}
+
+func TestHistoricalEpisodeStateRejectsMissingMalformedAndUnpairedModes(t *testing.T) {
+	request, mandate := contractFixture(t)
+	directory, _ := historicalStateFixture(t, request, mandate, "30163549727")
+	if err := os.WriteFile(filepath.Join(directory, "issue-75-state-manifest.json"), []byte(`{"schema_version":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateHistoricalEpisodeState(directory, "30163549727", request, mandate, request.Intent.SourceRevision); err == nil {
+		t.Fatal("malformed historical state manifest was accepted")
+	}
+	if err := validateHistoricalEpisodeState(directory, "0", request, mandate, request.Intent.SourceRevision); err == nil {
+		t.Fatal("invalid historical state run ID was accepted")
+	}
+	requestPath := writeJSON(t, "request.json", request)
+	mandatePath := writeJSON(t, "mandate.json", mandate)
+	tests := [][]string{
+		append(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), "--historical-state-directory", t.TempDir()),
+		append(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), "--historical-state-run-id", "30163549727"),
+		append(contractArgs(request.Intent.SourceRevision, requestPath, mandatePath), "--historical-state-directory", t.TempDir(), "--historical-state-run-id", "30163549727"),
+	}
+	for _, args := range tests {
+		var output strings.Builder
+		if err := run(args, &output); err == nil || output.Len() != 0 {
+			t.Fatalf("invalid historical mode produced output: %q, %v", output.String(), err)
+		}
 	}
 }
 
@@ -245,6 +336,12 @@ func contractFixture(t *testing.T) (engine.DeliveryRequest, engine.WorkExecution
 func writeJSON(t *testing.T, name string, value any) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
+	writeJSONAt(t, path, value)
+	return path
+}
+
+func writeJSONAt(t *testing.T, path string, value any) {
+	t.Helper()
 	content, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +349,34 @@ func writeJSON(t *testing.T, name string, value any) string {
 	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return path
+}
+
+func historicalStateFixture(t *testing.T, request engine.DeliveryRequest, mandate engine.WorkExecutionMandate, runID string) (string, deliveryStateManifest) {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(directory, ".starter-kit", "delivery"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		".starter-kit/delivery/state.json": []byte(`{"schema_version":1}`),
+		"issue-75-transition.json":         []byte(`{"schema_version":1}`),
+	}
+	digests := map[string]string{}
+	for relative, content := range files {
+		path := filepath.Join(directory, filepath.FromSlash(relative))
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(content)
+		digests[relative] = hex.EncodeToString(digest[:])
+	}
+	manifest := deliveryStateManifest{
+		SchemaVersion: 1, SourceRevision: request.Intent.SourceRevision, RunID: runID,
+		MandateID: mandate.ID, DeliveryResourceDigest: engine.DeliveryResourceDigest(request.Intent),
+		Files: digests,
+	}
+	writeJSONAt(t, filepath.Join(directory, "issue-75-state-manifest.json"), manifest)
+	return directory, manifest
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

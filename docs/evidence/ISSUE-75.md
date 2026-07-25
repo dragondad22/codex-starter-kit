@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; seven pre-effect, two provider-effect-attempt, and three
+**State:** Development candidate; eight pre-effect, two provider-effect-attempt, and three
 post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
@@ -251,6 +251,33 @@ failure after budget exhaustion. Lifecycle regressions prove one DELETE followed
 bounded stale reads and convergence, effect-free replay, persistent-stale failure, changed
 head handling, and cancellation. Refreshed gates, independent review, native CI, workflow
 reinstallation, and a newly source-bound journey remain pending.
+
+Source `72c0a16bcfc5ad8fbdb3430f8a2a9cebb1de8ddf` then passed refreshed gates,
+independent review, and native CI run `30164650884`. The unchanged installed workflow
+bytes still matched that source. Delivery-input run `30164767594` bound its exact request,
+mandate, issue topology, and final workflow digest. Transition run `30164800746` passed
+the credential-free envelope and authority gates but stopped before credentials or
+effects because the predecessor gate treated the older successful state artifact
+`30163549727` as a current episode even though the restore path would reject its different
+source, mandate, and delivery-resource digest.
+
+The predecessor gate now delegates continuity classification to the same exact reviewed
+contract executable used for delivery. It strictly validates the latest unexpired
+successful state artifact's allowlisted regular files, size ceiling, manifest schema and
+run identity, required inventory, and every retained SHA-256 digest. An artifact matching
+the current source, mandate, and delivery-resource digest still requires the exact
+canonical predecessor; only a fully valid mismatched artifact is historical.
+
+No workflow-level ref check authorizes the reset. When no predecessor was restored, the
+runner requires the live inspection to produce exactly one `create-branch` effect before
+Apply. A branch that exists before inspection yields a different plan and stops before
+effects; a branch appearing after planning changes the engine's mandatory pre-apply
+observation and also stops. Deterministic tests cover matching-state rejection, each
+historical identity dimension, missing/malformed/extra/symlinked/hash-invalid artifacts,
+unpaired mode flags, and zero/multiple/non-branch initial plans. This does not rewrite or
+discard historical evidence and does not permit two heads for the same exact episode.
+Refreshed gates, independent review, native CI, exact workflow reinstallation, and a newly
+source-bound journey remain pending.
 
 ## Pending live qualification and completion
 

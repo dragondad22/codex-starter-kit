@@ -6,13 +6,17 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -33,9 +37,11 @@ const (
 )
 
 var (
-	commitPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	managedPattern = regexp.MustCompile(`^issue:[1-9][0-9]*$`)
-	digestPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	commitPattern   = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	managedPattern  = regexp.MustCompile(`^issue:[1-9][0-9]*$`)
+	digestPattern   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	runIDPattern    = regexp.MustCompile(`^[1-9][0-9]*$`)
+	fileHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 type workflowStep struct {
@@ -86,6 +92,16 @@ type executionRuntime struct {
 	now         func() time.Time
 }
 
+type deliveryStateManifest struct {
+	SchemaVersion          int               `json:"schema_version"`
+	SourceRevision         string            `json:"source_revision"`
+	RunID                  string            `json:"run_id"`
+	PredecessorRunID       string            `json:"predecessor_run_id"`
+	MandateID              string            `json:"mandate_id"`
+	DeliveryResourceDigest string            `json:"delivery_resource_digest"`
+	Files                  map[string]string `json:"files"`
+}
+
 func main() {
 	if err := runWithDependencies(context.Background(), os.Args[1:], os.Getenv, http.DefaultClient, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -104,8 +120,13 @@ func runWithDependencies(ctx context.Context, args []string, getenv func(string)
 	mandatePath := flags.String("mandate-file", "", "content-addressed WorkExecutionMandate JSON")
 	sourceRevision := flags.String("source-revision", "", "exact reviewed Starter Kit source revision")
 	executeStep := flags.Bool("execute-step", false, "execute one exact lifecycle transition with scoped GitHub App credentials")
+	historicalStateDirectory := flags.String("historical-state-directory", "", "integrity-protected latest historical state artifact")
+	historicalStateRunID := flags.String("historical-state-run-id", "", "exact workflow run for the historical state artifact")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *requestPath == "" || *mandatePath == "" || !commitPattern.MatchString(*sourceRevision) {
 		return errors.New("request-file, mandate-file, and exact source-revision flags are required; positional arguments are unsupported")
+	}
+	if (*historicalStateDirectory == "") != (*historicalStateRunID == "") || *executeStep && *historicalStateDirectory != "" {
+		return errors.New("historical state directory and run ID must be paired and cannot be combined with execute-step")
 	}
 	var request engine.DeliveryRequest
 	if err := readStrictJSON(*requestPath, &request); err != nil {
@@ -117,6 +138,9 @@ func runWithDependencies(ctx context.Context, args []string, getenv func(string)
 	}
 	if err := validateEnvelope(request, mandate, *sourceRevision); err != nil {
 		return err
+	}
+	if *historicalStateDirectory != "" {
+		return validateHistoricalEpisodeState(*historicalStateDirectory, *historicalStateRunID, request, mandate, *sourceRevision)
 	}
 	if *executeStep {
 		runtime := executionRuntime{restBaseURL: "https://api.github.com", graphqlURL: "https://api.github.com/graphql", evidence: "live", live: true, now: func() time.Time { return time.Now().UTC() }}
@@ -228,6 +252,88 @@ func executeTransition(ctx context.Context, request engine.DeliveryRequest, mand
 
 func validFirstLivePlan(hadPriorState bool, plan engine.DeliveryPlan) bool {
 	return hadPriorState || len(plan.Effects) == 1 && plan.Effects[0].Kind == engine.DeliveryEffectCreateBranch
+}
+
+func validateHistoricalEpisodeState(directory, runID string, request engine.DeliveryRequest, mandate engine.WorkExecutionMandate, sourceRevision string) error {
+	if !runIDPattern.MatchString(runID) {
+		return errors.New("historical state run ID is invalid")
+	}
+	root, err := filepath.Abs(directory)
+	if err != nil {
+		return errors.New("historical state directory is invalid")
+	}
+	manifestPath := filepath.Join(root, "issue-75-state-manifest.json")
+	var manifest deliveryStateManifest
+	if err := readStrictJSON(manifestPath, &manifest); err != nil {
+		return errors.New("historical state manifest is invalid")
+	}
+	allowed := map[string]bool{
+		".starter-kit/delivery/state.json":     true,
+		".starter-kit/work-manager/state.json": true,
+		".starter-kit/work-mandates.json":      true,
+		"issue-75-transition.json":             true,
+	}
+	if manifest.SchemaVersion != 1 || manifest.RunID != runID || !commitPattern.MatchString(manifest.SourceRevision) ||
+		!digestPattern.MatchString(manifest.MandateID) || !digestPattern.MatchString(manifest.DeliveryResourceDigest) ||
+		len(manifest.Files) < 2 || len(manifest.Files) > len(allowed) ||
+		!fileHashPattern.MatchString(manifest.Files[".starter-kit/delivery/state.json"]) ||
+		!fileHashPattern.MatchString(manifest.Files["issue-75-transition.json"]) {
+		return errors.New("historical state manifest identity is invalid")
+	}
+	expected := map[string]bool{"issue-75-state-manifest.json": true}
+	for relative, digest := range manifest.Files {
+		if !allowed[relative] || !fileHashPattern.MatchString(digest) {
+			return errors.New("historical state manifest file inventory is invalid")
+		}
+		expected[relative] = true
+	}
+	observed := map[string]bool{}
+	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if relative == "." {
+			return nil
+		}
+		relative = filepath.ToSlash(relative)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return errors.New("historical state contains a symlink")
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 || !expected[relative] {
+			return errors.New("historical state contains an unsupported file")
+		}
+		observed[relative] = true
+		return nil
+	}); err != nil {
+		return errors.New("historical state file inventory is invalid")
+	}
+	if len(observed) != len(expected) {
+		return errors.New("historical state file inventory is incomplete")
+	}
+	for relative, expectedDigest := range manifest.Files {
+		file, err := os.Open(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			return errors.New("historical state file is unavailable")
+		}
+		digest := sha256.New()
+		_, copyErr := io.Copy(digest, io.LimitReader(file, (1<<20)+1))
+		closeErr := file.Close()
+		if copyErr != nil || closeErr != nil || hex.EncodeToString(digest.Sum(nil)) != expectedDigest {
+			return errors.New("historical state file integrity is invalid")
+		}
+	}
+	if manifest.SourceRevision == sourceRevision && manifest.MandateID == mandate.ID && manifest.DeliveryResourceDigest == engine.DeliveryResourceDigest(request.Intent) {
+		return errors.New("current delivery episode state requires its exact predecessor")
+	}
+	return nil
 }
 
 func executionAdapters(client *http.Client, runtime executionRuntime, reconcilerKey, seederKey string) (*githubadapter.Adapter, *githubadapter.Adapter, error) {

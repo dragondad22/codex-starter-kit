@@ -181,6 +181,9 @@ jobs:
           go-version: 1.26.5
           cache-dependency-path: tool/go.sum
 
+      - name: Build the exact reviewed transition runner
+        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
+
       - name: Download validated credential-free envelope inputs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -214,8 +217,15 @@ jobs:
           )"
           if [[ -z "$PRIOR_STATE_RUN_ID" ]]; then
             if [[ -n "$latest_run_id" ]]; then
-              echo "a current delivery episode head exists; initial-state replay is forbidden" >&2
-              exit 1
+              gh run download "$latest_run_id" \
+                --repo codex-starter-kit-labs/codex-starter-kit-sandbox \
+                --name "issue-75-delivery-state-$latest_run_id" --dir latest-state
+              ./issue75-contract \
+                --source-revision "${{ inputs.source_revision }}" \
+                --request-file envelope/request/delivery-request.json \
+                --mandate-file envelope/mandate/bound-work-mandate.json \
+                --historical-state-directory latest-state \
+                --historical-state-run-id "$latest_run_id"
             fi
             exit 0
           fi
@@ -302,9 +312,6 @@ jobs:
           test "$(git -C tool rev-parse HEAD)" = "$SOURCE_REVISION"
           test -f envelope/request/delivery-request.json
           test -f envelope/mandate/bound-work-mandate.json
-
-      - name: Build the exact reviewed transition runner
-        run: go -C tool build -o ../issue75-contract ./cmd/issue75-contract
 
       - name: Execute one mandate-contained semantic transition
         env:
