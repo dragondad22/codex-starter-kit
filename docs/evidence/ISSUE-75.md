@@ -6,7 +6,7 @@
 
 **Parent:** [#4](https://github.com/dragondad22/codex-starter-kit/issues/4)
 
-**State:** Development candidate; eight pre-effect, two provider-effect-attempt, and three
+**State:** Development candidate; eight pre-effect, two provider-effect-attempt, and five
 post-effect live qualification failures reproduced; current-source verification state is
 recorded below; live qualification pending
 
@@ -73,7 +73,10 @@ closed-unmerged state, stale head and capability rejection, effective-rule misma
 wrong or changed apply-time actor/permission/expiry, missing mandate, cumulative mandate
 use, same-name wrong-integration check evidence, missing reciprocal closure, corrupt state,
 single-attempt ambiguous-effect recovery and unresolved non-pass, squash observation,
-restart, completion reconciliation, and no-change replay.
+restart, completion reconciliation, and no-change replay. Delivery observations
+canonicalize check, review, approval, problem, and effective-rules evidence before
+computing the optimistic-concurrency revision; reordered equivalent GitHub payloads retain
+one revision while semantic gate changes still invalidate it.
 
 The completion path composes the existing Work Manager parent/direct-dependent behavior
 rather than introducing another Project mutation implementation. Adapter fixtures use
@@ -380,6 +383,34 @@ treated as the new episode. The next fresh episode therefore rotates the exact d
 identity to `contract/issue-75-20260721-03`; tests bind both delivery and sandbox staging
 to that same branch. Refreshed gates, review, native CI, governed input, and continuation
 remain pending.
+
+Source `b00e19091a7c8271af1aba04ce3891d0091a1141` passed native run
+`30177003777`. Delivery input `30177131395` and no-change governed-issue runs
+`30177156382`/`30177182303` bound the fresh episode. Transition `30177210890`
+created `contract/issue-75-20260721-03`; an incomplete read-only file-candidate identity
+bundle failed in run `30177267076` before planning, and corrected plan/apply runs
+`30177293334`/`30177314407` installed the exact candidate. Transitions
+`30177336520`, `30177395371`, and `30177447403` created PR `#33`, marked it
+ready, and requested its distinct reviewer. After exact candidate approval, stale-head
+plan/apply `30225208689`/`30225234361` installed the final workflow digest, transition
+`30225264268` re-requested review for the changed head, and the distinct reviewer approved
+exact final head `4e46f10f2c9f381cc4c5422a35e39ff45d3a7098`. Transition
+`30225415325` squash-merged PR `#33` as immutable GraphQL merge commit
+`b36c3f022a934dd5e1ee676671370986d5292d94`.
+
+Post-merge transition `30225474966` then rejected its plan before apply because GitHub
+auto-closed delivery Issue `#27` one second after the merge, changing the native
+precondition between reads. After that state settled, run `30225541230` again rejected
+before apply because semantically equivalent delivery evidence was incorporated in
+provider response order. Neither run emitted a completion receipt or mutated the parent,
+dependent, or Project state. The adapter now canonicalizes evidence collections and
+derives its rules revision from normalized effective semantics rather than raw rule-array
+order. Regression coverage reverses equivalent rules and evidence while requiring one
+observation revision, and every unrecognized or missing effective rule type becomes
+sorted fail-closed problem evidence that invalidates the revision. Refreshed local Python,
+documentation, Go, vet, and race gates pass, and independent Standards and Spec
+re-reviews report no findings. Native CI, completion reconciliation, terminal replay, and
+cleanup remain pending.
 
 ## Pending live qualification and completion
 

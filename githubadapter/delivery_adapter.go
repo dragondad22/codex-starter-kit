@@ -82,8 +82,7 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	observation := engine.DeliveryObservation{SchemaVersion: 1, Problems: []string{}, Checks: []engine.DeliveryCheckObservation{}, Reviews: []engine.DeliveryReviewObservation{}, Approvals: []engine.DeliveryApprovalObservation{}}
 	if len(issues) != 1 || issues[0].PullRequest != nil {
 		observation.Problems = append(observation.Problems, "managed delivery issue identity is missing or ambiguous")
-		observation.Revision = digest(observation)
-		return observation, nil
+		return finalizeDeliveryObservation(observation), nil
 	}
 	issue := issues[0]
 	observation.Issue = engine.DeliveryIssueObservation{ManagedID: intent.ManagedID, Number: issue.Number, State: strings.ToLower(issue.State)}
@@ -116,12 +115,10 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	pull, err := adapter.findLinkedDeliveryPull(ctx, credential, issue, intent)
 	if err != nil {
 		observation.Problems = append(observation.Problems, err.Error())
-		observation.Revision = digest(observation)
-		return observation, nil
+		return finalizeDeliveryObservation(observation), nil
 	}
 	if pull.Number == 0 {
-		observation.Revision = digest(observation)
-		return observation, nil
+		return finalizeDeliveryObservation(observation), nil
 	}
 	if branchMissing {
 		observation.Branch = engine.DeliveryBranchObservation{Name: pull.Head.Ref, Revision: pull.Head.SHA, Historical: true}
@@ -166,8 +163,44 @@ func (adapter *DeliveryAdapter) ObserveDelivery(ctx context.Context, intent engi
 	}
 	observation.Reviews = reviews
 	observation.Approvals = approvals
+	return finalizeDeliveryObservation(observation), nil
+}
+
+func finalizeDeliveryObservation(observation engine.DeliveryObservation) engine.DeliveryObservation {
+	// GitHub does not promise that independent evidence collections retain one
+	// response order. Canonicalize them before deriving the optimistic-concurrency
+	// revision so only semantic delivery drift invalidates an active plan.
+	slices.Sort(observation.Problems)
+	slices.Sort(observation.Rules.Problems)
+	slices.SortFunc(observation.Checks, func(left, right engine.DeliveryCheckObservation) int {
+		return compareDeliveryEvidence(left.EvidenceID, right.EvidenceID, left, right)
+	})
+	slices.SortFunc(observation.Reviews, func(left, right engine.DeliveryReviewObservation) int {
+		return compareDeliveryEvidence(left.EvidenceID, right.EvidenceID, left, right)
+	})
+	slices.SortFunc(observation.Approvals, func(left, right engine.DeliveryApprovalObservation) int {
+		return compareDeliveryEvidence(left.EvidenceID, right.EvidenceID, left, right)
+	})
 	observation.Revision = digest(observation)
-	return observation, nil
+	return observation
+}
+
+func compareDeliveryEvidence(leftID, rightID string, left, right any) int {
+	if leftID < rightID {
+		return -1
+	}
+	if leftID > rightID {
+		return 1
+	}
+	leftDigest := digest(left)
+	rightDigest := digest(right)
+	if leftDigest < rightDigest {
+		return -1
+	}
+	if leftDigest > rightDigest {
+		return 1
+	}
+	return 0
 }
 
 type deliveryPull struct {
@@ -412,6 +445,12 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 			}
 		case "merge_queue", "required_deployments", "required_code_scanning":
 			problems = append(problems, "effective branch rules include unsupported merge gate: "+rule.Type)
+		default:
+			ruleType := rule.Type
+			if ruleType == "" {
+				ruleType = "<missing>"
+			}
+			problems = append(problems, "effective branch rules include unsupported rule: "+ruleType)
 		}
 	}
 	slices.SortFunc(required, func(left, right engine.DeliveryCheckIdentity) int {
@@ -450,11 +489,29 @@ func (adapter *DeliveryAdapter) observeDeliveryRules(ctx context.Context, creden
 	if _, err := adapter.base.rest(ctx, credential, http.MethodGet, adapter.base.repoPath()+"/branches/"+url.PathEscape(branch), nil, &base); err != nil {
 		return engine.DeliveryRulesObservation{}, err
 	}
-	return engine.DeliveryRulesObservation{Revision: digest(struct {
-		Rules      any
-		Repository any
-		Base       any
-	}{rules, repository, base}), BaseRevision: base.Commit.SHA, RequiredChecks: required, MergeMethods: methods, Problems: problems}, nil
+	slices.Sort(problems)
+	// Bind the revision to normalized effective semantics, not the provider's
+	// ordering or representation of otherwise equivalent rule entries.
+	revision := digest(struct {
+		RequiredChecks       []engine.DeliveryCheckIdentity
+		MergeMethods         []string
+		Problems             []string
+		RepositoryID         string
+		DefaultBranch        string
+		SquashSettingPresent bool
+		SquashSettingEnabled bool
+		BaseRevision         string
+	}{
+		RequiredChecks:       required,
+		MergeMethods:         methods,
+		Problems:             problems,
+		RepositoryID:         repository.NodeID,
+		DefaultBranch:        repository.DefaultBranch,
+		SquashSettingPresent: repository.AllowSquashMerge != nil,
+		SquashSettingEnabled: repository.AllowSquashMerge != nil && *repository.AllowSquashMerge,
+		BaseRevision:         base.Commit.SHA,
+	})
+	return engine.DeliveryRulesObservation{Revision: revision, BaseRevision: base.Commit.SHA, RequiredChecks: required, MergeMethods: methods, Problems: problems}, nil
 }
 
 func intersectStrings(left, right []string) []string {

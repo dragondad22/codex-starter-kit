@@ -263,6 +263,7 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	requireLastPushApproval := false
 	requiredReviewers := []any{}
 	pullRuleMethods := [][]string{{"merge", "squash"}, {"squash"}}
+	extraRuleTypes := []string{}
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -292,6 +293,9 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 			effective := []any{map[string]any{"type": "required_status_checks", "parameters": map[string]any{"required_status_checks": []any{map[string]any{"context": "foundation", "integration_id": 15368}}}}}
 			for _, methods := range pullRuleMethods {
 				effective = append(effective, map[string]any{"type": "pull_request", "parameters": map[string]any{"allowed_merge_methods": methods, "required_approving_review_count": 0, "require_code_owner_review": false, "require_last_push_approval": requireLastPushApproval, "required_review_thread_resolution": false, "required_reviewers": requiredReviewers}})
+			}
+			for _, ruleType := range extraRuleTypes {
+				effective = append(effective, map[string]any{"type": ruleType, "parameters": map[string]any{}})
 			}
 			json.NewEncoder(writer).Encode(effective)
 		case "/repos/octocat/example":
@@ -333,6 +337,17 @@ func TestDeliveryAdapterObservesExactLinkedHeadChecksReviewAndRules(t *testing.T
 	if len(observation.Problems) != 0 || observation.PullRequest.ID != 1001 || observation.PullRequest.NodeID != "PR_101" || observation.PullRequest.Number != 101 || observation.PullRequest.HeadRevision != "head-1" || observation.PullRequest.ClosesIssueNumber != 75 || len(observation.Checks) != 1 || observation.Checks[0].State != "passed" || observation.Checks[0].IntegrationID != 15368 || len(observation.Reviews) != 1 || observation.Reviews[0].Capability != review.Capability || observation.Rules.Revision == "" || !slices.Equal(observation.Rules.MergeMethods, []string{"squash"}) {
 		t.Fatalf("delivery observation = %#v", observation)
 	}
+	pullRuleMethods = [][]string{{"squash"}, {"merge", "squash"}}
+	reordered, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || reordered.Rules.Revision != observation.Rules.Revision || reordered.Revision != observation.Revision {
+		t.Fatalf("semantically identical reordered rules changed observation revision: before=%q/%q after=%q/%q err=%v", observation.Rules.Revision, observation.Revision, reordered.Rules.Revision, reordered.Revision, err)
+	}
+	extraRuleTypes = []string{"future_merge_gate"}
+	unsupported, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
+	if err != nil || unsupported.Rules.Revision == observation.Rules.Revision || unsupported.Revision == observation.Revision || len(unsupported.Rules.Problems) == 0 {
+		t.Fatalf("unsupported effective rule did not invalidate the observation: before=%q/%q after=%q/%q problems=%#v err=%v", observation.Rules.Revision, observation.Revision, unsupported.Rules.Revision, unsupported.Revision, unsupported.Rules.Problems, err)
+	}
+	extraRuleTypes = []string{}
 	pullRuleMethods = [][]string{{"squash"}, {"merge"}}
 	conflicting, err := adapter.ObserveDelivery(context.Background(), deliveryIntent(&claim))
 	if err != nil || len(conflicting.Rules.MergeMethods) != 0 {
