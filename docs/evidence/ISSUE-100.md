@@ -51,7 +51,7 @@ The documentation branch passed the complete documentation-change command set:
 python3 -m unittest discover -s tests -p "test_*.py" — 41 tests passed
 python3 scripts/validate_docs.py — passed
 go test ./... — passed
-starter-kit changes validate --repository . — passed; 20 records valid
+starter-kit changes check --repository . — passed; generated changelog current
 git diff --check — passed
 ```
 
