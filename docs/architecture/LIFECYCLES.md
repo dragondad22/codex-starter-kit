@@ -244,6 +244,43 @@ stale and regenerates derived views after policy/profile re-evaluation. Historic
 receipts, evidence, approvals, exceptions, and claims retain the profile identity under
 which they were produced.
 
+## Validation Manifest Lifecycle
+
+One Ready issue anchors a generated immutable validation manifest. Exact specifications,
+decisions, architecture contracts, personas, risks, effective policy, operating profile,
+and scoped assurance requirements compose additively into assertions and evidence
+obligations. Conflicting sources produce `needs-review`; a human corrects the
+authoritative source or records a governed decision or exception, then regenerates. The
+manifest is never edited and never authorizes effects.
+
+The lifecycle engine computes a manifest assessment at compile or inspect, plan,
+immediately before evaluation, verify, and status:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Current: exact bound inputs resolve
+    [*] --> NeedsReview: semantic source conflict
+    [*] --> NotConfigured: approval/evaluator route absent
+    [*] --> Unsupported: required capability unavailable
+    Current --> Stale: any bound input changes
+    Stale --> Current: regenerate from resolved inputs
+    NeedsReview --> Current: source corrected + regenerate
+    NotConfigured --> Current: governed configuration supplied
+    Unsupported --> Current: supported route supplied
+```
+
+Malformed schema, digest, or provenance is rejected input rather than a lifecycle state.
+Only `current` may proceed. A changed input creates a new manifest ID; prior manifests,
+receipts, and results remain immutable historical evidence but cannot establish a current
+pass. Evidence reuse requires an unchanged assertion fingerprint, a method that permits
+reuse, and evidence still fresh and valid for the new scope.
+
+A human-owned standing rule or bounded per-work decision determines whether separate
+approval is required based on factors such as work, actor, risk, timing, cost,
+environment, and effect scope. No applicable rule is `not-configured` for evaluation or
+effects, although inspection may continue. This approval decision never replaces the
+execution mandate or other effect authority.
+
 ## Control Evaluation Lifecycle
 
 ```mermaid

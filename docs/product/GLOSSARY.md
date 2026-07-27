@@ -202,6 +202,14 @@ governed sources, operating profile, current observation, Project configuration,
 immutable target. It does not authorize external effects; a DEC-0022 execution mandate is
 separate.
 
+### Manifest assessment
+
+A lifecycle-engine result that evaluates an immutable validation manifest against current
+governed sources and observations. It reports `current`, `stale`, `needs-review`,
+`not-configured`, or `unsupported` without mutating the manifest. The engine reassesses
+at inspection, planning, immediately before evaluation, verification, and status. Invalid
+schema, digest, or provenance is rejected input rather than a manifest assessment.
+
 ### Milestone
 
 The single finite GitHub manifest for one named release. It identifies approved release
@@ -425,6 +433,14 @@ An actionable implementation or operational outcome with sufficient context to b
 Its implementation may be decomposed organically into tasks, subtasks, and steps. A
 separate native issue is used when durable tracking adds value, not merely because a step
 could be completed independently.
+
+### Validation manifest
+
+A generated, read-only checklist for one governed work scope that records the exact
+authoritative sources, what must be proved, and the evidence expected for each
+requirement. It does not create or change requirements and does not authorize effects.
+A changed source invalidates the manifest and requires regeneration. Run actors,
+timestamps, attempts, results, and retries belong to separate receipts.
 
 ### Workflow capability mode
 

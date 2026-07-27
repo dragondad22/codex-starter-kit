@@ -32,8 +32,22 @@ human-correctable without becoming a competing source of truth?
 
 ### Answer
 
-Open. The product owner selected this as the first frontier on 2026-07-27. It must
-strengthen the current single-writer path and cannot assume a multi-agent runtime.
+Resolved on 2026-07-27 and promoted as
+[DEC-0023](../decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md). A
+**validation manifest** is a generated immutable checklist for one Ready work scope. It
+binds exact authoritative inputs and derived assertion/evidence obligations without
+creating requirements, recording run results, approving work, or authorizing effects.
+
+Its canonical contents determine its identity. Changed inputs produce a new manifest and
+make the prior one stale; immutable historical receipts remain reconstructable, while
+evidence reuse requires an unchanged assertion fingerprint plus method, freshness, and
+scope validity. The lifecycle engine reassesses at inspect, plan, immediately before
+evaluation, verify, and status.
+
+Separate validation approval is a governed human choice expressed through standing policy
+or a bounded per-work decision. It may depend on work, actor, risk, timing, cost,
+environment, and effect scope, but never replaces DEC-0022 effect authority. Issue #101
+now owns evidence-method classification; issue #108 still owns executable decomposition.
 
 ## #2: Which assertions belong to which evidence methods?
 
@@ -52,7 +66,9 @@ explicit non-pass states?
 
 ### Answer
 
-Open. Research begins after ticket #1 fixes the validation-contract authority boundary.
+Open. DEC-0023 now fixes the validation-manifest authority boundary. Research may begin
+when #101 is explicitly selected; its answer must preserve DEC-0023's immutable manifest,
+assertion handoff, explicit non-pass, and evidence-reuse rules.
 
 ## #3: Is the validation-only path clear enough for executable decomposition?
 

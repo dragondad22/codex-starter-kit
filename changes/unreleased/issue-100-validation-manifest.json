@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-100-validation-manifest",
+  "summary": "Define immutable validation manifests that bind exact governed sources and evidence obligations without becoming approval or effect authority.",
+  "category": "added",
+  "audiences": ["developers", "stakeholders"],
+  "components": ["lifecycle-engine", "product"],
+  "issues": [83, 100, 101, 108],
+  "breaking": false,
+  "internal_only": false
+}

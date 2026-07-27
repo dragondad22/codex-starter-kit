@@ -137,6 +137,12 @@
 64. `evidence/ISSUE-83.md` — owner selection, native investigation decomposition,
     dependency graph, Project reconciliation, exclusions, and verification record for
     issue #83.
+65. `decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md` — approved
+    validation-manifest derivation, identity, assessment, invalidation, approval, and
+    effect-authority boundary.
+66. `evidence/ISSUE-100.md` — owner approval, promotion, negative-path coverage,
+    verification, and downstream reconciliation record for the validation-manifest
+    decision.
 
 ## Document lifecycle
 

@@ -70,6 +70,11 @@ Native Readiness remains the execution gate.
 Existing exact-plan receipts and approvals remain immutable v1 evidence. New mandate
 authorization is versioned and prospective.
 
+[DEC-0023](DEC-0023-validation-manifest-authority-and-lifecycle.md) adds generated
+validation manifests and human-owned approval-checkpoint policy without changing this
+effect-authority boundary. A current manifest or validation approval never substitutes
+for an active execution mandate.
+
 ## Source
 
 Approved by the product owner in the active Codex collaboration and recorded in
