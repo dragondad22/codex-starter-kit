@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "issue-83-assurance-factory-refinement",
+  "summary": "Decompose the assurance-factory direction into a governed validation-first investigation map.",
+  "category": "changed",
+  "audiences": [],
+  "components": ["github-workflow", "product"],
+  "issues": [83, 100, 101, 102, 103, 104, 105, 106, 107, 108],
+  "breaking": false,
+  "internal_only": true,
+  "internal_disposition": "Planning and tracker refinement only; no supported product behavior changes."
+}

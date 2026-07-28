@@ -111,6 +111,7 @@ The product ships as three layers from its first usable release:
 52. As an assurance owner, I want repository, work-item, and release additions to compose without weakening broader requirements so that scope-specific rigor remains explainable.
 53. As a maintainer, I want profile changes to invalidate active plans without rewriting historical evidence so that current work adapts and prior claims remain reconstructable.
 54. As a project owner, I want the agent to notice durable untracked work and decisions during conversation, search for existing issues, and offer the right capture action so that distraction or missing process knowledge does not erase operational memory.
+55. As PER-OWNER or PER-ASSURANCE acting within assigned authority, I want a deterministic validation manifest derived from exact governed sources so that I can see what must be proved without treating generated output as specification, approval, or effect authority.
 
 ## Implementation Decisions
 
@@ -164,6 +165,14 @@ The product ships as three layers from its first usable release:
 - Profile changes are attributable and prospective. They invalidate affected active
   plans and derived views but never rewrite prior evidence, decisions, exceptions, or
   claims.
+- A validation manifest is an immutable generated checklist for one Ready work scope. It
+  binds exact governed sources and evidence obligations, never creates requirements or
+  authorizes effects, makes missing sources explicit, and becomes stale when any bound
+  input changes.
+- The lifecycle engine reassesses a manifest during compilation or inspection, planning,
+  immediately before evaluation, verification, and status. A human-owned validation
+  approval rule controls whether additional approval is required; it never replaces an
+  execution mandate.
 - The default delivery flow is Ready issue, issue branch, PR, gates, squash merge.
 - Version and release adapters are selected from project outputs and policy.
 - Linux, macOS, and Windows are native first-release targets.

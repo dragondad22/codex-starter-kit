@@ -128,6 +128,21 @@
     downstream handoff evidence.
 61. `evidence/ISSUE-95.md` — singular task-fitness, bounded decomposition, agent-neutral
     implementation planning, deterministic validation, limitation, and handoff evidence.
+62. `research/ASSURANCE_FACTORY_SEAM_INVENTORY.md` — bounded inventory of existing
+    authority and lifecycle seams, in-progress dependencies, missing contracts, and the
+    validation-first refinement conclusion for issue #83.
+63. `roadmap/ASSURANCE_FACTORY_DECISION_MAP.md` — active validation, evidence, actor,
+    validation-only delivery, finding, mission, provider, Mission Control, and broader
+    final-decomposition investigation sequence for issue #83.
+64. `evidence/ISSUE-83.md` — owner selection, native investigation decomposition,
+    dependency graph, Project reconciliation, exclusions, and verification record for
+    issue #83.
+65. `decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md` — approved
+    validation-manifest derivation, identity, assessment, invalidation, approval, and
+    effect-authority boundary.
+66. `evidence/ISSUE-100.md` — owner approval, promotion, negative-path coverage,
+    verification, and downstream reconciliation record for the validation-manifest
+    decision.
 
 ## Document lifecycle
 
