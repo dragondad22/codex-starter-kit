@@ -78,9 +78,10 @@ every profile. Assurance additions may strengthen its reviewer independence, num
 qualifications but cannot remove or weaken the universal pass.
 
 [DEC-0023](DEC-0023-validation-manifest-authority-and-lifecycle.md) applies the effective
-profile to immutable validation manifests. Human-owned standing policy or a bounded
-per-work decision determines whether a separate validation approval checkpoint applies;
-engagement mode alone neither grants effect authority nor changes validation results.
+profile to immutable validation manifests. An effective validation approval rule from
+human-owned standing policy or a bounded per-work decision determines whether an
+additional approval applies; engagement mode alone neither grants effect authority nor
+changes validation results.
 
 ## Source
 

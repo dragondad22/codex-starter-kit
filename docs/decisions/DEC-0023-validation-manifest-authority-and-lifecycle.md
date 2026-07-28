@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Owner:** dragondad22
-**Date:** 2026-07-27
+**Date:** 2026-07-28
 **Source decision:** Issue #100
 
 ## Context
@@ -29,6 +29,13 @@ additively; none silently overrides another. A semantic conflict produces
 `needs-review`. A qualified human corrects an authoritative source or records an
 applicable governed decision or exception, then regenerates the manifest. The generated
 manifest is never edited to resolve authority.
+
+Source resolution keeps missing inputs explicit. A source required by the Ready scope
+whose applicability or content cannot be resolved produces `needs-review`. An explicitly
+required but unconfigured source class or route produces `not-configured`; an unavailable
+source capability produces `unsupported`. Invalid source schema, digest, or provenance is
+rejected input and receives no lifecycle disposition. No expected source is silently
+omitted.
 
 The manifest records what must be proved and the acceptable evidence constraints. Each
 assertion contains a stable assertion ID, exact source references, a normalized claim,
@@ -62,14 +69,14 @@ results remain historical but cannot establish a current pass. The manifest itse
 passes. Assertions may be `not-applicable` only with rationale, and risk acceptance
 preserves the underlying result.
 
-Whether a current manifest may proceed without a separate approval is a human-owned,
-governed choice. Standing policy may evaluate work type, actor, risk, timing, cost,
-environment, and effect scope. A qualified human may record a narrower per-work decision
-with scope, rationale, and expiry. With no applicable rule, inspection may continue but
-evaluation or effects stop at `not-configured`. The choice is reassessed before evaluation
-because actor, timing, or estimated cost may change. This is an approval-checkpoint rule,
-not effect authority: a validation manifest or approval never replaces the DEC-0022
-execution mandate or other required authority.
+A **validation approval rule** is the human-owned governed choice that determines whether
+evaluation of a current manifest requires an additional approval. Standing policy may
+evaluate work type, actor, risk, timing, cost, environment, and effect scope. A qualified
+human may record a narrower per-work rule with scope, rationale, and expiry. With no
+applicable rule, inspection may continue but evaluation or effects stop at
+`not-configured`. The rule is reassessed before evaluation because actor, timing, or
+estimated cost may change. It is not effect authority: a validation manifest or approval
+never replaces the DEC-0022 execution mandate or other required authority.
 
 ## Consequences
 
@@ -97,4 +104,3 @@ Approved by the product owner through
 [issue #100](https://github.com/dragondad22/codex-starter-kit/issues/100) as the first
 investigation in the
 [assurance-factory decision map](../roadmap/ASSURANCE_FACTORY_DECISION_MAP.md).
-

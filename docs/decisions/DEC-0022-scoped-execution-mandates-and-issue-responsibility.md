@@ -71,9 +71,9 @@ Existing exact-plan receipts and approvals remain immutable v1 evidence. New man
 authorization is versioned and prospective.
 
 [DEC-0023](DEC-0023-validation-manifest-authority-and-lifecycle.md) adds generated
-validation manifests and human-owned approval-checkpoint policy without changing this
-effect-authority boundary. A current manifest or validation approval never substitutes
-for an active execution mandate.
+validation manifests and human-owned validation approval rules without changing this
+effect-authority boundary. A current manifest or an approval made under such a rule never
+substitutes for an active execution mandate.
 
 ## Source
 

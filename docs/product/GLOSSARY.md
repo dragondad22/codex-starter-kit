@@ -207,8 +207,9 @@ separate.
 A lifecycle-engine result that evaluates an immutable validation manifest against current
 governed sources and observations. It reports `current`, `stale`, `needs-review`,
 `not-configured`, or `unsupported` without mutating the manifest. The engine reassesses
-at inspection, planning, immediately before evaluation, verification, and status. Invalid
-schema, digest, or provenance is rejected input rather than a manifest assessment.
+at compilation or inspection, planning, immediately before evaluation, verification, and
+status. Invalid schema, digest, or provenance is rejected input rather than a manifest
+assessment.
 
 ### Milestone
 
@@ -433,6 +434,14 @@ An actionable implementation or operational outcome with sufficient context to b
 Its implementation may be decomposed organically into tasks, subtasks, and steps. A
 separate native issue is used when durable tracking adds value, not merely because a step
 could be completed independently.
+
+### Validation approval rule
+
+A human-owned governed rule that determines whether evaluation of a current validation
+manifest requires an additional approval. It may come from standing policy or a bounded
+per-work decision and may consider work, actor, risk, timing, cost, environment, and
+effect scope. No applicable rule is `not-configured`; the rule does not authorize effects
+or replace an execution mandate.
 
 ### Validation manifest
 

@@ -1,6 +1,6 @@
 # Issue #100 — Validation-manifest decision record
 
-**Date:** 2026-07-27
+**Date:** 2026-07-28
 **Change owner:** dragondad22
 **Issue:** [#100](https://github.com/dragondad22/codex-starter-kit/issues/100)
 **Parent:** [#83](https://github.com/dragondad22/codex-starter-kit/issues/83)
@@ -13,10 +13,10 @@ defines a generated immutable checklist whose exact governed inputs and derived
 assertion/evidence obligations determine its identity without creating requirements,
 approving work, or authorizing effects.
 
-The owner rejected a universal separate-approval rule. Human-owned standing policy or a
-bounded per-work decision determines the approval checkpoint using applicable work,
-actor, risk, timing, cost, environment, and effect facts. DEC-0022 remains the separate
-effect-authority contract.
+The owner rejected making one validation approval rule universal. A human-owned rule from
+standing policy or a bounded per-work decision determines whether approval is required
+using applicable work, actor, risk, timing, cost, environment, and effect facts. DEC-0022
+remains the separate effect-authority contract.
 
 ## Changed records
 
@@ -28,11 +28,15 @@ effect-authority contract.
 - Resolved ticket #1 in the assurance-factory decision map while leaving evidence-method
   classification and executable decomposition with #101 and #108.
 - Linked DEC-0019 and DEC-0022 to the approval-versus-authority distinction.
+- Reviewed PER-OWNER and PER-ASSURANCE authority and referenced their stable IDs without
+  creating another approval persona.
 
 ## Negative-path disposition
 
 | Scenario | Required result |
 |---|---|
+| A source required by Ready scope cannot be resolved | `needs-review`; do not silently omit it |
+| A required source class or route is explicitly unconfigured | `not-configured` |
 | Authoritative sources conflict semantically | `needs-review`; correct the source or record a governed decision/exception, then regenerate |
 | A bound source, profile, policy, schema, compiler, assertion, or obligation changes | prior manifest is `stale`; create a new immutable manifest |
 | Manifest schema, digest, or provenance is invalid | reject input; do not assign a lifecycle disposition |

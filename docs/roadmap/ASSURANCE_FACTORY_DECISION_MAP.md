@@ -32,7 +32,7 @@ human-correctable without becoming a competing source of truth?
 
 ### Answer
 
-Resolved on 2026-07-27 and promoted as
+Resolved on 2026-07-28 and promoted as
 [DEC-0023](../decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md). A
 **validation manifest** is a generated immutable checklist for one Ready work scope. It
 binds exact authoritative inputs and derived assertion/evidence obligations without
@@ -44,7 +44,7 @@ evidence reuse requires an unchanged assertion fingerprint plus method, freshnes
 scope validity. The lifecycle engine reassesses at inspect, plan, immediately before
 evaluation, verify, and status.
 
-Separate validation approval is a governed human choice expressed through standing policy
+A validation approval rule is a governed human choice expressed through standing policy
 or a bounded per-work decision. It may depend on work, actor, risk, timing, cost,
 environment, and effect scope, but never replaces DEC-0022 effect authority. Issue #101
 now owns evidence-method classification; issue #108 still owns executable decomposition.
@@ -81,13 +81,13 @@ GitHub work item:
 
 ### Question
 
-Are tickets #1 and #2 sufficient to decompose a useful validation-contract vertical slice
+Are tickets #1 and #2 sufficient to decompose a useful validation-manifest vertical slice
 for the existing single-writer workflow, and what exact slice should be approved,
 deferred, or rejected?
 
 ### Answer
 
-Open. A yes answer may publish validation-contract implementation children without
+Open. A yes answer may publish validation-manifest implementation children without
 waiting for actor, finding, orchestration, provider, or Mission Control decisions.
 
 ## #4: What actor capability and least-knowledge contract is required?
