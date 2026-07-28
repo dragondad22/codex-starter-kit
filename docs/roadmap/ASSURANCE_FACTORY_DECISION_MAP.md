@@ -41,8 +41,8 @@ creating requirements, recording run results, approving work, or authorizing eff
 Its canonical contents determine its identity. Changed inputs produce a new manifest and
 make the prior one stale; immutable historical receipts remain reconstructable, while
 evidence reuse requires an unchanged assertion fingerprint plus method, freshness, and
-scope validity. The lifecycle engine reassesses at inspect, plan, immediately before
-evaluation, verify, and status.
+scope validity. The lifecycle engine reassesses at compile or inspect, plan, immediately
+before evaluation, verify, and status.
 
 A validation approval rule is a governed human choice expressed through standing policy
 or a bounded per-work decision. It may depend on work, actor, risk, timing, cost,
