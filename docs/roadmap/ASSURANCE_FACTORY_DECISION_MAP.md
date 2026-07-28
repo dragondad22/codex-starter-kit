@@ -66,9 +66,18 @@ explicit non-pass states?
 
 ### Answer
 
-Open. DEC-0023 now fixes the validation-manifest authority boundary. Research may begin
-when #101 is explicitly selected; its answer must preserve DEC-0023's immutable manifest,
-assertion handoff, explicit non-pass, and evidence-reuse rules.
+Completed on 2026-07-28 as bounded
+[research](../research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md). The smallest useful
+taxonomy is multi-axis: evidence action, observation boundary, execution mode,
+capability/separation, and coverage remain distinct. Ten representative assertion classes
+map to permissible evidence routes with explicit false-positive/false-negative,
+replayability, freshness, and non-pass constraints.
+
+The result preserves DEC-0023. Sources remain authoritative, manifests record acceptable
+evidence constraints, and downstream plans and receipts record selected evaluators,
+attempts, and results. The research does not approve a schema, module, evaluator kit, or
+architecture; #108 owns validation-only decomposition, #102 owns actor contracts, and
+#103 owns finding disposition.
 
 ## #3: Is the validation-only path clear enough for executable decomposition?
 
@@ -87,8 +96,9 @@ deferred, or rejected?
 
 ### Answer
 
-Open. A yes answer may publish validation-manifest implementation children without
-waiting for actor, finding, orchestration, provider, or Mission Control decisions.
+Ready for owner resolution now that #1 and #2 are complete. A yes answer may publish
+validation-manifest implementation children without waiting for actor, finding,
+orchestration, provider, or Mission Control decisions.
 
 ## #4: What actor capability and least-knowledge contract is required?
 
@@ -107,7 +117,8 @@ isolation, explicit limitations, and evidence-producing results?
 
 ### Answer
 
-Open. It extends DEC-0020's distinct-review minimum without approving specialist kits or
+Ready for owner resolution. It extends DEC-0020's distinct-review minimum and consumes
+#101's capability/separation evidence dimension without approving specialist kits or
 claiming that a role label proves capability.
 
 ## #5: How are candidate findings disposed and disagreements stopped?
