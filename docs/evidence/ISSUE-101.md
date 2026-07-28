@@ -12,8 +12,8 @@ The bounded
 [research record](../research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md) classifies ten
 representative assertion classes and identifies a multi-axis method profile. Evidence
 action, observation boundary, execution mode, capability/separation, and coverage remain
-distinct so an automated black-box specialist evaluation can be represented truthfully
-without collapsing unlike facts into one method label.
+distinct from reproducibility so an automated black-box specialist evaluation can be
+represented truthfully without collapsing unlike facts into one method label.
 
 The result preserves DEC-0023: authoritative sources determine assertions, the immutable
 manifest records acceptable evidence constraints, and downstream plans and receipts

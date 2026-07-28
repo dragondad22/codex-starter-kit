@@ -76,7 +76,7 @@ automated or manually examined. A specialist can conduct black-box behavior eval
 implementation-aware review, or validate an attestation. A manifest that stores only one
 of these labels would lose material evidence constraints.
 
-The smallest useful method profile therefore has five independent dimensions:
+The smallest useful method profile therefore has six independent dimensions:
 
 | Dimension | Minimum vocabulary | Question answered |
 |---|---|---|
@@ -85,11 +85,28 @@ The smallest useful method profile therefore has five independent dimensions:
 | Execution mode | `automated`, `human`, `hybrid` | How is the action performed? |
 | Capability and separation | declared domain capability plus `self-check`, `distinct-context`, `independent`, or stronger governed qualification | Who may perform it, and with what separation? |
 | Coverage | enumerated scope, exhaustive bounded set, generated cases, scenario/sample, environment matrix, or explicitly unknown | What population can the result support? |
+| Reproducibility | `deterministic-replay`, `controlled-rerun`, `record-reconstruction`, or `non-replayable` | Can the evaluation be repeated, only reconstructed, or neither? |
 
 These are research labels, not an approved schema. Existing governed terms such as
 `distinct review pass`, `pass`, `fail`, and `accepted-exception` remain canonical.
 
-### 2. Source class does not select the method
+### 2. Method-family comparison
+
+Replayability is not implied by automation, black-box access, or retained evidence. An
+automated check against a mutable service may be less reproducible than a human
+examination of an immutable artifact. Reconstructing what an evaluator saw is also
+different from rerunning the evaluation and expecting the same result.
+
+| Method route | Capability and independence | Provenance and replayability | Dominant false-result risk | Missing or insufficient route |
+|---|---|---|---|---|
+| Static examination/control | Parser/tool capability for mechanical rules; specialist judgment for semantic examination; separation as policy requires | Exact artifact, rule/tool version, configuration, and environment can permit deterministic replay; a human examination is normally record-reconstructable and can be reassessed, not deterministically replayed | Approximate patterns report false violations or miss behavior outside the encoded rule | `not-configured` when a required rule/tool route is absent; `unsupported` when required capability is unavailable |
+| Automated behavior exercise | Executable harness, valid oracle, target/environment control; independence depends on who derived and ran it | Deterministic replay requires exact inputs, seed, dependencies, clock, environment, and target identity; external or flaky behavior permits only controlled rerun | Incomplete cases produce false confidence; a copied or incorrect oracle can consistently report the wrong result | Missing required harness/fixture is `not-configured`; inability to exercise the claimed surface is `unsupported` |
+| Public black-box behavior | Capability to use and judge the supported surface without implementation rationale; can be automated, human, or hybrid | Automation may permit deterministic replay; human, assistive-technology, or environment-sensitive scenarios normally permit controlled reenactment plus record reconstruction | Limited scenarios miss behavior; environment mismatch creates false failures or unsupported passes | Incomplete claimed environment or scenario coverage cannot pass and may be `not-configured` or `needs-review` |
+| Specialist review | Declared relevant expertise; distinct, independent, or formally qualified separation when governed | Exact inputs, rubric, reviewer identity, reasoning, and findings reconstruct the review; another review is a new evaluation, not replay of human judgment | Capability gaps, confirmation bias, inconsistent criteria, and unsupported inference | Missing qualification/separation is an explicit non-pass; ambiguity or evaluator disagreement is `needs-review` |
+| Human attestation | Accountable person with authority and direct knowledge of the stated fact; corroboration where the claim permits | Identity, statement, scope, time, source/artifact, and signature make the claim verifiable and reconstructable; the historical act cannot be replayed and a later attestation is new evidence | Memory, self-interest, ambiguous wording, or authority mismatch overstates what occurred | No suitable attestor or corroboration cannot default to pass; use `not-configured`, `unsupported`, or `needs-review` according to known facts |
+| Explicit non-pass | No evaluator capability is implied; the disposition must come from known applicability, configuration, capability, or evidence facts | Recompute against current facts; retain the historical reason and inputs for reconstruction | Flattening distinct causes or treating missing evaluation as `not-applicable` | Preserve the exact non-pass and never convert absence into a score or pass |
+
+### 3. Source class does not select the method
 
 Acceptance criteria, policy, architecture, personas, risks, and assurance additions are
 sources of authority, not evidence methods. Any one source can yield several kinds of
@@ -111,7 +128,7 @@ authoritative source
 Tests and evaluators consume that sequence. They do not reverse it by turning their own
 capabilities or checks into new intended behavior.
 
-### 3. Representative assertion classes
+### 4. Representative assertion classes
 
 The table classifies ten representative classes, not every future control.
 
@@ -132,7 +149,7 @@ No class has a permanently preferred single method. The table states permissible
 the exact normalized claim, risk, lifecycle gate, and governed assurance determine which
 route is required.
 
-### 4. Method selection rules
+### 5. Method selection rules
 
 1. **Bind the claim before choosing the check.** Record exact source references,
    normalized claim, subject, scope, applicability, lifecycle gate, and required result
@@ -144,7 +161,7 @@ route is required.
    appropriate for product semantics. Internal tests are supporting evidence unless the
    assertion is specifically about the internal object.
 4. **Keep method dimensions explicit.** Automation, black-box access, capability,
-   separation, and coverage must not be inferred from a method name.
+   separation, coverage, and reproducibility must not be inferred from a method name.
 5. **Compose without compensation.** When a claim needs multiple methods, each obligation
    retains its own result. A static pass cannot compensate for a missing behavioral
    evaluation, and no blended score converts a required non-pass into success.
@@ -166,7 +183,7 @@ route is required.
     black-box results normally need shorter freshness than immutable artifact
     examination.
 
-### 5. Result and non-pass semantics
+### 6. Result and non-pass semantics
 
 | Condition | Required treatment |
 |---|---|
@@ -185,7 +202,7 @@ Control Evaluator's documented assertion result list does not include it. This r
 does not resolve that schema boundary. Any later design must still make the unavailable
 capability and the unevaluated assertion visible without manufacturing a result.
 
-### 6. Minimum traceability
+### 7. Minimum traceability
 
 DEC-0023 already fixes what belongs in the immutable manifest. A later plan or validation
 receipt needs enough additional information to reconstruct the evaluation without
@@ -193,6 +210,7 @@ changing that identity:
 
 - manifest ID, assertion ID and fingerprint, exact source revision, and target identity;
 - selected method action, observation boundary, execution mode, coverage, and freshness;
+- replay or reconstruction classification and the exact inputs needed to support it;
 - evaluator identity, declared capability, required separation/qualification, and
   deliberately withheld context;
 - tool/procedure and version, configuration, environment, inputs, oracle, sample or case
@@ -204,7 +222,7 @@ changing that identity:
 These are traceability needs, not an approved receipt schema. Secrets and sensitive
 evidence remain outside ordinary receipts under effective handling policy.
 
-### 7. Representative trace examples
+### 8. Representative trace examples
 
 #### Managed-work dependency transition
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "issue-101-validation-evidence-methods",
-  "summary": "Map validation assertions to explicit evidence actions, observation boundaries, evaluator capability, coverage, and truthful non-pass states.",
+  "summary": "Map validation assertions to explicit evidence actions, observation boundaries, evaluator capability, coverage, reproducibility, and truthful non-pass states.",
   "category": "added",
   "audiences": ["developers", "stakeholders"],
   "components": ["lifecycle-engine", "product"],

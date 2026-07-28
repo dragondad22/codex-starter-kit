@@ -71,9 +71,10 @@ runtime, or dashboard should be inferred from these gaps.
 
 - #100 resolved item 1 and promoted the result as
   [DEC-0023](../decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md).
-- #101 completed bounded
-  [assertion/evidence-method research](VALIDATION_ASSERTION_EVIDENCE_METHODS.md) for item
-  2. Promotion and executable design remain downstream work.
+- #101 produced a bounded
+  [assertion/evidence-method research package](VALIDATION_ASSERTION_EVIDENCE_METHODS.md)
+  for item 2. Its normal pull-request completion, promotion, and executable design remain
+  downstream work.
 
 ## Refinement conclusion
 
