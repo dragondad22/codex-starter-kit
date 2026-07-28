@@ -68,3 +68,14 @@ Project fields. Reciprocal scope links were added from #93 to #106 and from #94 
 
 These records are a dated refinement snapshot. Current GitHub state remains operational
 authority, and every ticket repeats freshness review when selected.
+
+## Validation assertion research update
+
+Issue #101 was explicitly selected on 2026-07-28 after #100 promoted DEC-0023. Its
+[bounded research record](../research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md) maps ten
+representative assertion classes to a multi-axis evidence-method profile while preserving
+authority, capability, coverage, non-pass, and reuse constraints.
+
+The result does not establish product or architecture authority. Once #101 completes,
+#102 and #108 become `Status Backlog / Readiness Ready`; #103 remains blocked by #102;
+and #83 remains `In progress / Needs refinement`.

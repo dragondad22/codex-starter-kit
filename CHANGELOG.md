@@ -2,12 +2,13 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:e62318d93517613334227164cc109ca0068980d69f939c71d810420e2c29b597 -->
+<!-- source-digest: sha256:bfa0c8e07703c94d8991953e70d940203143ac292a755a905dd17f1efd5688f9 -->
 
 ## [Unreleased]
 
 ### Added
 - Define immutable validation manifests that bind exact governed sources and evidence obligations without becoming approval or effect authority. (#83, #100, #101, #108)
+- Map validation assertions to explicit evidence actions, observation boundaries, evaluator capability, coverage, reproducibility, and truthful non-pass states. (#83, #101, #102, #103, #108)
 - Create managed repositories through reviewable, immutable plans and an evidence-backed apply operation. (#26)
 - Verify seed controls without converting fail, not-applicable, not-configured, needs-review, or accepted-exception states into a pass. (#27)
 - Qualify equivalent Phase 1 lifecycle semantics on native Linux, macOS, and Windows runners. (#30)

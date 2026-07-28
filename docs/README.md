@@ -143,6 +143,11 @@
 66. `evidence/ISSUE-100.md` — owner approval, promotion, negative-path coverage,
     verification, and downstream reconciliation record for the validation-manifest
     decision.
+67. `research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md` — bounded ten-class assertion
+    taxonomy, multi-axis evidence-method model, traceability rules, explicit non-pass
+    semantics, primary-source provenance, uncertainty, and limitations for issue #101.
+68. `evidence/ISSUE-101.md` — research coverage, authority boundary, negative paths,
+    verification contract, and downstream reconciliation record for issue #101.
 
 ## Document lifecycle
 

@@ -67,14 +67,23 @@ The repository has no approved answer for:
 No implementation module, prototype, provider adapter, evaluator kit, orchestration
 runtime, or dashboard should be inferred from these gaps.
 
+## Progress since snapshot
+
+- #100 resolved item 1 and promoted the result as
+  [DEC-0023](../decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md).
+- #101 produced a bounded
+  [assertion/evidence-method research package](VALIDATION_ASSERTION_EVIDENCE_METHODS.md)
+  for item 2. Its normal pull-request completion, promotion, and executable design remain
+  downstream work.
+
 ## Refinement conclusion
 
 The smallest useful frontier is validation-contract authority and lifecycle. It can
 improve predetermined outcome traceability for the current single-writer delivery path
-without approving multi-actor architecture. Assertion/evidence research follows that
-answer. Actor, finding, mission, provider, and Mission Control contracts remain separate
-downstream decisions because each has distinct authority, dependency, evidence, and
-handoff value.
+without approving multi-actor architecture. The completed research supplies a ten-class
+mapping and multi-axis method model without approving a schema or architecture. Actor,
+finding, mission, provider, and Mission Control contracts remain separate downstream
+decisions because each has distinct authority, dependency, evidence, and handoff value.
 
 The active sequence and GitHub work-item identities are preserved in the
 [Assurance Factory Decision Map](../roadmap/ASSURANCE_FACTORY_DECISION_MAP.md). The live
