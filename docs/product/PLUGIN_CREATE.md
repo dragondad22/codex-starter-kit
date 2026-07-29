@@ -112,8 +112,9 @@ requires the plugin snapshot/cache, verified engine, baseline material/identity,
 compatibility metadata, and trust roots to be provisioned before going offline. A cache hit
 alone is insufficient.
 
-The Codex CLI remains the selected development surface. IDE marketplace behavior is
-`needs-review` because official documentation conflicts; web/mobile cannot execute the
-local engine workflow. Cross-model/client/native qualification remains #54. Guided verify
-is a separate [implemented workflow](PLUGIN_VERIFY.md), and the create skill does not run
-it automatically.
+The Codex CLI remains the selected development surface. Current official documentation
+does not support plugins in the IDE extension; an IDE-discovered standalone skill is a
+different, unqualified distribution route. Web/mobile cannot execute the local engine
+workflow. Cross-model/client/native qualification remains #54. Guided verify is a separate
+[implemented workflow](PLUGIN_VERIFY.md), and the create skill does not run it
+automatically.

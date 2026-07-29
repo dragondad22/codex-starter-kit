@@ -97,7 +97,12 @@ metadata cannot change manifest identity.
 Resolves stable IDs, validates breadcrumbs, generates the effective-policy index, and
 enforces routing/context budgets. It provides focused material to skills and issues.
 It routes the effective operating-profile identity, mandatory interrupts, and the minimum
-concise receipt while preserving links to expanded evidence.
+concise receipt while preserving links to expanded evidence. DEC-0024 makes skill
+selection evidence-backed: a candidate must have one recognizable goal, testable
+activation boundaries, reusable procedural value, an appropriate adaptive surface, a
+bounded authority/fallback contract, qualifiable behavior, and net value above its
+catalog cost. Universal informed-interaction and authority behavior is routed from product
+contracts rather than copied into divergent skill prompts.
 
 ### Layout Manager
 
@@ -168,9 +173,10 @@ remain independently modeled by
 
 Client versions are retained as evidence but do not establish compatibility alone. Codex
 CLI is the required development surface; desktop support requires native qualification;
-IDE plugin distribution remains `needs-review` while official documentation conflicts.
-Plugin, engine, repository, and policy versions remain independent, and direct engine use
-is always the fallback.
+current official documentation does not support plugins in the IDE extension. Standalone
+repository or user skills may be available there, but that different distribution route
+has no product support claim without separate qualification. Plugin, engine, repository,
+and policy versions remain independent, and direct engine use is always the fallback.
 
 ## Repository Contract
 

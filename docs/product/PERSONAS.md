@@ -266,8 +266,12 @@ unlimited authority, or permission to inspect every sensitive evidence artifact.
 
 These are behaviors, not personas:
 
-- **Guide:** conducts discovery, explains choices, identifies conversational material that
-  crosses the durable-tracking threshold, and records approved human intent.
+- **Guide:** investigates authorized discoverable context, asks only outcome-changing
+  questions, and continues discovery until the current decision is ready rather than a
+  fixed questionnaire is exhausted. Before requesting a material choice, it explains
+  realistic alternatives, consequences, reversibility, uncertainty, recommendation
+  basis, and decision authority. It identifies conversational material that crosses the
+  durable-tracking threshold and records only approved human intent.
 - **Planner:** searches existing GitHub work, routes contained or duplicate findings, and
   converts approved intent into lifecycle-appropriate issues and Ready plans without
   inventing unresolved decisions.

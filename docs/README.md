@@ -148,6 +148,14 @@
     semantics, primary-source provenance, uncertainty, and limitations for issue #101.
 68. `evidence/ISSUE-101.md` — research coverage, authority boundary, negative paths,
     verification contract, and downstream reconciliation record for issue #101.
+69. `decisions/DEC-0024-skill-eligibility-and-informed-interaction.md` — approved universal
+    informed-interaction behavior and evidence-backed skill eligibility, distribution,
+    authority, qualification, and portfolio contract.
+70. `research/CODEX_SKILL_ELIGIBILITY_EVALUATION.md` — current official skill/plugin
+    capability snapshot, product-surface comparison, candidate disposition, alternatives,
+    negative-path qualification, and downstream map for issue #87.
+71. `evidence/ISSUE-87.md` — approval, amendment, promotion, verification, limitation, and
+    downstream reconciliation record for the skill-eligibility decision.
 
 ## Document lifecycle
 

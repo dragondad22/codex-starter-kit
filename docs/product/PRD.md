@@ -54,6 +54,9 @@ The product ships as three layers from its first usable release:
 - Risks are owned, time-bounded or periodically reviewed, and never disguised as passes.
 - Put the minimum governed context and breadcrumb at the human's natural decision surface,
   with deeper detail routed to one authoritative reference.
+- Make material choices informed: investigate known context first, explain realistic
+  alternatives, consequences, reversibility, uncertainty, recommendation basis, and
+  decision authority before requesting approval.
 
 ## User Stories
 
@@ -112,12 +115,22 @@ The product ships as three layers from its first usable release:
 53. As a maintainer, I want profile changes to invalidate active plans without rewriting historical evidence so that current work adapts and prior claims remain reconstructable.
 54. As a project owner, I want the agent to notice durable untracked work and decisions during conversation, search for existing issues, and offer the right capture action so that distraction or missing process knowledge does not erase operational memory.
 55. As PER-OWNER or PER-ASSURANCE acting within assigned authority, I want a deterministic validation manifest derived from exact governed sources so that I can see what must be proved without treating generated output as specification, approval, or effect authority.
+56. As a developer, I want focused, instinctively named skills only where they add reusable workflow value, and informed guidance everywhere, so that I can choose consequential directions without memorizing a catalog or approving recommendations I do not yet understand.
 
 ## Implementation Decisions
 
 - The lifecycle engine is the primary external seam. Its interface is `create`,
   `retrofit`, `inspect`, `plan`, `apply`, `verify`, `status`, and `upgrade`.
 - The Codex plugin is a guided adapter; it is not the sole enforcement authority.
+- A product skill must satisfy DEC-0024's recognizable-goal, activation-boundary,
+  reusable-value, appropriate-surface, bounded-contract, qualification, and net-catalog
+  tests. Deterministic behavior remains in the engine; standing behavior remains in
+  product/repository contracts; external access remains in its adapter or integration.
+- Every interaction surface investigates discoverable context before questioning and
+  presents context, realistic alternatives, material consequences, reversibility,
+  uncertainty, recommendation basis, and decision authority before requesting a material
+  choice. Conversational agreement, durable promotion, and effect authority remain
+  separate.
 - CI and direct developer use call the same engine interface.
 - Structured state is authoritative for lifecycle facts and policy computation.
 - V1 records whether special data handling is intentional as `No`, `Yes`, or `Unsure`;
@@ -208,6 +221,10 @@ The product ships as three layers from its first usable release:
 - Sensitive-data boundary tests cover all three declaration values, concise ordinary
   flow, notice acknowledgment, absent-route `needs-review`/`unsupported` states, and no
   silent tool activation or transmission.
+- Skill qualification tests explicit and implicit activation, should-not-trigger and
+  overlap prompts, incomplete inputs, missing dependencies, unsupported surfaces,
+  excessive questioning, premature recommendation, artifact overproduction, fallback,
+  semantic drift, and attempted decision, data, tracker, or effect-authority leakage.
 
 ## Success Measures
 
@@ -223,6 +240,9 @@ The product ships as three layers from its first usable release:
   collaborative work and a concise receipt that links every non-pass or limitation.
 - No supported deliverable passes solely because its basic function executes while
   applicable security, user experience, testing, or documentation evidence is absent.
+- No product skill is promoted without a recognizable user goal, tested negative
+  activation and authority boundaries, and evidence that its recurring value exceeds its
+  routing, context, maintenance, and user-memory cost.
 
 ## Out of Scope
 

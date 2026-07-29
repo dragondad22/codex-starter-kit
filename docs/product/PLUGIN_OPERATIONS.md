@@ -38,8 +38,10 @@ codex plugin list --json
 ```
 
 Confirm plugin version `0.3.0`, the source path, `enabled: true`, and the marketplace
-identity. Start a new Codex task/session after installation. Desktop or IDE hosts may need
-a full application reload; current IDE marketplace behavior remains `needs-review`.
+identity. Start a new Codex task/session after installation. Desktop hosts may need a full
+application reload. Current official documentation supports standalone skills in the IDE
+extension but does not support plugins there; do not treat an IDE-discovered repository
+or user skill as this installed plugin or as Phase 2 qualification evidence.
 Administrator policy can deny installation or disable the plugin. Do not bypass or
 silently change that policy.
 

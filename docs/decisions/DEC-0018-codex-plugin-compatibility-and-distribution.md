@@ -1,8 +1,9 @@
 # DEC-0018 — Codex plugin compatibility and distribution
 
-**Status:** Accepted
+**Status:** Accepted; skill and surface facts amended 2026-07-29
 **Owner:** dragondad22
 **Date:** 2026-07-13
+**Amended:** 2026-07-29 by issue #87
 **Source decision:** Issue #50
 
 ## Context
@@ -13,12 +14,13 @@ implement that adapter truthfully without deciding its initial component shape,
 development distribution, compatibility evidence, capability modes, offline boundary,
 and publication handoff.
 
-Current official documentation supports skills-only plugins and local, repository,
-Git-backed, npm-backed, workspace, and public-directory distribution paths. It does not
-document a version string that alone proves the required plugin capabilities, and current
-official pages conflict about IDE-extension plugin availability. A client-version guess
-or silent selection of every optional plugin capability would create false support and
-unnecessary authority.
+At the source-evaluation date, official documentation supported skills-only plugins and
+local, repository, Git-backed, npm-backed, workspace, and public-directory distribution
+paths. It did not document a version string that alone proved the required plugin
+capabilities, and official pages conflicted about IDE-extension plugin availability. A
+client-version guess or silent selection of every optional plugin capability would create
+false support and unnecessary authority. The 2026-07-29 amendment below supersedes only
+the dated skill-location and host-surface facts.
 
 ## Decision
 
@@ -70,11 +72,11 @@ unverified capability is therefore not automatically degraded guidance.
 
 Codex CLI is the required development surface once its marketplace, installation, skill,
 and workflow behavior passes qualification. ChatGPT desktop Codex is a candidate supported
-surface requiring manual evidence on every claimed native environment. IDE extension
-plugin distribution remains `needs-review` because official documentation conflicts;
-observed installed skills do not prove a general marketplace or administration contract.
-ChatGPT Work web is unsupported for the local lifecycle path without a separately verified
-host route, and Chat/mobile are unsupported for Phase 2 local lifecycle operation.
+surface requiring manual evidence on every claimed native environment. The original
+IDE-extension plugin disposition was `needs-review` because official documentation
+conflicted. The amendment below replaces that dated disposition. ChatGPT Work web is
+unsupported for the local lifecycle path without a separately verified host route, and
+Chat/mobile are unsupported for Phase 2 local lifecycle operation.
 
 Plugin, engine, repository schema, baseline/policy packs, and templates keep independent
 versions and identities. Plugin installation or update does not install or replace an
@@ -85,13 +87,38 @@ Supported offline use requires the plugin marketplace snapshot or cache, verifie
 baseline, compatibility metadata, and trusted roots to be provisioned in advance. Offline
 execution verifies those local inputs and never silently fetches or runs remote content.
 
+## 2026-07-29 amendment
+
+Current official documentation distinguishes standalone skill discovery from plugin
+distribution:
+
+- standalone skills are available in the ChatGPT desktop app, Codex CLI, and IDE
+  extension;
+- Codex loads local skills from repository, user, administrator, and system scopes;
+- plugins can distribute one or more skills and optional integrations; and
+- plugins are available through ChatGPT Work on the web, ChatGPT desktop Work/Codex, and
+  Codex CLI, but not Chat, the IDE extension, or mobile.
+
+The former IDE documentation conflict is therefore resolved. The Starter Kit's Phase 2
+package remains a skills-only plugin, Codex CLI remains its required development surface,
+and desktop support still requires native qualification. The product does not claim IDE
+support for the plugin. A separately placed repository or user skill may be discoverable
+in the IDE, but that different distribution route has no Starter Kit support claim until
+it receives its own qualification.
+
+Repository, user, administrator, and system location expresses discovery scope and
+ownership, not trust or authority. Installation, activation, or availability grants no
+engine, filesystem, process, network, connector, data-handling, decision, or effect
+authority. DEC-0024 governs when a workflow belongs in a skill and the interaction
+guarantees it must preserve.
+
 ## Consequences
 
 Issues #51–#54 can implement one narrow vertical slice without introducing optional
 integration authority. The status tracer owns the minimal plugin, repository marketplace,
 handshake, and first engine call. Guided create requires `full`; guided verify may use
 `full` or `verification-only`; qualification must exercise every mode and retain the exact
-client/plugin/engine/native identities and documentation conflicts.
+client/plugin/engine/native identities and current surface limitations.
 
 The plugin can be useful before public publication, but no development marketplace,
 cache, source build, or observed client version becomes a stable release claim. Requiring
@@ -103,7 +130,7 @@ visible. The Phase 2 plugin adds no connector data path or external-service auth
 future apps, MCP, hooks, analytics, or remote services require their own approved use case
 and review.
 
-Return this decision to review if official plugin packaging or distribution changes, a
+Return this decision to review if official skill or plugin packaging or distribution changes, a
 required surface cannot run the skills-only workflow, safe capability probing cannot
 distinguish the four modes, the engine handshake requires a breaking contract, offline
 operation gains an undisclosed network/package dependency, public review requires a
@@ -114,4 +141,6 @@ materially different package, or native qualification reveals semantic drift.
 Approved by the product owner through [issue #50](https://github.com/dragondad22/codex-starter-kit/issues/50).
 The bounded [compatibility and distribution evaluation](../research/CODEX_PLUGIN_COMPATIBILITY_EVALUATION.md)
 preserves sources, method, observations, conflict, limitations, alternatives, and
-downstream impact.
+downstream impact. The 2026-07-29 amendment was approved through
+[issue #87](https://github.com/dragondad22/codex-starter-kit/issues/87) and its
+[skill eligibility evaluation](../research/CODEX_SKILL_ELIGIBILITY_EVALUATION.md).

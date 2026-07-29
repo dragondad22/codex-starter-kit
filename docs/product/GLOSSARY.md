@@ -173,6 +173,15 @@ execution Status or release membership. Its values are:
 - **Blank:** The item is not independently placed on the feature roadmap. Tasks normally
   inherit roadmap context from their parent and leave Horizon blank.
 
+### Informed interaction
+
+The universal Starter Kit behavior of investigating authorized discoverable context,
+asking only questions that materially change the outcome, and making a material choice
+decision-ready before requesting approval. A decision-ready explanation includes realistic
+alternatives, consequences, reversibility, important uncertainty, recommendation basis,
+and decision authority. It does not merge advice, conversational agreement, durable
+promotion, or effect authority.
+
 ### Issue
 
 A GitHub work record describing an outcome, question, research effort, defect, or task.
@@ -399,6 +408,15 @@ The `MAJOR.MINOR.PATCH` version convention used when selected for a versioned co
 Broadly, major versions communicate incompatible contract changes, minor versions add
 backward-compatible capability, and patch versions make backward-compatible fixes.
 Not every project output uses SemVer.
+
+### Skill
+
+Task-specific reusable guidance that helps an AI apply judgment or orchestrate tools for
+one recognizable user goal. A Starter Kit product skill has testable activation
+boundaries, repeated procedural value, an appropriate adaptive surface, explicit inputs,
+outputs, effects, authority, dependencies and fallback, qualifiable positive and negative
+behavior, and value greater than its catalog cost. A skill does not own deterministic
+lifecycle truth, policy, external access, promotion, or effect authority.
 
 ### Special-data-handling declaration
 

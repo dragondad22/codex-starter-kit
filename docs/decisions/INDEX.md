@@ -28,3 +28,4 @@
 | Issue #78 | [DEC-0021](DEC-0021-product-version-and-change-records.md) | One product release version, structured authoritative change records, generated communication, and preparation/publication separation |
 | Issue #73 | [DEC-0022](DEC-0022-scoped-execution-mandates-and-issue-responsibility.md) | One bounded mandate authorizes contained plans and recovery; issue templates preserve lifecycle-appropriate intent without redefining standing workflow |
 | Issue #100 | [DEC-0023](DEC-0023-validation-manifest-authority-and-lifecycle.md) | Generated immutable validation manifests bind exact authority and evidence obligations without becoming approval or effect authority |
+| Issue #87 | [DEC-0024](DEC-0024-skill-eligibility-and-informed-interaction.md) | Universal informed interaction plus an evidence-backed eligibility, distribution, authority, and qualification contract for skills |
