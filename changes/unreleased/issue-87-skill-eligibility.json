@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "issue-87-skill-eligibility",
+  "summary": "Define when a Starter Kit workflow should become a skill and require informed, authority-aware decisions across every interaction surface.",
+  "category": "changed",
+  "audiences": ["users", "developers", "stakeholders"],
+  "components": ["plugin", "product"],
+  "issues": [86, 87, 88, 89, 90, 104, 114],
+  "breaking": false,
+  "internal_only": false
+}

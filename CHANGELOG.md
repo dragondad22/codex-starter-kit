@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:bfa0c8e07703c94d8991953e70d940203143ac292a755a905dd17f1efd5688f9 -->
+<!-- source-digest: sha256:0e232e247568de8364e70daaac411e34e0d73000d8dc65120906ae6bbe1a7935 -->
 
 ## [Unreleased]
 
@@ -26,6 +26,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 ### Changed
 - Make managed-repository creation safe to replay, interrupt, recover, and reconcile without deleting ambiguous user content. (#29)
 - Qualify plugin routing, capability modes, fallback behavior, and native development installation while preserving unpublished-engine limitations. (#54)
+- Define when a Starter Kit workflow should become a skill and require informed, authority-aware decisions across every interaction surface. (#86, #87, #88, #89, #90, #104, #114)
 - Guide organic implementation decomposition and create separate issues only when durable tracking adds value. (#95)
 
 ### Fixed
