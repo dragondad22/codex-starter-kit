@@ -412,6 +412,24 @@ documentation, Go, vet, and race gates pass, and independent Standards and Spec
 re-reviews report no findings. Native CI, completion reconciliation, terminal replay, and
 cleanup remain pending.
 
+Source `d37a43839d8cb7dfc74994e9c6c8159483c616f9` passed native CI run
+`30226344293`. A content-addressed mandate bound to that source then advanced the fresh
+episode through branch creation, draft PR creation, ready state, review routing, and
+stale-head invalidation. Sandbox PR `#34` now has exact final head
+`70752fb69cc6465afdfd25fcfaec139c60519d71` and passed the required
+`contract-delivery` check in run `30227492725`. Its approval remains bound to stale head
+`08e5a85393710a5c78f82ac3815c3ecd430112cd`; transition run `30227502725`
+requested a distinct review of the final head and stopped truthfully at `review-pending`.
+No squash merge, completion reconciliation, terminal replay, or cleanup occurred.
+
+The mandate for that episode expired at `2026-07-29T00:00:00Z` and cannot authorize a
+later transition or a changed product source. On 2026-08-03 the product branch merged
+current `main` at recovery checkpoint `c70a98a`; the conflict was limited to the generated
+changelog and documentation index, and refreshed local Python, documentation, Go, vet,
+race, release-record, and diff checks pass. The next live run requires a replacement
+mandate bound to the recovered product candidate; prior receipts remain historical
+evidence and must not be spliced into a newly authorized source.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

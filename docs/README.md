@@ -130,7 +130,7 @@
     implementation planning, deterministic validation, limitation, and handoff evidence.
 62. `evidence/ISSUE-75.md` — development-candidate delivery lifecycle, exact-head gates,
     mandate-contained transitions, squash completion memory, deterministic coverage, and
-    pending live/native qualification.
+    pending refreshed live/native qualification.
 63. `research/ASSURANCE_FACTORY_SEAM_INVENTORY.md` — bounded inventory of existing
     authority and lifecycle seams, in-progress dependencies, missing contracts, and the
     validation-first refinement conclusion for issue #83.
