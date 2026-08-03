@@ -451,6 +451,35 @@ fresh delivery and sandbox generators advance together to
 mandate before any fresh setup or delivery effect; the earlier approval does not authorize
 a changed source revision.
 
+Source `7e823b443737ec463d1e9c1fbda2ec33cf8a3531` passed the native Ubuntu,
+macOS, Windows, Phase 1 equivalence, and aggregate validation jobs in run
+`30832717960`. The replacement exact-source mandate in issue comment `5169158661`
+then authorized the fresh `…-05` episode. Sandbox PR `#35` reached exact final head
+`a1cb856dae0ec83abc697d8de1cd873711932663`, received a distinct approval for that
+head after intentional stale-head invalidation, and was squash merged by governed run
+`30843930540` as `84784f3f2811e74fd4fdd253df77ce00b2fe593b`.
+
+Completion runs `30844089043`, `30844277319`, and bounded diagnostic run
+`30844609030` all stopped before effects with `delivery plan preconditions changed
+before apply`. The selected fixture is closed and Done, but the parent remains open/In
+progress and the dependent remains open/Backlog/Blocked; no run partially reconciled
+them. Four consecutive read-only observations were identical, isolating the defect to the
+engine's receipt-aware revision handling rather than provider settling. `InspectDelivery`
+inferred the otherwise-unavailable squash method from the exact merge receipt but hashed
+that enriched observation while retaining its prior raw revision; `ApplyDelivery` then
+compared a fresh raw observation without applying the same normalization. Issue `#116`
+tracks the correction and blocks `#75`.
+
+The engine now derives one receipt-aware canonical observation for inspection,
+apply-time precondition validation, and verification. It clears the prior revision before
+hashing the normalized semantic fields, so unchanged post-merge state remains stable
+while genuine field drift still stops before effects. Regression coverage performs the
+governed squash merge, reproduces GitHub's unknown merge-method observation, rejects a
+real post-plan rules change without touching the completion target, reconciles the stable
+observation once, and proves terminal replay adds no effects or receipts. Live
+requalification, terminal cleanup, and final product-PR review remain pending against a
+new exact product source.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

@@ -337,10 +337,7 @@ func (e *Engine) InspectDelivery(ctx context.Context, request DeliveryRequest) (
 		historicalReceipts = slices.Clone(prior.HistoricalReceipts)
 		if DeliveryResourceDigest(prior.Request.Intent) == DeliveryResourceDigest(request.Intent) {
 			havePrior = true
-			if deliverySquashReceiptMatches(prior.Receipts, request.Intent, observation) {
-				observation.PullRequest.MergeMethod = request.Intent.MergeMethod
-				observation.Revision = digestJSON(observation)
-			}
+			observation = canonicalDeliveryObservation(observation, prior.Receipts, request.Intent)
 		} else {
 			historicalReceipts = append(historicalReceipts, prior.Receipts...)
 		}
@@ -459,6 +456,7 @@ func (e *Engine) ApplyDelivery(ctx context.Context, expectedPlanID string, plan 
 	if observeErr != nil {
 		return DeliveryApplyResult{}, observeErr
 	}
+	current = canonicalDeliveryObservation(current, state.Receipts, plan.Intent)
 	if current.Revision != plan.ObservationRevision {
 		return DeliveryApplyResult{}, errors.New("delivery plan preconditions changed before apply")
 	}
@@ -551,6 +549,16 @@ func deliverySquashReceiptMatches(receipts []DeliveryEffectReceipt, intent Deliv
 	})
 }
 
+func canonicalDeliveryObservation(observation DeliveryObservation, receipts []DeliveryEffectReceipt, intent DeliveryIntent) DeliveryObservation {
+	if !deliverySquashReceiptMatches(receipts, intent, observation) {
+		return observation
+	}
+	observation.PullRequest.MergeMethod = intent.MergeMethod
+	observation.Revision = ""
+	observation.Revision = digestJSON(observation)
+	return observation
+}
+
 func (e *Engine) applyDeliveryCompletion(ctx context.Context, request DeliveryRequest, mandate WorkExecutionMandate) (DeliveryEffectResult, error) {
 	if request.CompletionIntent == nil {
 		return DeliveryEffectResult{Outcome: "needs-review", Detail: "delivery completion intent is absent", Recoverable: true}, errors.New("delivery completion intent is required")
@@ -588,9 +596,7 @@ func (e *Engine) VerifyDelivery(ctx context.Context, repository string) (Deliver
 	if err != nil {
 		return DeliveryVerification{}, err
 	}
-	if deliverySquashReceiptMatches(state.Receipts, state.Request.Intent, observation) {
-		observation.PullRequest.MergeMethod = state.Request.Intent.MergeMethod
-	}
+	observation = canonicalDeliveryObservation(observation, state.Receipts, state.Request.Intent)
 	problems := deliveryProblems(state.Request.Intent, state.Inspection.Capability, observation, e.clock.Now())
 	disposition := DeliveryDispositionNeedsReview
 	if len(problems) == 0 {

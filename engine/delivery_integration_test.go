@@ -702,20 +702,25 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	deliveryObservation := readyDraftObservation()
 	deliveryObservation.Issue.ManagedID = completion.Intent.Task.ManagedID
 	deliveryObservation.PullRequest.Draft = false
-	deliveryObservation.PullRequest.State = "closed"
-	deliveryObservation.PullRequest.Merged = true
-	deliveryObservation.PullRequest.MergeRevision = "merge-1"
-	deliveryObservation.PullRequest.MergeMethod = "squash"
-	deliveryObservation.PullRequest.DefaultReachable = true
 	deliveryObservation.Checks[0].EvidenceID = "check-run:75"
+	reviewDeclaration := deliveryReviewDeclaration(completion.Intent.SourceRevision, completion.Intent.OperatingProfileRevision)
+	deliveryObservation.Reviews[0].Actor = reviewDeclaration.Actor
+	deliveryObservation.Reviews[0].Role = reviewDeclaration.Role
+	deliveryObservation.Reviews[0].Capability = reviewDeclaration.Capability
+	deliveryObservation.Reviews[0].ReviewedSourceRevision = reviewDeclaration.ReviewedSourceRevision
+	deliveryObservation.Reviews[0].ImplementationContext = reviewDeclaration.ImplementationContext
+	deliveryObservation.Reviews[0].ReviewContext = reviewDeclaration.ReviewContext
+	deliveryObservation.Reviews[0].ApprovalRoute = reviewDeclaration.ApprovalRoute
+	deliveryObservation.Reviews[0].FindingsRoute = reviewDeclaration.FindingsRoute
+	deliveryObservation.Reviews[0].Limitations = reviewDeclaration.Limitations
 	deliveryObservation.Reviews[0].EvidenceID = "review:75"
-	deliveryObservation.Revision = "observation:qualifying-merge"
+	deliveryObservation.Revision = "observation:merge-ready"
 	deliveryAdapter := engine.NewInMemoryDeliveryAdapter(engine.DeliveryCapability{SchemaVersion: 1, Online: true, Fresh: true, Actor: "test:maintainer", Mode: "memory", RepositoryID: completion.Intent.Target.RepositoryID, Permissions: []string{"contents:write", "issues:write", "projects:write", "pull-requests:write"}, ObservedAt: now, ExpiresAt: now.Add(time.Hour)}, deliveryObservation)
 	lifecycle := engine.New(engine.WithClock(fixedWorkClock{now}), engine.WithWorkAdapter(workAdapter), engine.WithDeliveryAdapter(deliveryAdapter))
 	request := engine.DeliveryRequest{Repository: completion.Repository, CompletionIntent: &completion.Intent, Intent: engine.DeliveryIntent{
 		SchemaVersion: 1, OperationID: completion.Intent.OperationID, SourceRevision: completion.Intent.SourceRevision, OperatingProfileRevision: completion.Intent.OperatingProfileRevision, Title: completion.Intent.Task.Title,
 		ManagedID: completion.Intent.Task.ManagedID, Target: completion.Intent.Target, BaseBranch: "main", HeadBranch: "task/75-delivery-squash-completion", RequiredChecks: []engine.DeliveryCheckIdentity{{Name: "foundation"}},
-		Review: deliveryReviewDeclaration(completion.Intent.SourceRevision, completion.Intent.OperatingProfileRevision), MergeMethod: "squash", Claim: &claim, EffectBoundary: completion.Intent.EffectBoundary,
+		Review: reviewDeclaration, MergeMethod: "squash", Claim: &claim, EffectBoundary: completion.Intent.EffectBoundary,
 	}}
 	inspection, err := lifecycle.InspectDelivery(context.Background(), request)
 	if err != nil {
@@ -725,6 +730,39 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectSquashMerge {
+		t.Fatalf("merge effects = %#v", plan.Effects)
+	}
+	mergeResult, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, exactDeliveryMandate(request, plan, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mergeResult.Status != engine.WorkApplyApplied || len(mergeResult.Receipts) != 1 || mergeResult.Receipts[0].MergeRevision == "" {
+		t.Fatalf("merge apply = %#v", mergeResult)
+	}
+
+	rawMerged, err := deliveryAdapter.ObserveDelivery(context.Background(), request.Intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawMerged.PullRequest.MergeMethod = ""
+	rawMerged.Revision = "observation:provider-merged"
+	deliveryAdapter.SetObservation(rawMerged)
+	inspection, err = lifecycle.InspectDelivery(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Disposition != engine.DeliveryDispositionMerged || inspection.Observation.PullRequest.MergeMethod != "squash" {
+		t.Fatalf("receipt-aware merged inspection = %#v", inspection)
+	}
+	plan, err = lifecycle.PlanDelivery(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 1 || plan.Effects[0].Kind != engine.DeliveryEffectReconcileCompletion {
+		t.Fatalf("completion effects = %#v", plan.Effects)
+	}
+
 	workInspection, err := lifecycle.InspectManagedTask(context.Background(), completion)
 	if err != nil {
 		t.Fatal(err)
@@ -735,6 +773,17 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	}
 	mandate := completionMandate(request, completion, plan, workPlan, now)
 
+	drifted := rawMerged
+	drifted.Rules.BaseRevision = "base-2"
+	drifted.Revision = "observation:provider-drifted"
+	deliveryAdapter.SetObservation(drifted)
+	if _, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate); err == nil {
+		t.Fatal("receipt-aware completion plan applied after provider state changed")
+	}
+	if observed := workAdapter.Observation(); observed.Task == nil || observed.Task.Closed || observed.Task.StatusOption != completion.Intent.Target.OptionIDs["status:next"] {
+		t.Fatalf("rejected drift mutated completion target = %#v", observed.Task)
+	}
+	deliveryAdapter.SetObservation(rawMerged)
 	result, err := lifecycle.ApplyDelivery(context.Background(), plan.ID, plan, mandate)
 	if err != nil {
 		t.Fatal(err)
@@ -746,9 +795,9 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	if observed.Task == nil || !observed.Task.Closed || observed.Task.StatusOption != completion.Intent.Target.OptionIDs["status:done"] {
 		t.Fatalf("completion observation = %#v", observed.Task)
 	}
-	completedDelivery := deliveryObservation
+	completedDelivery := rawMerged
 	completedDelivery.Issue.State = "closed"
-	completedDelivery.Revision = "observation:completed"
+	completedDelivery.Revision = "observation:provider-completed"
 	deliveryAdapter.SetObservation(completedDelivery)
 	replayedInspection, err := lifecycle.InspectDelivery(context.Background(), request)
 	if err != nil {
@@ -770,6 +819,21 @@ func TestDeliveryQualifyingMergeComposesWorkManagerCompletion(t *testing.T) {
 	}
 	if !replayedPlan.NoChange || len(replayedPlan.Effects) != 0 {
 		t.Fatalf("replay plan = %#v, want no-change", replayedPlan)
+	}
+	receiptCount := len(status.Receipts)
+	replayedApply, err := lifecycle.ApplyDelivery(context.Background(), replayedPlan.ID, replayedPlan, engine.WorkExecutionMandate{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayedApply.Status != engine.WorkApplyNoChange {
+		t.Fatalf("replay apply = %#v, want no-change", replayedApply)
+	}
+	replayedStatus, err := lifecycle.DeliveryStatus(context.Background(), request.Repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(replayedStatus.Receipts) != receiptCount {
+		t.Fatalf("terminal replay added receipts: before=%d after=%d", receiptCount, len(replayedStatus.Receipts))
 	}
 }
 
@@ -800,6 +864,23 @@ func deliveryMandate(request engine.DeliveryRequest, actors []string, effectKind
 		Actors: actors, CredentialModes: []string{"github-app"}, Permissions: []string{"contents:write", "pull-requests:write"},
 		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, SourceRevisions: []string{request.Intent.SourceRevision}, ManagedIDs: []string{request.Intent.ManagedID},
 		EffectKinds: []string{effectKind}, ResourceDigests: []string{engine.DeliveryResourceDigest(request.Intent)}, MaxEffects: 2,
+		DataClass: request.Intent.EffectBoundary.DataClass, CostCeiling: request.Intent.EffectBoundary.CostCeiling, Destructive: request.Intent.EffectBoundary.Destructive,
+		Retention: request.Intent.EffectBoundary.Retention, RecoveryOwner: request.Intent.EffectBoundary.RecoveryOwner,
+	})
+}
+
+func exactDeliveryMandate(request engine.DeliveryRequest, plan engine.DeliveryPlan, now time.Time) engine.WorkExecutionMandate {
+	effectKinds := make([]string, 0, len(plan.Effects))
+	for _, effect := range plan.Effects {
+		effectKinds = append(effectKinds, effect.Kind)
+	}
+	return engine.BindWorkExecutionMandate(engine.WorkExecutionMandate{
+		SchemaVersion: 1, ApprovedBy: "owner", ApprovalID: "approval-exact-delivery", ApprovedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour),
+		Target: request.Intent.Target, OperationID: request.Intent.OperationID, SelectedManagedID: request.Intent.ManagedID,
+		Actors: []string{plan.Capability.Actor}, CredentialModes: []string{plan.Capability.Mode}, Permissions: plan.Capability.Permissions,
+		Authorities:               []engine.WorkExecutionAuthority{{Actor: plan.Capability.Actor, CredentialMode: plan.Capability.Mode, Account: plan.Capability.Account, InstallationID: plan.Capability.InstallationID, RepositoryID: plan.Capability.RepositoryID, Permissions: plan.Capability.Permissions}},
+		OperatingProfileRevisions: []string{request.Intent.OperatingProfileRevision}, SourceRevisions: []string{request.Intent.SourceRevision}, ManagedIDs: []string{request.Intent.ManagedID},
+		EffectKinds: effectKinds, ResourceDigests: []string{engine.DeliveryResourceDigest(request.Intent)}, MaxEffects: len(plan.Effects),
 		DataClass: request.Intent.EffectBoundary.DataClass, CostCeiling: request.Intent.EffectBoundary.CostCeiling, Destructive: request.Intent.EffectBoundary.Destructive,
 		Retention: request.Intent.EffectBoundary.Retention, RecoveryOwner: request.Intent.EffectBoundary.RecoveryOwner,
 	})
