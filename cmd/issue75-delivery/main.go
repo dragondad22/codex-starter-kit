@@ -22,7 +22,7 @@ const (
 	sandboxRepositoryID        = "R_kgDOTa0WSg"
 	sandboxProjectID           = "PVT_kwDOEjyyNM4Bdm9F"
 	sandboxAccount             = "codex-starter-kit-labs"
-	deliveryBranch             = "contract/issue-75-20260721-05"
+	deliveryBranch             = "contract/issue-75-20260721-06"
 	implementedPath            = ".github/workflows/issue-75-fixture-check.yml"
 	requiredCheck              = "contract-delivery"
 	requiredCheckIntegrationID = int64(15368)

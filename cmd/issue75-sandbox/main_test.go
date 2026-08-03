@@ -181,7 +181,7 @@ func TestIssueFixturesAndRelationshipsCarryExactOrganicTopology(t *testing.T) {
 }
 
 func TestWorkflowStagesBindChangedHeadContentAndExactFinalCleanup(t *testing.T) {
-	if deliveryHeadBranch != "contract/issue-75-20260721-05" {
+	if deliveryHeadBranch != "contract/issue-75-20260721-06" {
 		t.Fatalf("delivery branch = %q", deliveryHeadBranch)
 	}
 	initial := mustBuild(t, "file-initial").Request.Manifest.Resources[0]

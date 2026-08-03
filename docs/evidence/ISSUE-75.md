@@ -480,6 +480,15 @@ observation once, and proves terminal replay adds no effects or receipts. Live
 requalification, terminal cleanup, and final product-PR review remain pending against a
 new exact product source.
 
+The retained `…-05` state artifact cannot be imported into that repaired source: the
+workflow binds every predecessor manifest to the exact source, mandate, and delivery
+resource, while the trusted squash receipt is also source-bound. Treating it as current
+state would discard the very receipt required to prove the merge method. The next bounded
+mandate must therefore clean only the preserved marker-owned `…-05` resources, then run
+one fresh episode using immutable branch identity `contract/issue-75-20260721-06`.
+The delivery and sandbox generators advance together so cleanup evidence remains distinct
+from the new qualification.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

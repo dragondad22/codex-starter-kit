@@ -33,7 +33,7 @@ const (
 	sandboxName                = "codex-starter-kit-sandbox"
 	configuration              = "issue-75-sandbox-config-v2"
 	runMarker                  = "starter-kit-contract:issue-75-20260721-01"
-	deliveryHeadBranch         = "contract/issue-75-20260721-05"
+	deliveryHeadBranch         = "contract/issue-75-20260721-06"
 	workflowPath               = ".github/workflows/issue-75-fixture-check.yml"
 	statusFieldID              = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTIk"
 	readinessFieldID           = "PVTSSF_lADOEjyyNM4Bdm9FzhYHTZA"
