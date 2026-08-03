@@ -430,6 +430,27 @@ race, release-record, and diff checks pass. The next live run requires a replace
 mandate bound to the recovered product candidate; prior receipts remain historical
 evidence and must not be spliced into a newly authorized source.
 
+The owner approved the bounded replacement mandate in issue comment `5168962792` for
+source `c8dea833a06cff5dbffe81063ce22379a72034b1`. Exact cleanup plan/apply pairs
+`30831793938`/`30831870213`, `30831995590`/`30832069885`,
+`30832325384`/`30832380503`, and `30832469783`/`30832548910` then closed
+unmerged PR `#34`, deleted its exact branch and marker-owned ruleset, removed both native
+relationships, and closed fixture issues `#26`-`#28`; every successful stage retained
+receipts and an effect-free converged postcondition. Cleanup-file plan/apply
+`30832158398`/`30832206537` emitted no delete effect: the adapter found the exact
+marker-owned initial workflow rather than the final-workflow digest required for terminal
+cleanup and returned `needs-review`. The live file digest
+`sha256:b60607dd2229857a46fe72499687b61d99e7f6f38d0cda448aea7b23b2fd4f85`
+matches the source-generated `file-initial` resource exactly, so it remains a deliberate
+no-change bootstrap input for the fresh episode and is still subject to terminal cleanup.
+
+Closed PR `#34` permanently owns delivery branch `contract/issue-75-20260721-04` as
+historical evidence. Reusing that identity would make the new episode ambiguous, so the
+fresh delivery and sandbox generators advance together to
+`contract/issue-75-20260721-05`. The resulting product source requires a newly bound
+mandate before any fresh setup or delivery effect; the earlier approval does not authorize
+a changed source revision.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact
