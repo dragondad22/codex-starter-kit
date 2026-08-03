@@ -81,10 +81,11 @@ available for development and CI independently of the plugin, subject to the sou
 
 Missing, incompatible, disabled, unverified, denied, malformed, or conflicting capability
 facts never trigger installation, replacement, online fallback, authority changes, or a
-partial managed result. Unsupported IDE marketplace behavior remains `needs-review`; web
-and mobile cannot run this local engine workflow. The Codex CLI is the selected Phase 2
-development surface, while desktop and additional surfaces remain qualification work in
-#54.
+partial managed result. Current official documentation does not support plugins in the
+IDE extension; an IDE-discovered standalone skill is a different, unqualified
+distribution route. Web and mobile cannot run this local engine workflow. The Codex CLI
+is the selected Phase 2 development surface, while desktop and additional supported
+plugin surfaces remain qualification work in #54.
 
 Supported offline status requires the marketplace/plugin, verified engine, matching
 qualification evidence, baseline compatibility inputs, and trust roots to be provisioned

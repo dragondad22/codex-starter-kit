@@ -77,6 +77,12 @@ every in-mandate effect.
 every profile. Assurance additions may strengthen its reviewer independence, number, or
 qualifications but cannot remove or weaken the universal pass.
 
+[DEC-0023](DEC-0023-validation-manifest-authority-and-lifecycle.md) applies the effective
+profile to immutable validation manifests. An effective validation approval rule from
+human-owned standing policy or a bounded per-work decision determines whether an
+additional approval applies; engagement mode alone neither grants effect authority nor
+changes validation results.
+
 ## Source
 
 Approved by the product owner through [issue #47](https://github.com/dragondad22/codex-starter-kit/issues/47).

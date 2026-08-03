@@ -173,6 +173,15 @@ execution Status or release membership. Its values are:
 - **Blank:** The item is not independently placed on the feature roadmap. Tasks normally
   inherit roadmap context from their parent and leave Horizon blank.
 
+### Informed interaction
+
+The universal Starter Kit behavior of investigating authorized discoverable context,
+asking only questions that materially change the outcome, and making a material choice
+decision-ready before requesting approval. A decision-ready explanation includes realistic
+alternatives, consequences, reversibility, important uncertainty, recommendation basis,
+and decision authority. It does not merge advice, conversational agreement, durable
+promotion, or effect authority.
+
 ### Issue
 
 A GitHub work record describing an outcome, question, research effort, defect, or task.
@@ -201,6 +210,15 @@ A content-addressed pre-work provenance record binding an executable issue contr
 governed sources, operating profile, current observation, Project configuration, and
 immutable target. It does not authorize external effects; a DEC-0022 execution mandate is
 separate.
+
+### Manifest assessment
+
+A lifecycle-engine result that evaluates an immutable validation manifest against current
+governed sources and observations. It reports `current`, `stale`, `needs-review`,
+`not-configured`, or `unsupported` without mutating the manifest. The engine reassesses
+at compilation or inspection, planning, immediately before evaluation, verification, and
+status. Invalid schema, digest, or provenance is rejected input rather than a manifest
+assessment.
 
 ### Milestone
 
@@ -391,6 +409,15 @@ Broadly, major versions communicate incompatible contract changes, minor version
 backward-compatible capability, and patch versions make backward-compatible fixes.
 Not every project output uses SemVer.
 
+### Skill
+
+Task-specific reusable guidance that helps an AI apply judgment or orchestrate tools for
+one recognizable user goal. A Starter Kit product skill has testable activation
+boundaries, repeated procedural value, an appropriate adaptive surface, explicit inputs,
+outputs, effects, authority, dependencies and fallback, qualifiable positive and negative
+behavior, and value greater than its catalog cost. A skill does not own deterministic
+lifecycle truth, policy, external access, promotion, or effect authority.
+
 ### Special-data-handling declaration
 
 The v1 project-level answer to whether the project intentionally contains or processes
@@ -425,6 +452,22 @@ An actionable implementation or operational outcome with sufficient context to b
 Its implementation may be decomposed organically into tasks, subtasks, and steps. A
 separate native issue is used when durable tracking adds value, not merely because a step
 could be completed independently.
+
+### Validation approval rule
+
+A human-owned governed rule that determines whether evaluation of a current validation
+manifest requires an additional approval. It may come from standing policy or a bounded
+per-work decision and may consider work, actor, risk, timing, cost, environment, and
+effect scope. No applicable rule is `not-configured`; the rule does not authorize effects
+or replace an execution mandate.
+
+### Validation manifest
+
+A generated, read-only checklist for one governed work scope that records the exact
+authoritative sources, what must be proved, and the evidence expected for each
+requirement. It does not create or change requirements and does not authorize effects.
+A changed source invalidates the manifest and requires regeneration. Run actors,
+timestamps, attempts, results, and retries belong to separate receipts.
 
 ### Workflow capability mode
 

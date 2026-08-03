@@ -5,6 +5,11 @@
 **Freshness:** 2026-07-13  
 **Decision:** [DEC-0018](../decisions/DEC-0018-codex-plugin-compatibility-and-distribution.md)
 
+**Later amendment:** The dated observations and conflict below remain source history.
+[Issue #87's 2026-07-29 evaluation](CODEX_SKILL_ELIGIBILITY_EVALUATION.md) supersedes
+only the current standalone-skill locations and plugin host-surface facts under the
+bounded DEC-0018 amendment.
+
 ## Objective and stopping conditions
 
 Select the narrowest supportable Phase 2 distribution and compatibility contract for

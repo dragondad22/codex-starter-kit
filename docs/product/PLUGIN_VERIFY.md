@@ -101,5 +101,7 @@ calls are the fallback. CI never depends on plugin routing or conversation.
 Supported offline verification requires the plugin snapshot/cache, verified engine,
 baseline/policy compatibility inputs, repository pins, and trust roots in advance. No
 silent online fallback, install, enablement, or update is allowed. CLI is the selected
-development surface; IDE marketplace support remains `needs-review`, web/mobile cannot
-execute the local workflow, and cross-client/model/native qualification remains #54.
+development surface. Current official documentation does not support plugins in the IDE
+extension; an IDE-discovered standalone skill is a different, unqualified distribution
+route. Web/mobile cannot execute the local workflow, and cross-client/model/native
+qualification remains #54.
