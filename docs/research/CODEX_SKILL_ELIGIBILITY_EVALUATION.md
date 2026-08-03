@@ -163,12 +163,12 @@ Conversation, approval to promote, and authorization to implement remain separat
 | Plugin `status` | Pass | Retain product plugin skill; read-only state remains engine-owned |
 | Plugin `verify` | Pass | Retain product plugin skill; evidence and non-pass semantics remain engine-owned |
 | Personal `think-it-through` | Pass as general personal workflow; not Starter Kit-specific | Keep personal; promote informed-decision guarantees universally |
-| #114 informed shaping | Plausible but unqualified | Refine one opt-in deep project/feature shaping skill after #87 |
+| #114 informed shaping | Plausible but unqualified | After #87, move to `Backlog / Needs refinement`; refine the experience before deciding whether one opt-in skill adds value |
 | Personal `review-this` | Pass as broad personal workflow; not the governed review product contract | Keep personal |
 | #88 governed review | Plausible after deterministic delivery seam | Blocked by #75 and #87; refine and qualify separately |
 | Personal `find-the-cause` | No current product-specific evidence | Keep personal; do not add to product catalog |
 | Personal `make-the-change` | Fails surface-ownership test for Starter Kit | Route to `AGENTS.md`, Ready issues, Work Manager, engine, and adapters |
-| #89 handoff/resume | Deterministic state is prerequisite | Specify Work Manager projection first; reconsider guided skill only if proven useful |
+| #89 handoff/resume | Deterministic mission state is prerequisite | #104 owns mission identity, actor handoff, interruption, replay, and recovery above Work Manager; keep #89 blocked until that contract exists, then reconsider a guided skill only if proven useful |
 | #90 selective management | Host/distribution question unresolved | Keep as bounded research; do not assume a manager skill |
 
 ## Alternatives and consequences
@@ -213,10 +213,10 @@ limitations, and reviewer. A green happy-path transcript alone is insufficient.
 | Issue | Result of #87 |
 |---|---|
 | #86 | Remains `In progress / Needs refinement` while concrete children remain |
-| #88 | Retains #75 and #87 as blockers until both are complete; then requires fresh refinement |
-| #89 | #87 resolves eligibility, but Work Manager state/projection is the preferred first surface |
+| #88 | After #87 closes, retains #75 as its blocker; then requires fresh refinement |
+| #89 | Remains `Backlog / Blocked` by #104; #104 owns deterministic mission state and handoff, while #89 preserves only the possible later guided experience |
 | #90 | Remains research; current scope/admin/distribution behavior must be evaluated before design |
-| #114 | Becomes the next candidate for refinement after #87; no implementation is pre-approved |
+| #114 | After #87 closes, becomes `Backlog / Needs refinement`; no implementation is pre-approved |
 
 ## Uncertainty and limitations
 
@@ -227,5 +227,6 @@ limitations, and reviewer. A green happy-path transcript alone is insufficient.
   evidence for the Starter Kit.
 - Implicit routing and prose can vary by model. Qualification requires semantic boundaries,
   not exact wording.
-- The evaluation does not decide #90's management experience, #89's state schema, #88's
-  review implementation, or #114's exact shaping artifacts.
+- The evaluation does not decide #90's management experience, #104's mission-state
+  contract, #89's later guided adapter, #88's review implementation, or #114's exact
+  shaping artifacts.

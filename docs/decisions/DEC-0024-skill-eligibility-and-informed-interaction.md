@@ -134,12 +134,12 @@ The current portfolio is dispositioned as follows:
 |---|---|---|
 | `create`, `status`, `verify` | Retain as product skills | Each has a recognizable engine-backed lifecycle goal, bounded effects, tested activation, capability modes, and direct-engine fallback under DEC-0018. |
 | General `think-it-through` | Personal skill | Useful across repositories, but its informed-decision lessons are universal product behavior rather than a Starter Kit product skill. |
-| Issue #114 informed project/feature shaping | Eligible after #87; remains blocked pending task refinement | It may warrant one opt-in deep shaping skill because it owns a recognizable discovery outcome and durable artifact routing. It must demonstrate value beyond ordinary conversation and avoid a predetermined artifact factory. |
+| Issue #114 informed project/feature shaping | Eligible for refinement after #87 | After #87 merges it becomes `Backlog / Needs refinement`, not Ready for implementation. It may warrant one opt-in deep shaping skill because it owns a recognizable discovery outcome and durable artifact routing, but it must demonstrate value beyond ordinary conversation and avoid a predetermined artifact factory. |
 | General `review-this` | Personal skill | Broad second-opinion review remains useful personally; it does not itself satisfy the Starter Kit's distinct governed PR-review contract. |
 | Issue #88 governed review | Eligible after #87 and #75; remains blocked | A product skill may guide the distinct review workflow once governed delivery supplies the exact source/evidence seam and task-specific qualification. |
 | General `find-the-cause` | Personal skill | No demonstrated Starter Kit-specific procedural value currently exceeds the catalog cost. |
 | General `make-the-change` | Ordinary governed delivery behavior | Ready issue execution belongs in repository instructions, issue contracts, the Work Manager, lifecycle engine, and adapters. A product skill would duplicate standing workflow and risk becoming an authority-shaped router. |
-| Issue #89 handoff and resumption | Different product surface first | Durable execution state and resumption belong in Work Manager state/projections. A later skill is justified only if guided human routing adds demonstrated value after that deterministic seam exists. |
+| Issue #89 handoff and resumption | Guided experience after #104 | Issue #104 owns the durable mission-state, actor-handoff, interruption, replay, and recovery boundary above Work Manager. #89 remains `Backlog / Blocked` by #104 and may later justify a skill only if guided human routing adds demonstrated value over that deterministic contract. |
 | Issue #90 selective skill management | Needs research | Current host scope, enable/disable, administration, and plugin behavior require bounded research. No manager or product skill is assumed. |
 
 Approval of this decision does not make any candidate implementation Ready.
@@ -152,10 +152,12 @@ must carry evidence, a downstream owner, and a supported distribution route. Rem
 combining a skill remains valid when its value no longer exceeds its discovery and
 maintenance burden.
 
-Issue #114 can now be refined as the next informed-shaping question. Issue #88 retains
-both #75 and this decision as predecessors. Issue #89 should first define the Work Manager
-projection it depends on. Issue #90 remains bounded research. Parent #86 remains open while
-those concrete children are incomplete.
+After #87 merges, issue #114 becomes `Backlog / Needs refinement` as the next
+informed-shaping question; no implementation is approved. Issue #88 retains #75 as its
+remaining predecessor. Issue #89 preserves the later guided handoff/resumption outcome
+but remains `Backlog / Blocked` by #104, which owns the deterministic mission-state and
+handoff boundary. Issue #90 remains bounded research. Parent #86 remains open while those
+concrete children are incomplete.
 
 Rejected alternatives are retaining only the existing three skills forever, turning every
 useful behavior into a product skill, packaging all personal workflows, using one broad

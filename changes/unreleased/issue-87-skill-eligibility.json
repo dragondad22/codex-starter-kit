@@ -5,7 +5,7 @@
   "category": "changed",
   "audiences": ["users", "developers", "stakeholders"],
   "components": ["plugin", "product"],
-  "issues": [86, 87, 88, 89, 90, 114],
+  "issues": [86, 87, 88, 89, 90, 104, 114],
   "breaking": false,
   "internal_only": false
 }

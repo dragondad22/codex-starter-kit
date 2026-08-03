@@ -19,7 +19,7 @@ consequences and candidate dispositions. DEC-0024 is the durable authority:
 The owner also approved retaining product `create`, `status`, and `verify`; keeping the
 four broad workflow skills personal or routing their behavior to existing product
 surfaces; treating #114 and #88 as later qualified candidates; preferring deterministic
-Work Manager state before #89 guidance; and leaving #90 as research.
+mission state under #104 before #89 guidance; and leaving #90 as research.
 
 ## Changed records
 
@@ -29,6 +29,8 @@ Work Manager state before #89 guidance; and leaving #90 as research.
   plugins, which current documentation does not support in the IDE.
 - Added the skill and informed-interaction outcomes to the PRD, Guide behavior, Context
   Router/plugin architecture, operations guidance, and canonical glossary.
+- Reconciled #89 as a later guided experience blocked by #104's deterministic
+  mission-state/handoff decision, and specified #114's post-#87 refinement state.
 - Added the structured product change record and regenerated the changelog.
 
 ## Negative-path disposition
@@ -65,7 +67,8 @@ evidence.
 
 Issue #87 completes the common contract but does not make a new skill implementation
 Ready. Parent #86 remains in progress. #88 retains #75 as a separate blocker and requires
-fresh task fitness after both predecessors complete. #89 routes first to a deterministic
-Work Manager projection. #90 remains bounded host/distribution research. #114 is the next
-informed-shaping candidate to refine, with its exact artifacts and qualification still
-unresolved.
+fresh task fitness after both predecessors complete. #89 remains `Backlog / Blocked` by
+#104, which owns the deterministic mission-state and handoff boundary; #89 preserves only
+the possible later guided experience. #90 remains bounded host/distribution research.
+After #87 closes, #114 becomes `Backlog / Needs refinement` as the next informed-shaping
+candidate, with its exact artifacts and qualification still unresolved.
