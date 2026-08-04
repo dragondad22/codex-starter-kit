@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "id": "issue-75-delivery-squash",
-  "summary": "Deliver one governed Ready issue through exact-head gates, distinct review, mandated squash merge, and stable receipt-aware completion reconciliation.",
+  "summary": "Deliver one governed Ready issue through exact-head gates, distinct review, mandated squash merge, stable receipt-aware completion reconciliation, and exact historical cleanup.",
   "category": "added",
   "audiences": ["users", "operators", "developers", "stakeholders"],
   "components": ["cli", "engine", "github", "github-workflow"],
-  "issues": [75, 116],
+  "issues": [75, 116, 117],
   "breaking": false,
   "internal_only": false
 }

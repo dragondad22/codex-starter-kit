@@ -38,6 +38,19 @@ class Issue75WorkflowContractTests(unittest.TestCase):
             normalized_workflow,
         )
 
+    def test_cleanup_branch_identity_is_folded_through_plan_and_apply(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for name in [
+            "issue-75-sandbox-stage-plan.yml",
+            "issue-75-sandbox-stage-apply.yml",
+        ]:
+            workflow = (root / "docs/evidence" / name).read_text(encoding="utf-8")
+            self.assertIn('"cleanup_head_branch"', workflow)
+            self.assertIn(
+                '--cleanup-head-branch "$(jq -r \'.cleanup_head_branch // ""\' identity-flags.json)"',
+                workflow,
+            )
+
     def test_delivery_input_derives_final_workflow_with_a_bound_placeholder_head(self) -> None:
         root = Path(__file__).resolve().parents[1]
         workflow = (

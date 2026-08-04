@@ -489,6 +489,18 @@ one fresh episode using immutable branch identity `contract/issue-75-20260721-06
 The delivery and sandbox generators advance together so cleanup evidence remains distinct
 from the new qualification.
 
+Read-only cleanup planning run `30847170911` then exposed a second identity boundary
+before any effect. The rotated source correctly used `…-06` as the next delivery branch,
+but `cleanup-delivery` also reused that global creation identity while carrying PR #35's
+historical `…-05` number, IDs, and head SHA. The generated plan was not applied. Issue
+`#117` separates the two meanings: `cleanup_head_branch` is now a required historical
+cleanup identity carried through both workflow schemas, the CLI stage contract, generated
+resources, plan, mandate, and apply-time artifact comparison. Missing or malformed values
+fail before planning; a valid-looking value that does not match the observed PR or branch
+continues to fail closed in the GitHub adapter. Regression coverage proves `…-05` cleanup
+can coexist with `…-06` creation without using an older product source or weakening exact
+identity checks.
+
 ## Pending live qualification and completion
 
 The live journey requires one current content-addressed DEC-0022 mandate for its exact

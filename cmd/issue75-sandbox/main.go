@@ -44,7 +44,10 @@ const (
 	githubActionsIntegrationID = int64(15368)
 )
 
-var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+var (
+	commitPattern        = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	cleanupBranchPattern = regexp.MustCompile(`^contract/issue-75-[0-9]{8}-[0-9]{2,}$`)
+)
 
 type planInput struct {
 	Role          string                              `json:"role"`
@@ -85,6 +88,7 @@ type options struct {
 	pullNumber     string
 	pullID         string
 	pullNodeID     string
+	cleanupHead    string
 	branchHeadSHA  string
 }
 
@@ -121,6 +125,7 @@ func run(args []string, now time.Time, output io.Writer) error {
 	pullNumber := flags.String("pull-number", "", "exact delivery pull request number")
 	pullID := flags.String("pull-id", "", "exact delivery pull request database ID")
 	pullNodeID := flags.String("pull-node-id", "", "exact delivery pull request node ID")
+	cleanupHead := flags.String("cleanup-head-branch", "", "exact historical delivery branch removed by cleanup-delivery")
 	branchHeadSHA := flags.String("branch-head-sha", "", "exact delivery branch head revision")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return errors.New("valid named flags are required; positional arguments are unsupported")
@@ -137,7 +142,7 @@ func run(args []string, now time.Time, output io.Writer) error {
 		dependent:     issueIdentity{Number: *dependentNumber, ID: *dependentID, NodeID: *dependentNodeID},
 		deliveryInput: *deliveryInput,
 		deliveryState: *deliveryState, stateRunID: *stateRunID, stateArtifact: *stateArtifact,
-		pullNumber: *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, branchHeadSHA: *branchHeadSHA,
+		pullNumber: *pullNumber, pullID: *pullID, pullNodeID: *pullNodeID, cleanupHead: *cleanupHead, branchHeadSHA: *branchHeadSHA,
 	}
 	input, err := buildPlanInput(value)
 	if err != nil {
@@ -212,6 +217,9 @@ func buildPlanInput(value options) (planInput, error) {
 }
 
 func stageResources(value options) (string, []engine.SandboxResourceSpec, error) {
+	if value.stage != "cleanup-delivery" && value.cleanupHead != "" {
+		return "", nil, errors.New("cleanup-head-branch is supported only by cleanup-delivery")
+	}
 	switch value.stage {
 	case "issues-setup":
 		return githubadapter.SandboxRoleSeeder, fixtureIssues(false, value), nil
@@ -267,8 +275,8 @@ func stageResources(value options) (string, []engine.SandboxResourceSpec, error)
 	case "cleanup-file":
 		return githubadapter.SandboxRoleSeeder, []engine.SandboxResourceSpec{workflowResource("main", finalWorkflow(), true)}, nil
 	case "cleanup-delivery":
-		if !positiveDecimal(value.delivery.Number) || !positiveDecimal(value.pullNumber) || !positiveDecimal(value.pullID) || strings.TrimSpace(value.pullNodeID) == "" || !commitPattern.MatchString(value.branchHeadSHA) {
-			return "", nil, errors.New("cleanup-delivery requires exact delivery and pull request identities plus a lowercase 40-character branch-head-sha")
+		if !positiveDecimal(value.delivery.Number) || !positiveDecimal(value.pullNumber) || !positiveDecimal(value.pullID) || strings.TrimSpace(value.pullNodeID) == "" || !cleanupBranchPattern.MatchString(value.cleanupHead) || !commitPattern.MatchString(value.branchHeadSHA) {
+			return "", nil, errors.New("cleanup-delivery requires exact delivery, pull request, cleanup branch, and lowercase 40-character head identities")
 		}
 		return githubadapter.SandboxRoleSeeder, cleanupDeliveryResources(value), nil
 	case "cleanup-orphan-branch":
@@ -299,7 +307,7 @@ func contractForStage(stage string) stageContract {
 	case "issues-governed", "project-setup", "relationships-setup", "cleanup-relationships", "cleanup-issues":
 		contract.IdentityRequirements = issueIdentities
 	case "cleanup-delivery":
-		contract.IdentityRequirements = []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}
+		contract.IdentityRequirements = []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "cleanup_head_branch", "branch_head_sha"}
 	case "file-candidate":
 		contract.IdentityRequirements = []string{"delivery_number", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}
 	case "file-stale":
@@ -462,10 +470,10 @@ func relationshipResources(value options) []engine.SandboxResourceSpec {
 func cleanupDeliveryResources(value options) []engine.SandboxResourceSpec {
 	claimMarker := "Closes #" + value.delivery.Number
 	pull := resource("fixture:pr:delivery", engine.SandboxResourceFixturePR, "delivery", claimMarker, map[string]string{
-		"title": "Contract fixture: governed delivery", "state": "closed", "draft": "false", "head": deliveryHeadBranch, "base": "main",
+		"title": "Contract fixture: governed delivery", "state": "closed", "draft": "false", "head": value.cleanupHead, "base": "main",
 		"number": value.pullNumber, "id": value.pullID, "node_id": value.pullNodeID, "head_sha": value.branchHeadSHA,
 	}, true)
-	branch := resource("fixture:branch:delivery", engine.SandboxResourceFixtureBranch, deliveryHeadBranch, claimMarker+":branch:delivery", map[string]string{
+	branch := resource("fixture:branch:delivery", engine.SandboxResourceFixtureBranch, value.cleanupHead, claimMarker+":branch:delivery", map[string]string{
 		"sha": value.branchHeadSHA,
 	}, true)
 	return []engine.SandboxResourceSpec{pull, branch}

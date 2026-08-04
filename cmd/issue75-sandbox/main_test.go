@@ -18,6 +18,8 @@ import (
 
 var fixedNow = time.Date(2026, 7, 21, 18, 0, 0, 0, time.UTC)
 
+const historicalCleanupBranch = "contract/issue-75-20260721-05"
+
 type fixedClock struct{ now time.Time }
 
 func (clock fixedClock) Now() time.Time { return clock.now }
@@ -133,7 +135,7 @@ func TestStageContractDeclaresIdentityHandoffAndDeliveryCleanup(t *testing.T) {
 		}
 	}
 	cleanup := mustBuild(t, "cleanup-delivery")
-	if !slices.Equal(cleanup.StageContract.IdentityRequirements, []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "branch_head_sha"}) {
+	if !slices.Equal(cleanup.StageContract.IdentityRequirements, []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "cleanup_head_branch", "branch_head_sha"}) {
 		t.Fatalf("delivery cleanup contract = %#v", cleanup.StageContract)
 	}
 	candidate := mustBuild(t, "file-candidate")
@@ -144,7 +146,7 @@ func TestStageContractDeclaresIdentityHandoffAndDeliveryCleanup(t *testing.T) {
 	if len(resources) != 2 || resources[0].Kind != engine.SandboxResourceFixturePR || resources[1].Kind != engine.SandboxResourceFixtureBranch {
 		t.Fatalf("delivery cleanup ordering = %#v", resources)
 	}
-	if resources[0].Marker != "Closes #12" || resources[0].Attributes["number"] != "17" || resources[0].Attributes["id"] != "117" || resources[0].Attributes["node_id"] != "PR_delivery" || resources[0].Attributes["head_sha"] != strings.Repeat("b", 40) || resources[0].Attributes["head"] != deliveryHeadBranch || resources[1].Attributes["sha"] != strings.Repeat("b", 40) || resources[1].Name != deliveryHeadBranch {
+	if resources[0].Marker != "Closes #12" || resources[0].Attributes["number"] != "17" || resources[0].Attributes["id"] != "117" || resources[0].Attributes["node_id"] != "PR_delivery" || resources[0].Attributes["head_sha"] != strings.Repeat("b", 40) || resources[0].Attributes["head"] != historicalCleanupBranch || resources[1].Attributes["sha"] != strings.Repeat("b", 40) || resources[1].Name != historicalCleanupBranch || resources[1].Name == deliveryHeadBranch {
 		t.Fatalf("delivery cleanup identities = %#v", resources)
 	}
 	orphan := mustBuild(t, "cleanup-orphan-branch")
@@ -309,6 +311,9 @@ func TestRunRejectsUnapprovedOrAmbiguousInputs(t *testing.T) {
 		{"cleanup delivery pull required", withoutFlag(validArgs("cleanup-delivery"), "--pull-number"), fixedNow},
 		{"cleanup delivery pull id required", withoutFlag(validArgs("cleanup-delivery"), "--pull-id"), fixedNow},
 		{"cleanup delivery pull node required", withoutFlag(validArgs("cleanup-delivery"), "--pull-node-id"), fixedNow},
+		{"cleanup delivery branch required", withoutFlag(validArgs("cleanup-delivery"), "--cleanup-head-branch"), fixedNow},
+		{"cleanup delivery branch exact", replaceFlag(validArgs("cleanup-delivery"), "--cleanup-head-branch", "main"), fixedNow},
+		{"cleanup delivery branch stage bound", append(validArgs("issues-setup"), "--cleanup-head-branch", historicalCleanupBranch), fixedNow},
 		{"cleanup delivery sha required", withoutFlag(validArgs("cleanup-delivery"), "--branch-head-sha"), fixedNow},
 		{"cleanup delivery sha exact", replaceFlag(validArgs("cleanup-delivery"), "--branch-head-sha", "main"), fixedNow},
 		{"candidate branch sha required", withoutFlag(validArgs("file-candidate"), "--branch-head-sha"), fixedNow},
@@ -416,7 +421,7 @@ func governedDeliveryInput(t *testing.T) string {
 }
 
 func validArgs(stage string) []string {
-	return []string{
+	args := []string{
 		"--stage", stage, "--repository", ".", "--source-revision", strings.Repeat("a", 40),
 		"--approved-by", "owner", "--approval-id", "issue-comment-123", "--approved-at", "2026-07-21T17:00:00Z", "--expires-at", "2026-07-22T18:00:00Z",
 		"--parent-number", "11", "--parent-id", "101", "--parent-node-id", "I_parent",
@@ -424,6 +429,10 @@ func validArgs(stage string) []string {
 		"--dependent-number", "13", "--dependent-id", "103", "--dependent-node-id", "I_dependent",
 		"--pull-number", "17", "--pull-id", "117", "--pull-node-id", "PR_delivery", "--branch-head-sha", strings.Repeat("b", 40),
 	}
+	if stage == "cleanup-delivery" {
+		args = append(args, "--cleanup-head-branch", historicalCleanupBranch)
+	}
+	return args
 }
 
 func withoutFlag(args []string, name string) []string {
