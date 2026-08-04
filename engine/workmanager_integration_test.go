@@ -1050,6 +1050,25 @@ func TestManagedTaskUsesNativeRelationshipObservationInsteadOfCallerFacts(t *tes
 	}
 }
 
+func TestRenderManagedIssueBodyRoundTripsContractAndMetadata(t *testing.T) {
+	contract := governedIssueContractFixture()
+	desired := engine.DesiredManagedTask{
+		ManagedID: "issue:75", IssueType: "task", Title: "delivery", ParentManagedID: "issue:4",
+		Readiness: "ready", Status: "in-progress", Blockers: []engine.WorkDependency{{ManagedID: "issue:74", Closed: false}},
+	}
+	body, err := engine.RenderManagedIssueBody(desired, &contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "<!-- starter-kit-managed:issue:75 -->") {
+		t.Fatalf("managed marker missing: %s", body)
+	}
+	parsed, err := engine.ParseExecutableIssueContract(body)
+	if err != nil || engine.ExecutableIssueContractDigest(parsed) != engine.ExecutableIssueContractDigest(contract) {
+		t.Fatalf("contract round trip = %#v, %v", parsed, err)
+	}
+}
+
 func TestManagedTaskUsesObservedParentLifecycleAsUnstartedBaseline(t *testing.T) {
 	t.Parallel()
 

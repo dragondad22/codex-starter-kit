@@ -2,7 +2,7 @@
 
 All notable Codex Starter Kit changes are generated from structured change records.
 
-<!-- source-digest: sha256:0e232e247568de8364e70daaac411e34e0d73000d8dc65120906ae6bbe1a7935 -->
+<!-- source-digest: sha256:916f2d1a706a9a6e9383a1cc473642a225c32c8dd0af8d228c63440302a26b7d -->
 
 ## [Unreleased]
 
@@ -20,6 +20,7 @@ All notable Codex Starter Kit changes are generated from structured change recor
 - Reconcile one managed task through a native, identity-bound GitHub REST and GraphQL adapter with explicit recovery evidence. (#72)
 - Bootstrap and verify an isolated organization-owned GitHub contract sandbox through an approved, replay-safe lifecycle. (#73)
 - Govern executable work with source-bound freshness, subtype completion, independent Horizon projection, exact delivery evidence, mandated external effects, and read-only live source qualification. (#74)
+- Deliver one governed Ready issue through exact-head gates, distinct review, mandated squash merge, stable receipt-aware completion reconciliation, and exact historical cleanup. (#75, #116, #117)
 - Track one product version and generate audience-aware changelogs from validated, durable change records. (#78)
 - Prompt owners to capture durable untracked work and decisions before material implementation. (#84)
 

@@ -89,7 +89,9 @@ repository paths and digests. The PR must target the current default branch, its
 commit must remain reachable from one immutable default-branch head, and every claimed
 file digest must still match at that head. The claimed path set must exactly equal the
 PR's bounded changed-file manifest; deletion-bearing or empty PRs cannot prove complete
-delivery. Historical claims for other governed revisions are ignored. A valid
+delivery. On REST `2026-03-10`, the adapter obtains the merged PR's commit identity from
+GraphQL `mergeCommit` because REST pull-request payloads no longer contain
+`merge_commit_sha`. Historical claims for other governed revisions are ignored. A valid
 cross-referenced claim owned by another managed item is retained as possible partial
 implementation and requires explicit residual-scope refinement; ordinary cross-references
 without a delivery claim remain non-evidence. Open, reverted, removed, current-claim

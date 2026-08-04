@@ -475,12 +475,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 type liveSandboxPlanInput struct {
-	Role     string                              `json:"role"`
-	Request  engine.SandboxRequest               `json:"request"`
-	Config   githubadapter.SandboxConfig         `json:"config"`
-	App      githubadapter.AppInstallationConfig `json:"app"`
-	Reviewer githubadapter.UserTokenConfig       `json:"reviewer"`
-	Mandate  engine.SandboxExecutionMandate      `json:"mandate"`
+	Role          string                              `json:"role"`
+	StageContract liveSandboxStageContract            `json:"stage_contract"`
+	Request       engine.SandboxRequest               `json:"request"`
+	Config        githubadapter.SandboxConfig         `json:"config"`
+	App           githubadapter.AppInstallationConfig `json:"app"`
+	Reviewer      githubadapter.UserTokenConfig       `json:"reviewer"`
+	Mandate       engine.SandboxExecutionMandate      `json:"mandate"`
+}
+
+type liveSandboxStageContract struct {
+	Stage                string   `json:"stage"`
+	IdentityRequirements []string `json:"identity_requirements"`
+	IdentityOutputs      []string `json:"identity_outputs"`
 }
 
 type liveSandboxApplyInput struct {

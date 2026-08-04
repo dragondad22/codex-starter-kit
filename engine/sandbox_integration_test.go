@@ -87,6 +87,75 @@ func TestSandboxLifecycleReconcilesMissingManagedResourceAndReplays(t *testing.T
 	}
 }
 
+func TestSandboxPlanAcceptsObservedNativeIdentityAttributes(t *testing.T) {
+	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
+	repository := newSandboxRepository(t)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	resource := SandboxResourceSpec{
+		Key: "fixture:issue:parent", Kind: SandboxResourceFixtureIssue, Name: "parent", Marker: "starter-kit-contract:run:issue:parent",
+		Attributes: map[string]string{"title": "Fixture parent", "state": "open", "input:labels": "contract-run,type:task"},
+	}
+	manifest := SandboxManifest{
+		SchemaVersion: 1, OperationID: "issue-75-identities", SourceRevision: "source", ConfigurationRevision: "config",
+		ApprovedBy: "owner", ApprovedPlan: "approved", RecoveryOwner: "owner", MarkerPrefix: "starter-kit-contract:", Target: target, Resources: []SandboxResourceSpec{resource},
+	}
+	observation := SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config", Resources: []SandboxObservedResource{{
+		Key: resource.Key, Kind: resource.Kind, Name: resource.Name, ID: "26", Marker: resource.Marker,
+		Attributes: map[string]string{"title": "Fixture parent", "state": "open", "number": "26", "id": "4976095186", "node_id": "I_parent"},
+	}}}
+	adapter := NewInMemorySandboxAdapter(
+		SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "seeder", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		observation,
+	)
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.NoChange || len(plan.Effects) != 0 {
+		t.Fatalf("native identity handoff was treated as drift: %#v", plan.Effects)
+	}
+
+	observation.Resources[0].Attributes["unexpected"] = "drift"
+	adapter.SetObservation(observation)
+	inspection, err = lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("unexpected observed attribute did not produce drift: %#v", plan)
+	}
+
+	managedResource := cloneSandboxResourceSpec(resource)
+	managedResource.Attributes["number"] = "26"
+	managedResource.Attributes["id"] = "4976095186"
+	managedResource.Attributes["node_id"] = "I_parent"
+	manifest.Resources = []SandboxResourceSpec{managedResource}
+	delete(observation.Resources[0].Attributes, "unexpected")
+	observation.Resources[0].Attributes["node_id"] = "I_changed"
+	adapter.SetObservation(observation)
+	inspection, err = lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: repository, Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.NoChange || len(plan.Effects) != 1 {
+		t.Fatalf("changed managed identity did not produce drift: %#v", plan)
+	}
+}
+
 func TestSandboxInspectionStopsOnUnrecognizedNameCollision(t *testing.T) {
 	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
 	repository := newSandboxRepository(t)
@@ -361,6 +430,30 @@ func TestSandboxManifestRejectsUnsupportedKindsAndSensitiveMaterial(t *testing.T
 			resource: SandboxResourceSpec{Key: "label:type-task", Kind: SandboxResourceLabel, Name: "type:task", Attributes: map[string]string{"token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"}},
 			want:     "sensitive-looking material",
 		},
+		{
+			name: "relationship without exact identities",
+			resource: SandboxResourceSpec{Key: "relationship:parent", Kind: SandboxResourceIssueRelationship, Name: "parent child", Marker: "starter-kit-contract:run",
+				Attributes: map[string]string{"relationship": "parent-sub-issue", "source_number": "10"}},
+			want: "exact source and target issue identities",
+		},
+		{
+			name: "self relationship",
+			resource: SandboxResourceSpec{Key: "relationship:self", Kind: SandboxResourceIssueRelationship, Name: "self relationship", Marker: "starter-kit-contract:run",
+				Attributes: map[string]string{"relationship": "blocker-dependent", "source_number": "10", "source_id": "100", "source_node_id": "I_same", "target_number": "10", "target_id": "100", "target_node_id": "I_same"}},
+			want: "exact source and target issue identities",
+		},
+		{
+			name: "file whose approved content lacks marker",
+			resource: SandboxResourceSpec{Key: "file:claim", Kind: SandboxResourceRepositoryFile, Name: "claim", Marker: "starter-kit-contract:run",
+				Attributes: map[string]string{"path": ".starter-kit/claim.txt", "branch": "main", "content_sha256": digestBytes([]byte("unowned")), "input:content": "unowned"}},
+			want: "marker-owned content",
+		},
+		{
+			name: "file with traversal path",
+			resource: SandboxResourceSpec{Key: "file:claim", Kind: SandboxResourceRepositoryFile, Name: "claim", Marker: "starter-kit-contract:run",
+				Attributes: map[string]string{"path": "../claim.txt", "branch": "main", "content_sha256": digestBytes([]byte("starter-kit-contract:run")), "input:content": "starter-kit-contract:run"}},
+			want: "exact path",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -373,6 +466,41 @@ func TestSandboxManifestRejectsUnsupportedKindsAndSensitiveMaterial(t *testing.T
 				t.Fatalf("validate manifest error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestSandboxLifecyclePlansExactIssueRelationshipAndRepositoryFileResources(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	target := SandboxTarget{Host: "github.com", OwnerID: "owner", RepositoryID: "repo", ProjectID: "project", RepositoryName: "owner/sandbox"}
+	marker := "starter-kit-contract:run-75"
+	content := marker + "\ndelivery fixture\n"
+	resources := []SandboxResourceSpec{
+		{Key: "relationship:parent:10:11", Kind: SandboxResourceIssueRelationship, Name: "fixture parent and child", Marker: marker, Attributes: map[string]string{
+			"relationship": "parent-sub-issue", "source_number": "10", "source_id": "100", "source_node_id": "I_parent", "target_number": "11", "target_id": "101", "target_node_id": "I_child",
+		}},
+		{Key: "file:delivery-claim", Kind: SandboxResourceRepositoryFile, Name: "delivery-claim.txt", Marker: marker, Attributes: map[string]string{
+			"path": ".starter-kit/delivery-claim.txt", "branch": "main", "content_sha256": digestBytes([]byte(content)), "input:content": content,
+		}},
+	}
+	manifest := SandboxManifest{SchemaVersion: 1, OperationID: "issue-75-native-resources", SourceRevision: "source", ConfigurationRevision: "config", ApprovedBy: "owner", ApprovedPlan: "approved", RecoveryOwner: "sandbox-owner", MarkerPrefix: "starter-kit-contract:", Target: target, Resources: resources}
+	adapter := NewInMemorySandboxAdapter(
+		SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: "seeder", EvidenceMode: "memory", Target: target, ConfigurationRevision: "config", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		SandboxObservation{SchemaVersion: 1, Target: target, ConfigurationRevision: "config"},
+	)
+	lifecycle := New(WithClock(sandboxFixedClock{now}), WithSandboxAdapter(adapter))
+	inspection, err := lifecycle.InspectSandbox(context.Background(), SandboxRequest{Repository: newSandboxRepository(t), Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 2 || plan.Effects[0].Resource.Kind != SandboxResourceIssueRelationship || plan.Effects[1].Resource.Kind != SandboxResourceRepositoryFile {
+		t.Fatalf("native resource effects = %#v", plan.Effects)
+	}
+	if plan.Effects[0].Resource.Attributes["source_node_id"] != "I_parent" || plan.Effects[1].Resource.Attributes["branch"] != "main" {
+		t.Fatalf("exact identities were not retained: %#v", plan.Effects)
 	}
 }
 

@@ -1,0 +1,490 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/dragondad22/codex-starter-kit/engine"
+	"github.com/dragondad22/codex-starter-kit/githubadapter"
+)
+
+var fixedNow = time.Date(2026, 7, 21, 18, 0, 0, 0, time.UTC)
+
+const historicalCleanupBranch = "contract/issue-75-20260721-05"
+
+type fixedClock struct{ now time.Time }
+
+func (clock fixedClock) Now() time.Time { return clock.now }
+
+func TestStagesEmitExactRoleScopedSandboxInputs(t *testing.T) {
+	tests := []struct {
+		stage       string
+		role        string
+		kind        string
+		count       int
+		permissions []string
+		cleanup     bool
+	}{
+		{"issues-setup", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
+		{"issues-governed", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, false},
+		{"project-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceProjectItemField, 6, []string{"metadata:read", "organization-projects:write"}, false},
+		{"relationships-setup", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, false},
+		{"rules-setup", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, false},
+		{"file-initial", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
+		{"file-candidate", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
+		{"file-stale", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, false},
+		{"cleanup-relationships", githubadapter.SandboxRoleReconciler, engine.SandboxResourceIssueRelationship, 2, []string{"issues:write", "metadata:read"}, true},
+		{"cleanup-rules", githubadapter.SandboxRoleRules, engine.SandboxResourceRuleset, 1, []string{"administration:write", "metadata:read"}, true},
+		{"cleanup-file", githubadapter.SandboxRoleSeeder, engine.SandboxResourceRepositoryFile, 1, []string{"contents:write", "metadata:read", "workflows:write"}, true},
+		{"cleanup-orphan-branch", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureBranch, 1, []string{"contents:write", "metadata:read", "pull-requests:read"}, true},
+		{"cleanup-delivery", githubadapter.SandboxRoleSeeder, "", 2, []string{"contents:write", "metadata:read", "pull-requests:write"}, true},
+		{"cleanup-issues", githubadapter.SandboxRoleSeeder, engine.SandboxResourceFixtureIssue, 3, []string{"issues:write", "metadata:read"}, true},
+	}
+	for _, test := range tests {
+		t.Run(test.stage, func(t *testing.T) {
+			input := mustBuild(t, test.stage)
+			if input.Role != test.role || len(input.Request.Manifest.Resources) != test.count {
+				t.Fatalf("role/resources = %q/%#v", input.Role, input.Request.Manifest.Resources)
+			}
+			expectation := input.Config.Roles[test.role]
+			if !slices.Equal(expectation.RequiredPermissions, test.permissions) || len(input.Config.Roles) != 1 {
+				t.Fatalf("permissions = %#v", input.Config.Roles)
+			}
+			if len(input.App.RepositoryIDs) != 1 || input.App.RepositoryIDs[0] != sandboxRESTID || input.App.AccountID != sandboxOwnerID {
+				t.Fatalf("app is not exact repository scoped: %#v", input.App)
+			}
+			if len(input.App.TokenPermissions) != len(test.permissions) {
+				t.Fatalf("token permissions are broader than the role: %#v", input.App.TokenPermissions)
+			}
+			for _, permission := range test.permissions {
+				parts := strings.Split(permission, ":")
+				if input.App.TokenPermissions[strings.ReplaceAll(parts[0], "-", "_")] != parts[1] {
+					t.Fatalf("token permissions do not match %q: %#v", permission, input.App.TokenPermissions)
+				}
+			}
+			for _, resource := range input.Request.Manifest.Resources {
+				if test.kind != "" && resource.Kind != test.kind || (resource.DesiredState == engine.SandboxResourceAbsent) != test.cleanup {
+					t.Fatalf("resource = %#v", resource)
+				}
+			}
+			expectedEffect := []string{"reconcile-resource"}
+			expectedDestructive := "no-delete"
+			if test.cleanup {
+				expectedEffect = []string{"remove-resource"}
+				expectedDestructive = "marker-scoped-fixture-cleanup-only"
+			}
+			if input.Mandate.ID == "" || len(input.Mandate.ResourceDigests) != test.count || input.Mandate.MaxEffects != test.count || !slices.Equal(input.Mandate.EffectKinds, expectedEffect) || input.Mandate.Destructive != expectedDestructive || !slices.Equal(input.Mandate.Actors, []string{test.role}) {
+				t.Fatalf("mandate = %#v", input.Mandate)
+			}
+			validateManifest(t, input)
+		})
+	}
+}
+
+func TestGovernedIssueStageInstallsManagedBodiesAndExactDeliveryContract(t *testing.T) {
+	resources := mustBuild(t, "issues-governed").Request.Manifest.Resources
+	if len(resources) != 3 {
+		t.Fatalf("governed resources = %#v", resources)
+	}
+	for index, managedID := range []string{"issue:11", "issue:12", "issue:13"} {
+		body := resources[index].Attributes["input:body"]
+		if !strings.Contains(body, "<!-- starter-kit-managed:"+managedID+" -->") || !strings.Contains(body, resources[index].Marker) || resources[index].Attributes["body_sha256"] != contentDigest(body) {
+			t.Fatalf("governed issue %d = %#v", index, resources[index])
+		}
+		if _, err := engine.ParseExecutableIssueContract(body); err != nil {
+			t.Fatalf("governed issue contract %d: %v", index, err)
+		}
+	}
+}
+
+func TestProjectSetupSelectsReadyWorkAndBlockedDependent(t *testing.T) {
+	resources := mustBuild(t, "project-setup").Request.Manifest.Resources
+	if len(resources) != 6 {
+		t.Fatalf("project resources = %#v", resources)
+	}
+	want := []struct{ content, field, option string }{
+		{"I_parent", statusFieldID, statusInProgressID}, {"I_parent", readinessFieldID, readinessReadyID},
+		{"I_delivery", statusFieldID, statusInProgressID}, {"I_delivery", readinessFieldID, readinessReadyID},
+		{"I_dependent", statusFieldID, statusBacklogID}, {"I_dependent", readinessFieldID, readinessBlockedID},
+	}
+	for index, expected := range want {
+		attributes := resources[index].Attributes
+		if attributes["content_id"] != expected.content || attributes["field_id"] != expected.field || attributes["option_id"] != expected.option {
+			t.Fatalf("project resource %d = %#v", index, resources[index])
+		}
+	}
+}
+
+func TestStageContractDeclaresIdentityHandoffAndDeliveryCleanup(t *testing.T) {
+	setup := mustBuild(t, "issues-setup")
+	if len(setup.StageContract.IdentityRequirements) != 0 || !slices.Equal(setup.StageContract.IdentityOutputs, []string{"parent_number", "parent_id", "parent_node_id", "delivery_number", "delivery_id", "delivery_node_id", "dependent_number", "dependent_id", "dependent_node_id"}) {
+		t.Fatalf("issue identity outputs = %#v", setup.StageContract)
+	}
+	for _, stage := range []string{"relationships-setup", "cleanup-relationships", "cleanup-issues"} {
+		contract := mustBuild(t, stage).StageContract
+		if !slices.Equal(contract.IdentityRequirements, setup.StageContract.IdentityOutputs) {
+			t.Fatalf("%s identity requirements = %#v", stage, contract)
+		}
+	}
+	cleanup := mustBuild(t, "cleanup-delivery")
+	if !slices.Equal(cleanup.StageContract.IdentityRequirements, []string{"delivery_number", "pull_number", "pull_id", "pull_node_id", "cleanup_head_branch", "branch_head_sha"}) {
+		t.Fatalf("delivery cleanup contract = %#v", cleanup.StageContract)
+	}
+	candidate := mustBuild(t, "file-candidate")
+	if !slices.Equal(candidate.StageContract.IdentityRequirements, []string{"delivery_number", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}) {
+		t.Fatalf("file candidate contract = %#v", candidate.StageContract)
+	}
+	resources := cleanup.Request.Manifest.Resources
+	if len(resources) != 2 || resources[0].Kind != engine.SandboxResourceFixturePR || resources[1].Kind != engine.SandboxResourceFixtureBranch {
+		t.Fatalf("delivery cleanup ordering = %#v", resources)
+	}
+	if resources[0].Marker != "Closes #12" || resources[0].Attributes["number"] != "17" || resources[0].Attributes["id"] != "117" || resources[0].Attributes["node_id"] != "PR_delivery" || resources[0].Attributes["head_sha"] != strings.Repeat("b", 40) || resources[0].Attributes["head"] != historicalCleanupBranch || resources[1].Attributes["sha"] != strings.Repeat("b", 40) || resources[1].Name != historicalCleanupBranch || resources[1].Name == deliveryHeadBranch {
+		t.Fatalf("delivery cleanup identities = %#v", resources)
+	}
+	orphan := mustBuild(t, "cleanup-orphan-branch")
+	if !slices.Equal(orphan.StageContract.IdentityRequirements, []string{"delivery_number", "delivery_id", "delivery_node_id", "branch_head_sha", "delivery_state_run_id", "delivery_state_artifact"}) || len(orphan.Request.Manifest.Resources) != 1 {
+		t.Fatalf("orphan branch cleanup contract = %#v / %#v", orphan.StageContract, orphan.Request.Manifest.Resources)
+	}
+	branch := orphan.Request.Manifest.Resources[0]
+	if branch.Kind != engine.SandboxResourceFixtureBranch || branch.Name != deliveryHeadBranch || branch.Attributes["sha"] != strings.Repeat("b", 40) || branch.Attributes["input:delivery_number"] != "12" || branch.Attributes["input:delivery_id"] != "102" || branch.Attributes["input:delivery_node_id"] != "I_delivery" || branch.Attributes["input:no_pull_requests"] != "true" || branch.Attributes["input:delivery_state_run_id"] != "30163549727" || branch.DesiredState != engine.SandboxResourceAbsent {
+		t.Fatalf("orphan branch cleanup identity = %#v", branch)
+	}
+}
+
+func TestIssueFixturesAndRelationshipsCarryExactOrganicTopology(t *testing.T) {
+	setup := mustBuild(t, "issues-setup")
+	if got := setup.Request.Manifest.Resources; len(got) != 3 || got[0].Name != "parent" || got[1].Name != "delivery" || got[2].Name != "dependent" {
+		t.Fatalf("fixture issues = %#v", got)
+	}
+	relationships := mustBuild(t, "relationships-setup").Request.Manifest.Resources
+	parent := relationships[0]
+	blocked := relationships[1]
+	if parent.Attributes["relationship"] != "parent-sub-issue" || parent.Attributes["source_number"] != "11" || parent.Attributes["target_number"] != "12" {
+		t.Fatalf("parent relationship = %#v", parent)
+	}
+	if blocked.Attributes["relationship"] != "blocker-dependent" || blocked.Attributes["source_number"] != "12" || blocked.Attributes["target_number"] != "13" {
+		t.Fatalf("blocker relationship = %#v", blocked)
+	}
+	cleanup := mustBuild(t, "cleanup-issues").Request.Manifest.Resources
+	for index, identity := range []issueIdentity{{"11", "101", "I_parent"}, {"12", "102", "I_delivery"}, {"13", "103", "I_dependent"}} {
+		resource := cleanup[index]
+		if resource.DesiredState != engine.SandboxResourceAbsent || resource.Attributes["state"] != "closed" || resource.Attributes["number"] != identity.Number || resource.Attributes["id"] != identity.ID || resource.Attributes["node_id"] != identity.NodeID {
+			t.Fatalf("cleanup issue = %#v", resource)
+		}
+	}
+}
+
+func TestWorkflowStagesBindChangedHeadContentAndExactFinalCleanup(t *testing.T) {
+	if deliveryHeadBranch != "contract/issue-75-20260721-06" {
+		t.Fatalf("delivery branch = %q", deliveryHeadBranch)
+	}
+	initial := mustBuild(t, "file-initial").Request.Manifest.Resources[0]
+	candidate := mustBuild(t, "file-candidate").Request.Manifest.Resources[0]
+	stale := mustBuild(t, "file-stale").Request.Manifest.Resources[0]
+	cleanup := mustBuild(t, "cleanup-file").Request.Manifest.Resources[0]
+	if initial.Attributes["branch"] != "main" || candidate.Attributes["branch"] != deliveryHeadBranch || stale.Attributes["branch"] != deliveryHeadBranch || cleanup.Attributes["branch"] != "main" {
+		t.Fatalf("workflow branches = %q/%q/%q/%q", initial.Attributes["branch"], candidate.Attributes["branch"], stale.Attributes["branch"], cleanup.Attributes["branch"])
+	}
+	if initial.Attributes["path"] != ".github/workflows/issue-75-fixture-check.yml" {
+		t.Fatalf("fixture check would overwrite a control workflow: %#v", initial.Attributes)
+	}
+	contents := []string{initial.Attributes["input:content"], candidate.Attributes["input:content"], stale.Attributes["input:content"]}
+	digests := []string{initial.Attributes["content_sha256"], candidate.Attributes["content_sha256"], stale.Attributes["content_sha256"]}
+	if contents[0] == contents[1] || contents[0] == contents[2] || contents[1] == contents[2] || digests[0] == digests[1] || digests[0] == digests[2] || digests[1] == digests[2] {
+		t.Fatal("initial, candidate, and stale stages must create three distinct approved revisions")
+	}
+	if candidate.Attributes["input:branch_head_sha"] != strings.Repeat("b", 40) {
+		t.Fatalf("candidate predecessor = %#v", candidate.Attributes)
+	}
+	if candidate.Attributes["input:delivery_state_run_id"] != "30163549727" || candidate.Attributes["input:delivery_transition_sha256"] == "" {
+		t.Fatalf("candidate branch evidence = %#v", candidate.Attributes)
+	}
+	if stale.Attributes["input:branch_head_sha"] != strings.Repeat("b", 40) {
+		t.Fatalf("stale predecessor = %#v", stale.Attributes)
+	}
+	if cleanup.Attributes["input:content"] != stale.Attributes["input:content"] || cleanup.Attributes["content_sha256"] != stale.Attributes["content_sha256"] || cleanup.DesiredState != engine.SandboxResourceAbsent {
+		t.Fatalf("cleanup is not bound to final approved content: %#v", cleanup)
+	}
+	for _, content := range contents {
+		if !strings.Contains(content, runMarker) || !strings.Contains(content, "pull_request:") || !strings.Contains(content, "contract-delivery:") {
+			t.Fatalf("workflow content = %q", content)
+		}
+	}
+}
+
+func TestRulesStagesBindExactActiveMainCheckAndMarkerScopedCleanup(t *testing.T) {
+	setup := mustBuild(t, "rules-setup").Request.Manifest.Resources[0]
+	cleanup := mustBuild(t, "cleanup-rules").Request.Manifest.Resources[0]
+	if setup.Name != runMarker+":ruleset:delivery-check" || setup.Marker != runMarker || setup.Attributes["enforcement"] != "active" || setup.Attributes["target"] != "branch" {
+		t.Fatalf("rules setup identity = %#v", setup)
+	}
+	var definition struct {
+		BypassActors []any  `json:"bypass_actors"`
+		Enforcement  string `json:"enforcement"`
+		Conditions   struct {
+			RefName struct {
+				Include []string `json:"include"`
+			} `json:"ref_name"`
+		} `json:"conditions"`
+		Rules []struct {
+			Type       string `json:"type"`
+			Parameters struct {
+				DoNotEnforceOnCreate *bool    `json:"do_not_enforce_on_create"`
+				AllowedMergeMethods  []string `json:"allowed_merge_methods"`
+				RequiredApprovals    *int     `json:"required_approving_review_count"`
+				RequireCodeOwner     *bool    `json:"require_code_owner_review"`
+				RequireLastPush      *bool    `json:"require_last_push_approval"`
+				RequireResolution    *bool    `json:"required_review_thread_resolution"`
+				DismissStale         *bool    `json:"dismiss_stale_reviews_on_push"`
+				DismissalRestriction *struct {
+					AllowedActors []any `json:"allowed_actors"`
+					Enabled       *bool `json:"enabled"`
+				} `json:"dismissal_restriction"`
+				RequiredReviewers []any `json:"required_reviewers"`
+				Required          []struct {
+					Context       string `json:"context"`
+					IntegrationID int64  `json:"integration_id"`
+				} `json:"required_status_checks"`
+			} `json:"parameters"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(setup.Attributes["input:definition"]), &definition); err != nil {
+		t.Fatal(err)
+	}
+	if definition.BypassActors == nil || len(definition.BypassActors) != 0 || definition.Enforcement != "active" || !slices.Equal(definition.Conditions.RefName.Include, []string{"refs/heads/main"}) || len(definition.Rules) != 2 || definition.Rules[0].Type != "required_status_checks" || definition.Rules[0].Parameters.DoNotEnforceOnCreate == nil || *definition.Rules[0].Parameters.DoNotEnforceOnCreate || len(definition.Rules[0].Parameters.Required) != 1 || definition.Rules[0].Parameters.Required[0].Context != "contract-delivery" || definition.Rules[0].Parameters.Required[0].IntegrationID != githubActionsIntegrationID || definition.Rules[1].Type != "pull_request" || !slices.Equal(definition.Rules[1].Parameters.AllowedMergeMethods, []string{"squash"}) || definition.Rules[1].Parameters.RequiredApprovals == nil || *definition.Rules[1].Parameters.RequiredApprovals != 0 || definition.Rules[1].Parameters.RequireCodeOwner == nil || *definition.Rules[1].Parameters.RequireCodeOwner || definition.Rules[1].Parameters.RequireLastPush == nil || *definition.Rules[1].Parameters.RequireLastPush || definition.Rules[1].Parameters.RequireResolution == nil || *definition.Rules[1].Parameters.RequireResolution || definition.Rules[1].Parameters.DismissStale == nil || *definition.Rules[1].Parameters.DismissStale || definition.Rules[1].Parameters.DismissalRestriction == nil || definition.Rules[1].Parameters.DismissalRestriction.AllowedActors == nil || len(definition.Rules[1].Parameters.DismissalRestriction.AllowedActors) != 0 || definition.Rules[1].Parameters.DismissalRestriction.Enabled == nil || *definition.Rules[1].Parameters.DismissalRestriction.Enabled || definition.Rules[1].Parameters.RequiredReviewers == nil || len(definition.Rules[1].Parameters.RequiredReviewers) != 0 {
+		t.Fatalf("rules definition = %#v", definition)
+	}
+	if cleanup.DesiredState != engine.SandboxResourceAbsent || cleanup.Name != setup.Name || cleanup.Attributes["input:definition"] != setup.Attributes["input:definition"] {
+		t.Fatalf("rules cleanup is not exact: %#v", cleanup)
+	}
+}
+
+func TestRunIsDeterministicAndCredentialFree(t *testing.T) {
+	args := validArgs("relationships-setup")
+	var first, second bytes.Buffer
+	if err := run(args, fixedNow, &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(args, fixedNow, &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.String() != second.String() {
+		t.Fatal("same approved input did not produce deterministic JSON")
+	}
+	lower := strings.ToLower(first.String())
+	for _, forbidden := range []string{"private_key", "access_token", "client_secret"} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("output contains credential field %q", forbidden)
+		}
+	}
+	var decoded planInput
+	if err := json.Unmarshal(first.Bytes(), &decoded); err != nil || decoded.Mandate.ID == "" {
+		t.Fatalf("decode = %#v, %v", decoded, err)
+	}
+}
+
+func TestRunRejectsUnapprovedOrAmbiguousInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		now  time.Time
+	}{
+		{"missing approval", withoutFlag(validArgs("issues-setup"), "--approved-by"), fixedNow},
+		{"bad approval time", replaceFlag(validArgs("issues-setup"), "--approved-at", "yesterday"), fixedNow},
+		{"future approval", replaceFlag(validArgs("issues-setup"), "--approved-at", "2026-07-22T00:00:00Z"), fixedNow},
+		{"expired approval", replaceFlag(validArgs("issues-setup"), "--expires-at", "2026-07-21T17:00:00Z"), fixedNow},
+		{"bad source", replaceFlag(validArgs("issues-setup"), "--source-revision", "main"), fixedNow},
+		{"unknown stage", replaceFlag(validArgs("issues-setup"), "--stage", "cleanup"), fixedNow},
+		{"missing relationship identity", withoutFlag(validArgs("relationships-setup"), "--parent-id"), fixedNow},
+		{"governed delivery input required", validArgs("issues-governed"), fixedNow},
+		{"leading zero identity", replaceFlag(validArgs("relationships-setup"), "--delivery-number", "012"), fixedNow},
+		{"duplicate identity", replaceFlag(validArgs("relationships-setup"), "--dependent-id", "102"), fixedNow},
+		{"cleanup identities required", identitiesOmitted(validArgs("cleanup-issues")), fixedNow},
+		{"cleanup delivery pull required", withoutFlag(validArgs("cleanup-delivery"), "--pull-number"), fixedNow},
+		{"cleanup delivery pull id required", withoutFlag(validArgs("cleanup-delivery"), "--pull-id"), fixedNow},
+		{"cleanup delivery pull node required", withoutFlag(validArgs("cleanup-delivery"), "--pull-node-id"), fixedNow},
+		{"cleanup delivery branch required", withoutFlag(validArgs("cleanup-delivery"), "--cleanup-head-branch"), fixedNow},
+		{"cleanup delivery branch exact", replaceFlag(validArgs("cleanup-delivery"), "--cleanup-head-branch", "main"), fixedNow},
+		{"cleanup delivery branch stage bound", append(validArgs("issues-setup"), "--cleanup-head-branch", historicalCleanupBranch), fixedNow},
+		{"cleanup delivery sha required", withoutFlag(validArgs("cleanup-delivery"), "--branch-head-sha"), fixedNow},
+		{"cleanup delivery sha exact", replaceFlag(validArgs("cleanup-delivery"), "--branch-head-sha", "main"), fixedNow},
+		{"candidate branch sha required", withoutFlag(validArgs("file-candidate"), "--branch-head-sha"), fixedNow},
+		{"candidate branch sha exact", replaceFlag(validArgs("file-candidate"), "--branch-head-sha", "main"), fixedNow},
+		{"candidate state required", validArgs("file-candidate"), fixedNow},
+		{"stale branch sha required", withoutFlag(validArgs("file-stale"), "--branch-head-sha"), fixedNow},
+		{"stale branch sha exact", replaceFlag(validArgs("file-stale"), "--branch-head-sha", "main"), fixedNow},
+		{"orphan cleanup delivery required", withoutFlag(validArgs("cleanup-orphan-branch"), "--delivery-id"), fixedNow},
+		{"orphan cleanup sha required", withoutFlag(validArgs("cleanup-orphan-branch"), "--branch-head-sha"), fixedNow},
+		{"orphan cleanup sha exact", replaceFlag(validArgs("cleanup-orphan-branch"), "--branch-head-sha", "main"), fixedNow},
+		{"orphan cleanup state required", validArgs("cleanup-orphan-branch"), fixedNow},
+		{"positional argument", append(validArgs("issues-setup"), "unexpected"), fixedNow},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := run(test.args, test.now, &bytes.Buffer{}); err == nil {
+				t.Fatal("expected rejection")
+			}
+		})
+	}
+}
+
+func mustBuild(t *testing.T, stage string) planInput {
+	t.Helper()
+	args := validArgs(stage)
+	if stage == "issues-governed" {
+		args = append(args, "--delivery-input-file", governedDeliveryInput(t))
+	}
+	if stage == "file-candidate" || stage == "cleanup-orphan-branch" {
+		args = append(args,
+			"--delivery-state-file", branchCreationTransition(t),
+			"--delivery-state-run-id", "30163549727",
+			"--delivery-state-artifact", "issue-75-delivery-state-30163549727",
+		)
+	}
+	var output bytes.Buffer
+	if err := run(args, fixedNow, &output); err != nil {
+		t.Fatal(err)
+	}
+	var input planInput
+	if err := json.Unmarshal(output.Bytes(), &input); err != nil {
+		t.Fatal(err)
+	}
+	return input
+}
+
+func branchCreationTransition(t *testing.T) string {
+	t.Helper()
+	source := strings.Repeat("a", 40)
+	head := strings.Repeat("b", 40)
+	effect := engine.DeliveryEffect{ID: "effect-create-branch", Kind: engine.DeliveryEffectCreateBranch, Branch: deliveryHeadBranch, BaseBranch: "main", HeadRevision: head}
+	receipt := engine.DeliveryEffectReceipt{
+		SchemaVersion: 1, PlanID: "plan-create-branch", EffectID: effect.ID, EffectKind: effect.Kind,
+		ManagedID: "issue:12", HeadRevision: head, Actor: "codex-starter-kit-labs-seeder",
+		CredentialMode: "app-installation", MandateID: "mandate-create-branch", SourceRevision: source,
+		ObservationRevision: "observation-create-branch", Outcome: "applied", RecordedAt: fixedNow,
+	}
+	evidence := map[string]any{
+		"schema_version": 1,
+		"evidence_mode":  "live",
+		"outcome":        "pass",
+		"inspection":     engine.DeliveryInspection{},
+		"plan": engine.DeliveryPlan{
+			SchemaVersion: 1, ID: receipt.PlanID,
+			Intent:  engine.DeliveryIntent{ManagedID: receipt.ManagedID, SourceRevision: source, HeadBranch: deliveryHeadBranch},
+			Effects: []engine.DeliveryEffect{effect},
+		},
+		"apply": engine.DeliveryApplyResult{
+			SchemaVersion: 1, PlanID: receipt.PlanID, Status: engine.WorkApplyApplied,
+			Results: []engine.DeliveryEffectResult{{Outcome: "applied"}}, Receipts: []engine.DeliveryEffectReceipt{receipt},
+		},
+		"verification": engine.DeliveryVerification{SchemaVersion: 1, OverallState: engine.ControlPass},
+		"status":       engine.DeliveryStatusResult{SchemaVersion: 1, Disposition: engine.DeliveryDispositionPullRequestAbsent, Receipts: []engine.DeliveryEffectReceipt{receipt}},
+	}
+	path := filepath.Join(t.TempDir(), "issue-75-transition.json")
+	content, err := json.MarshalIndent(evidence, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func governedDeliveryInput(t *testing.T) string {
+	t.Helper()
+	contract := relatedIssueContract("Exact delivery contract.", runMarker+":issue:delivery")
+	request := engine.DeliveryRequest{
+		Intent: engine.DeliveryIntent{SourceRevision: strings.Repeat("a", 40), ManagedID: "issue:12", HeadBranch: deliveryHeadBranch},
+		CompletionIntent: &engine.WorkDesiredIntent{
+			Task:       engine.DesiredManagedTask{ManagedID: "issue:12", IssueType: "task", Title: "Issue 75 contract fixture: governed delivery", ParentManagedID: "issue:11", Readiness: "ready", Status: "done", Closed: true, Dependents: []engine.WorkDependentContext{{ManagedID: "issue:13"}}},
+			Governance: &engine.GovernedWorkContract{SchemaVersion: 1, Issue: contract},
+		},
+	}
+	path := filepath.Join(t.TempDir(), "delivery.json")
+	content, err := json.Marshal(map[string]any{"request": request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func validArgs(stage string) []string {
+	args := []string{
+		"--stage", stage, "--repository", ".", "--source-revision", strings.Repeat("a", 40),
+		"--approved-by", "owner", "--approval-id", "issue-comment-123", "--approved-at", "2026-07-21T17:00:00Z", "--expires-at", "2026-07-22T18:00:00Z",
+		"--parent-number", "11", "--parent-id", "101", "--parent-node-id", "I_parent",
+		"--delivery-number", "12", "--delivery-id", "102", "--delivery-node-id", "I_delivery",
+		"--dependent-number", "13", "--dependent-id", "103", "--dependent-node-id", "I_dependent",
+		"--pull-number", "17", "--pull-id", "117", "--pull-node-id", "PR_delivery", "--branch-head-sha", strings.Repeat("b", 40),
+	}
+	if stage == "cleanup-delivery" {
+		args = append(args, "--cleanup-head-branch", historicalCleanupBranch)
+	}
+	return args
+}
+
+func withoutFlag(args []string, name string) []string {
+	result := slices.Clone(args)
+	for index := 0; index < len(result); index++ {
+		if result[index] == name {
+			return append(result[:index], result[index+2:]...)
+		}
+	}
+	return result
+}
+
+func replaceFlag(args []string, name, value string) []string {
+	result := slices.Clone(args)
+	for index := 0; index+1 < len(result); index++ {
+		if result[index] == name {
+			result[index+1] = value
+			return result
+		}
+	}
+	return result
+}
+
+func identitiesOmitted(args []string) []string {
+	for _, name := range []string{"--parent-number", "--parent-id", "--parent-node-id", "--delivery-number", "--delivery-id", "--delivery-node-id", "--dependent-number", "--dependent-id", "--dependent-node-id"} {
+		args = withoutFlag(args, name)
+	}
+	return args
+}
+
+func validateManifest(t *testing.T, input planInput) {
+	t.Helper()
+	repository := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", repository).CombinedOutput(); err != nil {
+		t.Fatalf("initialize test repository: %v: %s", err, output)
+	}
+	request := input.Request
+	request.Repository = repository
+	capability := engine.SandboxCapability{SchemaVersion: 1, Available: true, Fresh: true, Actor: input.Role, EvidenceMode: "live", Target: input.Config.Target, Permissions: input.Mandate.Authority.Permissions, CredentialIdentities: input.Mandate.Authority.CredentialIdentities, Compatibility: input.Mandate.Authority.Compatibility, ConfigurationRevision: configuration, ObservedAt: fixedNow, ExpiresAt: fixedNow.Add(time.Hour)}
+	observation := engine.SandboxObservation{SchemaVersion: 1, Target: input.Config.Target, ConfigurationRevision: configuration}
+	adapter := engine.NewInMemorySandboxAdapter(capability, observation)
+	lifecycle := engine.New(engine.WithClock(fixedClock{fixedNow}), engine.WithSandboxAdapter(adapter))
+	inspection, err := lifecycle.InspectSandbox(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := lifecycle.PlanSandbox(context.Background(), inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := lifecycle.ApplySandbox(context.Background(), plan, engine.SandboxPlanApproval{SchemaVersion: 2, Mandate: &input.Mandate})
+	if err != nil || result.Status == engine.SandboxApplyNonPass {
+		t.Fatalf("generated mandate does not contain its live role capability: %#v, %v", result, err)
+	}
+}

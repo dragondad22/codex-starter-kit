@@ -128,33 +128,36 @@
     downstream handoff evidence.
 61. `evidence/ISSUE-95.md` — singular task-fitness, bounded decomposition, agent-neutral
     implementation planning, deterministic validation, limitation, and handoff evidence.
-62. `research/ASSURANCE_FACTORY_SEAM_INVENTORY.md` — bounded inventory of existing
+62. `evidence/ISSUE-75.md` — development-candidate delivery lifecycle, exact-head gates,
+    mandate-contained transitions, squash completion memory, deterministic coverage, and
+    pending refreshed live/native qualification.
+63. `research/ASSURANCE_FACTORY_SEAM_INVENTORY.md` — bounded inventory of existing
     authority and lifecycle seams, in-progress dependencies, missing contracts, and the
     validation-first refinement conclusion for issue #83.
-63. `roadmap/ASSURANCE_FACTORY_DECISION_MAP.md` — active validation, evidence, actor,
+64. `roadmap/ASSURANCE_FACTORY_DECISION_MAP.md` — active validation, evidence, actor,
     validation-only delivery, finding, mission, provider, Mission Control, and broader
     final-decomposition investigation sequence for issue #83.
-64. `evidence/ISSUE-83.md` — owner selection, native investigation decomposition,
+65. `evidence/ISSUE-83.md` — owner selection, native investigation decomposition,
     dependency graph, Project reconciliation, exclusions, and verification record for
     issue #83.
-65. `decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md` — approved
+66. `decisions/DEC-0023-validation-manifest-authority-and-lifecycle.md` — approved
     validation-manifest derivation, identity, assessment, invalidation, approval, and
     effect-authority boundary.
-66. `evidence/ISSUE-100.md` — owner approval, promotion, negative-path coverage,
+67. `evidence/ISSUE-100.md` — owner approval, promotion, negative-path coverage,
     verification, and downstream reconciliation record for the validation-manifest
     decision.
-67. `research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md` — bounded ten-class assertion
+68. `research/VALIDATION_ASSERTION_EVIDENCE_METHODS.md` — bounded ten-class assertion
     taxonomy, multi-axis evidence-method model, traceability rules, explicit non-pass
     semantics, primary-source provenance, uncertainty, and limitations for issue #101.
-68. `evidence/ISSUE-101.md` — research coverage, authority boundary, negative paths,
+69. `evidence/ISSUE-101.md` — research coverage, authority boundary, negative paths,
     verification contract, and downstream reconciliation record for issue #101.
-69. `decisions/DEC-0024-skill-eligibility-and-informed-interaction.md` — approved universal
+70. `decisions/DEC-0024-skill-eligibility-and-informed-interaction.md` — approved universal
     informed-interaction behavior and evidence-backed skill eligibility, distribution,
     authority, qualification, and portfolio contract.
-70. `research/CODEX_SKILL_ELIGIBILITY_EVALUATION.md` — current official skill/plugin
+71. `research/CODEX_SKILL_ELIGIBILITY_EVALUATION.md` — current official skill/plugin
     capability snapshot, product-surface comparison, candidate disposition, alternatives,
     negative-path qualification, and downstream map for issue #87.
-71. `evidence/ISSUE-87.md` — approval, amendment, promotion, verification, limitation, and
+72. `evidence/ISSUE-87.md` — approval, amendment, promotion, verification, limitation, and
     downstream reconciliation record for the skill-eligibility decision.
 
 ## Document lifecycle
